@@ -31,7 +31,7 @@ public class ItemSpawnManager : MonoBehaviour
         if (item[randomIndex] != null && !(itemId != 0 && CoopItem.IsTaken(itemId)))
         {
             GameObject newItem = Instantiate(item[randomIndex], transform.position, transform.rotation);
-            if (itemId != 0 && CoopSession.Active)
+            if (itemId != 0)
             {
                 CoopItem.Track(newItem, itemId);
             }

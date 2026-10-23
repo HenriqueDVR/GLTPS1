@@ -76,8 +76,12 @@ public class WorldGenerator : MonoBehaviour
 #endif
 			}
 			CoopSession.Instance.OnWorldGenerated(this);
-			CoopItem.TrackScenePickups();
 		}
+		else
+		{
+			CoopItem.ResetLevel();
+		}
+		CoopItem.TrackScenePickups();
 	}
 
 	private void OnDestroy()

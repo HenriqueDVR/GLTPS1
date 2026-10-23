@@ -15,6 +15,11 @@ public static class CoopElevator
 			return true;
 		}
 		string text = instance.Remote.name.Replace("Parent", "");
+		if (!CoopSession.Instance.Connected)
+		{
+			CoopNotice.Show(text + "'s player isn't here. Wait for them to come back.");
+			return false;
+		}
 		if (CoopDowned.Instance != null && CoopDowned.Instance.RemoteDown)
 		{
 			CoopNotice.Show("Revive " + text + " first.");

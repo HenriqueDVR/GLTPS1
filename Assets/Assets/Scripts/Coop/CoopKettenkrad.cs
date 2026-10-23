@@ -153,7 +153,30 @@ public class CoopKettenkrad : MonoBehaviour
 		return characterVehicleInteraction.Headlight;
 	}
 
+	public bool Ready => vehicle != null;
+
 	public Vector3 VehiclePosition => vehicle.transform.position;
+
+	public Quaternion VehicleRotation => vehicle.transform.rotation;
+
+	public void Place(Vector3 position, Quaternion rotation)
+	{
+		if (remoteDriving)
+		{
+			return;
+		}
+		body.position = position;
+		body.rotation = rotation;
+		vehicle.transform.SetPositionAndRotation(position, rotation);
+		body.velocity = Vector3.zero;
+		body.angularVelocity = Vector3.zero;
+	}
+
+	public void OnPartnerLeft()
+	{
+		SetRemoteDriving(false);
+		remoteSeat = SeatState.Off;
+	}
 
 	private SeatState remoteSeat;
 

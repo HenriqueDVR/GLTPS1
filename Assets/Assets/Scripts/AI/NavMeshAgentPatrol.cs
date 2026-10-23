@@ -16,6 +16,9 @@ public class NavMeshAgentPatrol : MonoBehaviour
 
     public bool patrol = true;
 
+    // coop: friend's copy just follows the host
+    public Animator AgentAnimator => agentAnim;
+
     // Update is called once per frame
     void Start()
     {

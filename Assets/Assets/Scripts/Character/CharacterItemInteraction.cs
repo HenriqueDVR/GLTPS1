@@ -99,7 +99,7 @@ public class CharacterItemInteraction : MonoBehaviour
     private bool TakeItem()
     {
         CoopItem coopItem = CoopItem.Find(other);
-        if (coopItem != null && !CoopSession.Instance.IsHost)
+        if (coopItem != null && CoopSession.Active && !CoopSession.Instance.IsHost)
         {
             coopItem.RequestAsFriend();
             return false;

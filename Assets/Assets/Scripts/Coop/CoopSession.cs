@@ -52,6 +52,11 @@ public class CoopSession : MonoBehaviour
 		Ammo = 19,
 		// yuuri's ammo for the HUD
 		AmmoState = 20,
+		// rejoin: yuuri + ket
+		Rejoin = 21,
+		KanazawaPoses = 22,
+		// pipe levels
+		Pipes = 23,
 		// EOS only (no handshake there)
 		Hello = 100,
 		Welcome = 101,
@@ -77,7 +82,7 @@ public class CoopSession : MonoBehaviour
 	private const float lanHeadStart = 1f;
 
 	// bump on protocol changes
-	private const string connectionKey = "GLTPS1-coop-15";
+	private const string connectionKey = "GLTPS1-coop-17";
 
 	private const int gameplayScene = 1;
 
@@ -88,6 +93,11 @@ public class CoopSession : MonoBehaviour
 	private const float eosJoinTimeout = 30f;
 
 	private const float eosPingInterval = 1f;
+
+	// partner this quiet is gone, let a new join take the slot
+	private const float stalePartnerSeconds = 3f;
+
+	private float lastEosPacket;
 
 	private NetManager manager;
 
@@ -153,17 +163,24 @@ public class CoopSession : MonoBehaviour
 		}
 	}
 
+	// stays true while the partner is away so they can rejoin
 	public static bool InGame
 	{
 		get
 		{
-			if (Active && Instance.Connected)
+			if (Active && CoopPlayers.Instance != null)
 			{
 				return SceneManager.GetActiveScene().buildIndex == gameplayScene;
 			}
 			return false;
 		}
 	}
+
+	public static bool Together => InGame && Instance.Connected;
+
+	public event Action PartnerJoined;
+
+	public event Action PartnerLeft;
 
 	public SessionMode Mode { get; private set; }
 
@@ -266,6 +283,11 @@ public class CoopSession : MonoBehaviour
 			else if (commandLineArgs[i] == "-coopeosonly")
 			{
 				eosOnly = true;
+			}
+			// -background
+			else if (commandLineArgs[i] == "-background")
+			{
+				Application.runInBackground = true;
 			}
 #endif
 		}
@@ -543,6 +565,10 @@ public class CoopSession : MonoBehaviour
 
 	private void OnConnectionRequest(ConnectionRequest request)
 	{
+		if (IsHost && PartnerIsStale())
+		{
+			DropStalePartner();
+		}
 		if (IsHost && !Connected)
 		{
 			request.AcceptIfKey(connectionKey);
@@ -587,6 +613,7 @@ public class CoopSession : MonoBehaviour
 			if (SceneManager.GetActiveScene().buildIndex == gameplayScene && hostSeed != 0L)
 			{
 				SendStart();
+				PartnerJoined?.Invoke();
 			}
 			else if (autoStart && SceneManager.GetActiveScene().buildIndex == titleScene)
 			{
@@ -617,6 +644,7 @@ public class CoopSession : MonoBehaviour
 		if (IsHost)
 		{
 			Status = "Your friend left. Waiting for someone to join...";
+			PartnerLeft?.Invoke();
 			return;
 		}
 		Status = "Disconnected from the host (" + reason + ").";
@@ -625,6 +653,36 @@ public class CoopSession : MonoBehaviour
 		{
 			SceneManager.LoadScene(titleScene);
 		}
+	}
+
+	private bool PartnerIsStale()
+	{
+		if (peer != null)
+		{
+			return peer.TimeSinceLastPacket > stalePartnerSeconds * 1000f;
+		}
+		if (eosPeer != null)
+		{
+			return Time.unscaledTime - lastEosPacket > stalePartnerSeconds;
+		}
+		return false;
+	}
+
+	private void DropStalePartner()
+	{
+		Debug.Log("Coop: the old connection went quiet; letting the new one in");
+		if (peer != null)
+		{
+			NetPeer old = peer;
+			peer = null;
+			old.Disconnect();
+		}
+		if (eosPeer != null)
+		{
+			eos.Close(eosPeer);
+			eosPeer = null;
+		}
+		LinkDown("timed out");
 	}
 
 	private static bool SameUser(ProductUserId a, ProductUserId b)
@@ -686,12 +744,17 @@ public class CoopSession : MonoBehaviour
 		{
 		case MessageType.Hello:
 			reader.GetByte();
+			if (IsHost && PartnerIsStale())
+			{
+				DropStalePartner();
+			}
 			if (IsHost && !Connected)
 			{
 				writer.Reset();
 				if (reader.GetString() == connectionKey)
 				{
 					eosPeer = from;
+					lastEosPacket = Time.unscaledTime;
 					writer.Put((byte)MessageType.Welcome);
 					eos.Send(from, writer.Data, writer.Length, reliable: true);
 					LinkKind = EosLinkKind(from);
@@ -708,6 +771,7 @@ public class CoopSession : MonoBehaviour
 			if (Mode == SessionMode.Joining && !Connected && SameUser(from, eosTarget))
 			{
 				eosPeer = from;
+				lastEosPacket = Time.unscaledTime;
 				LinkKind = EosLinkKind(from);
 				LinkUp();
 			}
@@ -732,6 +796,7 @@ public class CoopSession : MonoBehaviour
 		}
 		if (SameUser(from, eosPeer))
 		{
+			lastEosPacket = Time.unscaledTime;
 			Dispatch(reader);
 		}
 	}
@@ -753,6 +818,8 @@ public class CoopSession : MonoBehaviour
 		case MessageType.Start:
 			if (!IsHost)
 			{
+				GameSave.RestoreTaken = null;
+				CoopPipes.SetRestore(null);
 				ulong @ulong = reader.GetULong();
 				string @string = reader.GetString();
 				if (!string.IsNullOrEmpty(@string))
@@ -829,6 +896,18 @@ public class CoopSession : MonoBehaviour
 		case MessageType.AmmoState:
 			CoopShots.OnAmmoState(reader);
 			break;
+		case MessageType.Rejoin:
+			if (!IsHost)
+			{
+				CoopGirlState.OnRejoin(reader);
+			}
+			break;
+		case MessageType.KanazawaPoses:
+			if (!IsHost)
+			{
+				CoopKanazawa.OnPoses(reader);
+			}
+			break;
 		case MessageType.Barrel:
 			CoopBarrel.OnMessage(reader);
 			break;
@@ -846,6 +925,12 @@ public class CoopSession : MonoBehaviour
 			break;
 		case MessageType.Supplies:
 			this.SuppliesReceived?.Invoke(reader);
+			break;
+		case MessageType.Pipes:
+			if (!IsHost)
+			{
+				CoopPipes.OnLevels(reader);
+			}
 			break;
 		case MessageType.TakenItems:
 			if (!IsHost)
@@ -887,7 +972,30 @@ public class CoopSession : MonoBehaviour
 		writer.Put(PlayerPrefs.GetString(difficultyKey, ""));
 		Send(writer, DeliveryMethod.ReliableOrdered);
 		CoopItem.SendTakenList();
+		CoopPipes.Send();
+		CoopKanazawa.SendUnlocks();
+		CoopPlayers players = CoopPlayers.Instance;
+		CoopKettenkrad vehicle = CoopKettenkrad.Instance;
+		if (players != null && vehicle != null && vehicle.Ready)
+		{
+			CoopGirlState.SendRejoin(writer, true, players.ToLayout(vehicle.VehiclePosition), vehicle.VehicleRotation);
+		}
+		else
+		{
+			CoopGirlState.SendRejoin(writer, false, Vector3.zero, Quaternion.identity);
+		}
 		Status = "Playing together.";
+	}
+
+	public void ResendRejoin()
+	{
+		CoopKanazawa.SendUnlocks();
+		CoopPlayers players = CoopPlayers.Instance;
+		CoopKettenkrad vehicle = CoopKettenkrad.Instance;
+		if (players != null && vehicle != null && vehicle.Ready)
+		{
+			CoopGirlState.SendRejoin(writer, true, players.ToLayout(vehicle.VehiclePosition), vehicle.VehicleRotation);
+		}
 	}
 
 	public void SendPlayerState(NetDataWriter state)
@@ -899,6 +1007,7 @@ public class CoopSession : MonoBehaviour
 	{
 		if (IsHost)
 		{
+			CoopGirlState.HostKept = null;
 			SceneManager.LoadScene(gameplayScene);
 			return;
 		}
@@ -911,6 +1020,11 @@ public class CoopSession : MonoBehaviour
 	{
 		if (peer != null)
 		{
+			// too big for unreliable, send reliable (gets split)
+			if ((method == DeliveryMethod.Unreliable || method == DeliveryMethod.Sequenced) && message.Length > peer.GetMaxSinglePacketSize(method))
+			{
+				method = DeliveryMethod.ReliableOrdered;
+			}
 			peer.Send(message, method);
 		}
 		else if (eosPeer != null)
@@ -922,6 +1036,12 @@ public class CoopSession : MonoBehaviour
 
 	private void OnSceneLoaded(Scene scene, LoadSceneMode loadMode)
 	{
+		if (scene.buildIndex == titleScene)
+		{
+			CoopGirlState.HostKept = null;
+			CoopGirlState.ClearPending();
+			CoopPipes.SetRestore(null);
+		}
 		if (scene.buildIndex == titleScene && IsHost)
 		{
 			hostSeed = 0uL;

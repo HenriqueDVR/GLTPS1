@@ -73,6 +73,23 @@ public class CoopBarrel : MonoBehaviour
 		Send(Op.Request);
 	}
 
+	// if they had it, drop it where it was
+	public static void OnPartnerLeft()
+	{
+		if (!remoteOwned)
+		{
+			return;
+		}
+		remoteOwned = false;
+		if (barrel != null)
+		{
+			barrel.GetComponent<UnityEngine.Animations.ParentConstraint>().constraintActive = false;
+			Rigidbody body = barrel.GetComponent<Rigidbody>();
+			body.isKinematic = false;
+			body.velocity = Vector3.zero;
+		}
+	}
+
 	public static void LocalTook(GameObject taken, bool fromVehicle)
 	{
 		if (!CoopSession.InGame)

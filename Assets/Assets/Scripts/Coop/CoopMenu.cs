@@ -42,6 +42,8 @@ public class CoopMenu : MonoBehaviour
 
 	private Button connectionButton;
 
+	private Button loadGameButton;
+
 	private TextMeshProUGUI connectionLabel;
 
 	private float copiedUntil;
@@ -92,6 +94,10 @@ public class CoopMenu : MonoBehaviour
 		copyButton = CloneButton(transform, page.transform, "copy invite", 0f, CopyInvite);
 		copyLabel = copyButton.GetComponentInChildren<TextMeshProUGUI>();
 		startGameButton = CloneButton(transform, page.transform, "start game", 0f, StartGame);
+		loadGameButton = CloneButton(transform, page.transform, "load game", 0f, delegate
+		{
+			GameSaveMenu.OpenLoadFromCoop(page);
+		});
 		leaveButton = CloneButton(transform, page.transform, "leave", 0f, session.Stop);
 		backButton = CloneButton(transform, page.transform, "back", backButtonY, ClosePage);
 		page.SetActive(value: false);
@@ -199,6 +205,7 @@ public class CoopMenu : MonoBehaviour
 		SetVisible(connectionButton, flag, list);
 		SetVisible(copyButton, flag2, list);
 		SetVisible(startGameButton, flag2 && session.Connected, list);
+		SetVisible(loadGameButton, flag2 && session.Connected, list);
 		SetVisible(leaveButton, !flag, list);
 		for (int i = 0; i < list.Count; i++)
 		{

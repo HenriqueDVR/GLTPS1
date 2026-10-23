@@ -28,11 +28,13 @@ public class PSXScreenFit : MonoBehaviour
 
     private static void Attach()
     {
+        // size by height like 16:9 so the HUD doesn't shrink
         foreach (CanvasScaler scaler in FindObjectsOfType<CanvasScaler>(true))
         {
             if (scaler.uiScaleMode == CanvasScaler.ScaleMode.ScaleWithScreenSize)
             {
-                scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.Expand;
+                scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+                scaler.matchWidthOrHeight = 1f;
             }
         }
         // backdrops were exactly 16:9, stretch them

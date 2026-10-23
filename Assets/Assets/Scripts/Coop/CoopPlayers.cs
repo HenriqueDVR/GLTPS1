@@ -81,6 +81,22 @@ public class CoopPlayers : MonoBehaviour
 
 	private readonly List<Snapshot> snapshots = new List<Snapshot>();
 
+	private Vector3 localSafe;
+
+	private bool hasLocalSafe;
+
+	private Vector3 remoteSafe;
+
+	private bool hasRemoteSafe;
+
+	private float remoteSteadySince;
+
+	private float lastRemoteY;
+
+	private float lastRescue = -100f;
+
+	private bool applyingRejoin;
+
 	private readonly List<Vector2> clockSamples = new List<Vector2>();
 
 	private float clockOffset;
@@ -114,7 +130,15 @@ public class CoopPlayers : MonoBehaviour
 		Instance = this;
 		session = CoopSession.Instance;
 		session.PlayerStateReceived += OnPlayerState;
+		session.PartnerLeft += OnPartnerLeft;
 		floatingOrigin = Object.FindObjectOfType<FloatingOrigin>();
+	}
+
+	private void OnPartnerLeft()
+	{
+		snapshots.Clear();
+		CoopKettenkrad.Instance?.OnPartnerLeft();
+		CoopBarrel.OnPartnerLeft();
 	}
 
 	private void OnDestroy()
@@ -122,6 +146,7 @@ public class CoopPlayers : MonoBehaviour
 		if (session != null)
 		{
 			session.PlayerStateReceived -= OnPlayerState;
+			session.PartnerLeft -= OnPartnerLeft;
 		}
 		if (Instance == this)
 		{
@@ -147,6 +172,7 @@ public class CoopPlayers : MonoBehaviour
 		}
 		Local.GetComponent<CharacterPossession>().enabled = false;
 		MakePuppet(Remote);
+		AddWaterCatcher(Remote, Local);
 		localAnimator = Local.GetComponentInChildren<Animator>();
 		remoteAnimator = Remote.GetComponentInChildren<Animator>();
 		localParameters = System.Array.FindAll(localAnimator.parameters, (AnimatorControllerParameter p) => p.type != AnimatorControllerParameterType.Trigger);
@@ -190,6 +216,25 @@ public class CoopPlayers : MonoBehaviour
 		}
 	}
 
+	// pipe water went through her with the CharacterController off
+	private static void AddWaterCatcher(Transform girl, Transform local)
+	{
+		CharacterController controller = girl.GetComponent<CharacterController>();
+		GameObject catcher = new GameObject("CoopWaterCatcher");
+		catcher.layer = LayerMask.NameToLayer("Player");
+		catcher.transform.SetParent(girl, false);
+		CapsuleCollider capsule = catcher.AddComponent<CapsuleCollider>();
+		capsule.center = (controller != null) ? controller.center : new Vector3(0f, 0.8f, 0f);
+		capsule.radius = (controller != null) ? controller.radius : 0.3f;
+		capsule.height = (controller != null) ? controller.height : 1.6f;
+		capsule.excludeLayers = ~0;
+		CharacterController localController = local.GetComponent<CharacterController>();
+		if (localController != null)
+		{
+			Physics.IgnoreCollision(capsule, localController);
+		}
+	}
+
 	private void Update()
 	{
 		if (Local == null || !Local.gameObject.activeInHierarchy)
@@ -197,6 +242,15 @@ public class CoopPlayers : MonoBehaviour
 			return;
 		}
 		CoopShots.Tick(Local);
+		if (CoopGirlState.Pending)
+		{
+			if (!applyingRejoin)
+			{
+				applyingRejoin = true;
+				StartCoroutine(ApplyRejoin());
+			}
+			return;
+		}
 		if (Time.unscaledTime >= nextSend && !(CoopKettenkrad.Instance != null && CoopKettenkrad.Instance.MountPending))
 		{
 			nextSend = Time.unscaledTime + sendInterval;
@@ -225,6 +279,11 @@ public class CoopPlayers : MonoBehaviour
 			if (CoopKettenkrad.Instance != null)
 			{
 				CoopKettenkrad.Instance.PinLocalRider();
+			}
+			TrackSafeGround();
+			if (session.IsHost && session.Connected && snapshots.Count > 0 && Remote != null)
+			{
+				CoopGirlState.HostKept = CoopGirlState.Capture(Remote, ToLayout(Remote.position));
 			}
 #if DUMP_WORLDGEN
 			DebugSmoothness();
@@ -401,6 +460,7 @@ public class CoopPlayers : MonoBehaviour
 			{
 				DebugMisc();
 			}
+			CoopPipes.DebugTick(session.IsHost, Remote);
 			// -coopdrive
 			if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-coopdrive") >= 0 && session.Connected)
 			{
@@ -929,11 +989,55 @@ public class CoopPlayers : MonoBehaviour
 		}
 	}
 
+	private IEnumerator ApplyRejoin()
+	{
+		yield return CoopGirlState.ApplyPending(this);
+		applyingRejoin = false;
+	}
+
+	private void TrackSafeGround()
+	{
+		CharacterController controller = Local.GetComponent<CharacterController>();
+		if (controller.enabled && controller.isGrounded)
+		{
+			localSafe = ToLayout(Local.position);
+			hasLocalSafe = true;
+		}
+		if (Remote != null && snapshots.Count > 0)
+		{
+			if (Mathf.Abs(Remote.position.y - lastRemoteY) > 0.05f)
+			{
+				remoteSteadySince = Time.unscaledTime;
+			}
+			else if (Time.unscaledTime - remoteSteadySince > 0.5f)
+			{
+				remoteSafe = ToLayout(Remote.position);
+				hasRemoteSafe = true;
+			}
+			lastRemoteY = Remote.position.y;
+		}
+	}
+
+	// respawn by the partner, or where she last stood if they fell too
 	public void RescueLocalPlayer()
 	{
+		Vector3 target;
+		if (hasRemoteSafe && Time.unscaledTime - lastRescue > 3f)
+		{
+			target = FromLayout(remoteSafe) - Remote.forward * 2f;
+		}
+		else if (hasLocalSafe)
+		{
+			target = FromLayout(localSafe);
+		}
+		else
+		{
+			target = Remote.position - Remote.forward * 2f;
+		}
+		lastRescue = Time.unscaledTime;
 		CharacterController component = Local.GetComponent<CharacterController>();
 		component.enabled = false;
-		Local.position = Remote.position - Remote.forward * 2f + Vector3.up * 0.5f;
+		Local.position = target + Vector3.up * 0.5f;
 		component.enabled = true;
 	}
 

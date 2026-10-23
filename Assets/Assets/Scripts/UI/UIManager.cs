@@ -36,6 +36,7 @@ public class UIManager : MonoBehaviour
         if (isTitleMenu)
         {
             CoopSession.EnsureExists().GetComponent<CoopMenu>().BuildTitlePage();
+            GameSaveMenu.BuildTitle();
         }
         if (photoPanel == null)
         {
@@ -277,8 +278,11 @@ public class UIManager : MonoBehaviour
         DifficultyMenu.SetActive(true);
     }
 
+    public GameObject MainMenu => mainMenu;
+
     public void QuitToTitleMenu()
     {
+        GameSave.SaveIfPossible();
         SceneManager.LoadScene(0);
     }
 

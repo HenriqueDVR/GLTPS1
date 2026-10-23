@@ -23,11 +23,18 @@ public class CoopItem : MonoBehaviour
 
 	public ulong Id { get; private set; }
 
+	// keep what a loaded save already took
 	public static void ResetLevel()
 	{
 		taken.Clear();
 		requested.Clear();
+		if (GameSave.RestoreTaken != null)
+		{
+			taken.UnionWith(GameSave.RestoreTaken);
+		}
 	}
+
+	public static IEnumerable<ulong> TakenIds => taken;
 
 	public static bool IsTaken(ulong id)
 	{
@@ -65,12 +72,9 @@ public class CoopItem : MonoBehaviour
 		}
 	}
 
+	// single player too, for saves
 	public static CoopItem Find(Collider collider)
 	{
-		if (!CoopSession.Active)
-		{
-			return null;
-		}
 		return collider.GetComponentInParent<CoopItem>();
 	}
 
@@ -171,7 +175,10 @@ public class CoopItem : MonoBehaviour
 		writer.Put((byte)CoopSession.MessageType.ItemTaken);
 		writer.Put(id);
 		writer.Put(toFriend);
-		CoopSession.Instance.Send(writer, DeliveryMethod.ReliableOrdered);
+		if (CoopSession.Active)
+		{
+			CoopSession.Instance.Send(writer, DeliveryMethod.ReliableOrdered);
+		}
 	}
 
 #if DUMP_WORLDGEN

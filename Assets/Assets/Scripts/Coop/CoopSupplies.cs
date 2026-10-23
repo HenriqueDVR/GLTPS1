@@ -102,7 +102,7 @@ public class CoopSupplies : MonoBehaviour
 			seenWater = status.waterLevel;
 			seenFuel = fuel.currentFuel;
 		}
-		if (Time.unscaledTime >= nextSend)
+		if (Time.unscaledTime >= nextSend && !CoopGirlState.Pending)
 		{
 			nextSend = Time.unscaledTime + sendInterval;
 			Send(local);
