@@ -7,6 +7,11 @@ public class ItemSpawnManager : MonoBehaviour
     [SerializeField] private GameObject[] item;
     public int[] spawnChance;
     private Save save = new Save();
+
+    // set by WorldGenerator so seeds give the same items
+    [System.NonSerialized] public WorldRandom random;
+    [System.NonSerialized] public ulong itemId;
+
     void Start()
     {
         save = save.LoadData("difficultySetting");
@@ -22,10 +27,17 @@ public class ItemSpawnManager : MonoBehaviour
 
     private void RandomWeightedSpawnItem()
     {
-        int randomIndex = RandomWeightedGenerator.GenerateRandomIndex(spawnChance);
-        if (item[randomIndex] != null)
+        int randomIndex = random != null ? random.NextWeightedIndex(spawnChance) : RandomWeightedGenerator.GenerateRandomIndex(spawnChance);
+        if (item[randomIndex] != null && !(itemId != 0 && CoopItem.IsTaken(itemId)))
         {
             GameObject newItem = Instantiate(item[randomIndex], transform.position, transform.rotation);
+            if (itemId != 0 && CoopSession.Active)
+            {
+                CoopItem.Track(newItem, itemId);
+            }
         }
+#if DUMP_WORLDGEN
+        Debug.Log("WorldGenItem " + transform.root.name + "/" + name + " -> " + (item[randomIndex] != null ? item[randomIndex].name : "nothing"));
+#endif
     }
 }

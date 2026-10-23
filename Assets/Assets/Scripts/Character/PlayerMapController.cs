@@ -20,6 +20,10 @@ public class PlayerMapController : MonoBehaviour
 
     public StartEnvironmentTrace startEnvironmentTraceScript;
 
+    // where the map cam was when the map got drawn, for markers
+    public Matrix4x4 RenderedViewProjection { get; private set; }
+    public RawImage MapImage => mapImage[0];
+
     void OnEnable()
     {
         playerInputScript.actions.Player.Map.performed += Map;
@@ -97,6 +101,7 @@ public class PlayerMapController : MonoBehaviour
         yield return new WaitForSeconds(duration);
         // capture bird's eye view
         mapCamera.Render();
+        RenderedViewProjection = mapCamera.projectionMatrix * mapCamera.worldToCameraMatrix;
 
         RenderTexture.active = renderTexture;
         Texture2D screenshotTexture = new Texture2D(renderTexture.width, renderTexture.height, TextureFormat.RGBA32, false);

@@ -36,6 +36,7 @@ public class CharacterVehicleInteraction : MonoBehaviour
     [SerializeField] private Transform vehicleLeftExit;
     public bool exitRight;
     public bool exitLeft;
+    // unused, don't remove (scene field layout)
     [SerializeField] private float exitDuration = 0.25f;
     [SerializeField] private float enterDuration = 1.0f;
 
@@ -53,6 +54,20 @@ public class CharacterVehicleInteraction : MonoBehaviour
     [SerializeField] SetCameraRadius changeCameraRadiusScript;
     public bool changeCameraRadiusFlag1;
     public bool changeCameraRadiusFlag2;
+
+    private const float holdToEnterTime = 0.4f;
+    private float interactHeldTime = -1f;
+    private bool exitStarted;
+
+    // same as the animator blend so the slide and blend cancel out
+    private const float ketBlendDuration = 0.5f;
+    private Vector3 enterStart;
+    private bool enterStarted;
+
+    public Transform Seat => vehicleSeat;
+    public GameObject Headlight => light;
+
+    public bool IsDriving => constraint || preOrientEnter || preOrientExit || !GetComponent<NavMeshObstacle>().enabled;
 
     void OnEnable()
     {
@@ -83,15 +98,19 @@ public class CharacterVehicleInteraction : MonoBehaviour
         //lerp player position to vehicle
         if (preOrientEnter)
         {
-            if (transform.position != vehicleSeat.position)
+            if (!enterStarted)
             {
-                elapsed += Time.deltaTime;
-                transform.position = Vector3.Lerp(transform.position, vehicleSeat.position, elapsed / enterDuration);
-                transform.rotation = vehicleSeat.rotation;
+                enterStarted = true;
+                enterStart = transform.position;
+                elapsed = 0f;
             }
-            else
+            elapsed += Time.deltaTime;
+            transform.position = Vector3.Lerp(enterStart, vehicleSeat.position, elapsed / ketBlendDuration);
+            transform.rotation = vehicleSeat.rotation;
+            if (elapsed >= ketBlendDuration)
             {
                 preOrientEnter = false;
+                enterStarted = false;
                 elapsed = 0f;
             }
         }
@@ -99,29 +118,22 @@ public class CharacterVehicleInteraction : MonoBehaviour
         //lerp player position to exit vehicle
         if (preOrientExit)
         {
-            //exit to the right
-            if (transform.position != vehicleRightExit.position && exitRight)
+            Transform exit = exitRight ? vehicleRightExit : exitLeft ? vehicleLeftExit : null;
+            if (exit != null && transform.position != exit.position)
             {
                 elapsed += Time.deltaTime;
-                transform.position = Vector3.Lerp(vehicleSeat.position, vehicleRightExit.position, elapsed / exitDuration);
-            }
-            else
-            {
-                //wait for duration of exiting vehicle before reenabling player movement and resetting flags
-                StartCoroutine(DelayExit(exitDuration));
+                transform.position = Vector3.Lerp(vehicleSeat.position, exit.position, elapsed / ketBlendDuration);
             }
 
-            //exit to the left 
-            if (transform.position != vehicleLeftExit.position && exitLeft)
+            //wait for duration of exiting vehicle before reenabling player movement and resetting flags
+            if (!exitStarted)
             {
-                elapsed += Time.deltaTime;
-                transform.position = Vector3.Lerp(vehicleSeat.position, vehicleLeftExit.position, elapsed / exitDuration);
-            }
-            else
-            {
-                StartCoroutine(DelayExit(exitDuration));
+                exitStarted = true;
+                StartCoroutine(DelayExit(ketBlendDuration));
             }
         }
+
+        UpdateInteractHold();
 
         //vehicle movement controls
         if (playerInputScript.actions.Vehicle.Drive.enabled)
@@ -187,7 +199,10 @@ public class CharacterVehicleInteraction : MonoBehaviour
         yield return new WaitForSeconds(duration);
         Physics.IgnoreLayerCollision(6, 7, false);
         controller.enabled = true;
+        // wait for the exit lerp or she swings off the anim
+        playerInputScript.actions.Player.Enable();
         preOrientExit = false;
+        exitStarted = false;
         exitLeft = false;
         exitRight = false;
         elapsed = 0f;
@@ -218,14 +233,67 @@ public class CharacterVehicleInteraction : MonoBehaviour
 
     public void Interact(InputAction.CallbackContext context)
     {
-        if (context.performed && enterable
+        // hold = get in, tap = barrel. decided in Update
+        if (context.performed && Time.timeScale == 1 && ClaimsInteract)
+        {
+            interactHeldTime = 0f;
+        }
+    }
+
+    public bool ClaimsInteract
+    {
+        get
+        {
+            bool isCarrying = GetComponent<CharacterBarrelInteraction>().isCarrying;
+            if (CoopKettenkrad.Instance != null && CoopKettenkrad.Instance.WantsInteract(enterable, isCarrying))
+            {
+                return true;
+            }
+            return enterable && !anim.GetCurrentAnimatorStateInfo(1).IsTag("Ket") && !isCarrying;
+        }
+    }
+
+    private void UpdateInteractHold()
+    {
+        if (interactHeldTime < 0f)
+        {
+            return;
+        }
+        if (!playerInputScript.actions.Player.Interact.IsPressed())
+        {
+            interactHeldTime = -1f;
+            bool riding = CoopKettenkrad.Instance != null && CoopKettenkrad.Instance.LocalSeat != CoopKettenkrad.SeatState.Off;
+            if (!riding && Time.timeScale == 1)
+            {
+                GetComponent<CharacterBarrelInteraction>().PickUp();
+            }
+            return;
+        }
+        interactHeldTime += Time.deltaTime;
+        if (interactHeldTime >= holdToEnterTime)
+        {
+            interactHeldTime = -1f;
+            if (ClaimsInteract && Time.timeScale == 1)
+            {
+                Enter();
+            }
+        }
+    }
+
+    private void Enter()
+    {
+        // coop: hop on/off the back
+        if (CoopKettenkrad.Instance != null && CoopKettenkrad.Instance.HandleInteract(enterable))
+        {
+            return;
+        }
+        if (enterable
             && !anim.GetCurrentAnimatorStateInfo(1).IsTag("Ket")
-            && !GetComponent<CharacterBarrelInteraction>().isCarrying &&
-                Time.timeScale == 1)
+            && !GetComponent<CharacterBarrelInteraction>().isCarrying)
         {
             vehicleFuelManagerScript.playerInputScript = playerInputScript;
 
-            //ignore collisions between layer 6 (vehicle) and layer 7 (player) 
+            //ignore collisions between layer 6 (vehicle) and layer 7 (player)
             Physics.IgnoreLayerCollision(6, 7, true);
 
             //disable player movement
@@ -247,6 +315,46 @@ public class CharacterVehicleInteraction : MonoBehaviour
             }
         }
     }
+
+#if DUMP_WORLDGEN
+    // -coopdrive
+    public void DebugEnter()
+    {
+        foreach (GameObject side in GameObject.FindGameObjectsWithTag("Ket"))
+        {
+            if (side.name == "Right")
+            {
+                controller.enabled = false;
+                Vector3 outward = side.transform.position - side.transform.parent.position;
+                outward.y = 0f;
+                transform.position = side.transform.position + outward.normalized * 2f;
+                controller.enabled = true;
+                vehicleEnter = side.transform;
+                enterable = true;
+            }
+        }
+        if (enterable)
+        {
+            vehicleFuelManagerScript.playerInputScript = playerInputScript;
+            Physics.IgnoreLayerCollision(6, 7, true);
+            playerInputScript.actions.Player.Disable();
+            controller.enabled = false;
+            GetComponent<NavMeshObstacle>().enabled = false;
+            StartCoroutine(DelayEnter());
+            StartCoroutine(CancelEnter());
+            enterable = false;
+        }
+    }
+
+    public void DebugExit()
+    {
+        if (anim.GetCurrentAnimatorStateInfo(1).IsName("Ket Steer"))
+        {
+            anim.SetTrigger("ket exit");
+            GetComponent<NavMeshObstacle>().enabled = true;
+        }
+    }
+#endif
 
     public void Exit(InputAction.CallbackContext context)
     {

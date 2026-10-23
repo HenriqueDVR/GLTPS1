@@ -20,6 +20,7 @@ public class PlayerCameraController : MonoBehaviour
     [SerializeField] private PlayerMovement playerMovementScript;
     [SerializeField] private GameObject cameraHUD;
     [SerializeField] private Volume volume;
+    // unused, keep for the scene layout
     [SerializeField] private GameObject[] panel;
     [SerializeField] private UIManager UIManagerScript;
     [SerializeField] private AudioSource audioSource;
@@ -60,29 +61,16 @@ public class PlayerCameraController : MonoBehaviour
 
         yield return new WaitForEndOfFrame();
 
-        if (UIManagerScript.panelAssignmentIndex < panel.Length)
-        {
-            if (UIManagerScript.imageAssignmentIndex == panel[UIManagerScript.panelAssignmentIndex].transform.childCount - 1)
-            {
-                UIManagerScript.panelAssignmentIndex++;
-                UIManagerScript.imageAssignmentIndex = 0;
-            }
-            else
-            {
+        Texture2D texture = ScreenCapture.CaptureScreenshotAsTexture();
 
-                Texture2D texture = ScreenCapture.CaptureScreenshotAsTexture();
+        // correct white texture bug
+        Texture2D newScreenShot = new Texture2D(texture.width, texture.height, TextureFormat.RGB24, false);
+        newScreenShot.SetPixels32(texture.GetPixels32());
+        Destroy(texture);
 
-                // correct white texture bug
-                Texture2D newScreenShot = new Texture2D(Screen.width, Screen.height, TextureFormat.RGB24, false);
-                newScreenShot.SetPixels(texture.GetPixels());
-                newScreenShot.Apply();
-
-                panel[UIManagerScript.panelAssignmentIndex].transform.GetChild(UIManagerScript.imageAssignmentIndex).GetComponent<RawImage>().texture = newScreenShot;
-                panel[UIManagerScript.panelAssignmentIndex].transform.GetChild(UIManagerScript.imageAssignmentIndex).GetComponent<Button>().enabled = true;
-
-                UIManagerScript.imageAssignmentIndex++;
-            }
-        }
+        PhotoStorage.Save(newScreenShot);
+        PhotoStorage.MakeDisplayOnly(newScreenShot);
+        UIManagerScript.AddPhoto(newScreenShot);
         cameraHUD.SetActive(true);
 
         yield return new WaitForSeconds(1);

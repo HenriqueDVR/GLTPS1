@@ -23,6 +23,11 @@ public class NavMeshAgentVehicleInteraction : MonoBehaviour
 
     [SerializeField] private CharacterDeath characterDeathScript;
 
+    // back seat, coop rider uses it too
+    public Transform EnterPosition => enterPosition;
+    public Transform ConstraintPosition => constraintPosition;
+    public Transform Child => child;
+
     void Update()
     {
         CharacterMovementAnimation.Movement(agentAnim, agent.velocity, playerMovementScript.runSpeed);

@@ -49,8 +49,9 @@ public class VehicleBarrel : MonoBehaviour
     }
     private void OnTriggerStay(Collider other)
     {
-        if (other.gameObject.CompareTag("BarrelDropArea") && !characterBarrelInteractionScript.isCarrying)
+        if (other.gameObject.CompareTag("BarrelDropArea") && !characterBarrelInteractionScript.isCarrying && !CoopBarrel.RemoteOwned)
         {
+            CoopBarrel.LocalMounted();
             ketBarrelMesh.enabled = true;
             characterBarrelInteractionScript.isPickupable = false;
             audioScourceMountBarrel.Play();

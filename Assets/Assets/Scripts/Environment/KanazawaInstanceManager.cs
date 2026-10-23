@@ -22,15 +22,18 @@ public class KanazawaInstanceManager : MonoBehaviour
 
     void Update()
     {
+        // coop: yuuri's player has the map on yuuri
+        PlayerMapController playerMapController = CoopKanazawa.LocalMap(playerMapControllerScript);
+
         if (kanazawaCompound != null)
         {
-            if (node.isDeadEnd && !kanazawaCompound.activeInHierarchy && !playerMapControllerScript.enabled)
+            if (node.isDeadEnd && !kanazawaCompound.activeInHierarchy && !playerMapController.enabled)
             {
                 kanazawaCompound.SetActive(true);
             }
         }
 
-        if (playerMapControllerScript.enabled && isPlayerOnNode && !flag)
+        if (playerMapController.enabled && isPlayerOnNode && !flag)
         {
             // hide all kanazawas except the one the player interacted with 
             GameObject[] kanazawasToHide = GameObject.FindGameObjectsWithTag("Kanazawa");

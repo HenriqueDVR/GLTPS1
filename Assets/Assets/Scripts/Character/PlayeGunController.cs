@@ -43,6 +43,10 @@ public class PlayerGunController : MonoBehaviour
 
     private void Fire(InputAction.CallbackContext context)
     {
+        if (CoopPlayers.IsPuppet(this))
+        {
+            return;
+        }
         if (context.performed && ammoCount != 0 &&
             !anim.GetCurrentAnimatorStateInfo(5).IsTag("Reload") &&
             anim.GetCurrentAnimatorStateInfo(3).IsTag("ADS") &&
@@ -59,17 +63,8 @@ public class PlayerGunController : MonoBehaviour
 
             // Determine the direction of the bullet
             Vector3 bulletDirection = (cameraRayCastHit.point - muzzle.position).normalized;
-            //cast ray from muzzle position to camera raycast hit position
-            RaycastHit bulletRayCastHit;
-            //ray cast from muzzle and instantiate decal 
-            //note: minus hit.normal to spawn position to offset the decal object into the mesh along direction of normal and prevent z-fighting
-            if (Physics.Raycast(muzzle.position, bulletDirection, out bulletRayCastHit, Mathf.Infinity, layerMask, QueryTriggerInteraction.Ignore))
-            {
-                Quaternion newBulletHoleDecalRotation = Quaternion.LookRotation(bulletRayCastHit.normal, Vector3.up);
-                GameObject newBulletHoleDecal = Instantiate(bulletHoleDecal, bulletRayCastHit.point - (bulletRayCastHit.normal * 0.1f), newBulletHoleDecalRotation);
-
-                newBulletHoleDecal.transform.parent = bulletRayCastHit.collider.gameObject.transform;
-            }
+            Shoot(muzzle.position, bulletDirection, false);
+            CoopShots.Fired(muzzle.position, bulletDirection);
 
             //decrease ammo count per shot
             ammoCount--;
@@ -78,13 +73,38 @@ public class PlayerGunController : MonoBehaviour
             //camera recoil effect
             freeLookCamera.m_YAxis.Value += recoilValue;
 
-            StartCoroutine(SmokeEffect(1f));
-
-            audioSourceGunFire.PlayOneShot(_audioClip[0]);
-            StartCoroutine(BoltAction(0.25f));
             reload = false;
         }
     }
+
+    public void Shoot(Vector3 origin, Vector3 direction, bool fromOtherPlayer)
+    {
+        //cast ray from muzzle position to camera raycast hit position
+        RaycastHit bulletRayCastHit;
+        //ray cast from muzzle and instantiate decal
+        //note: minus hit.normal to spawn position to offset the decal object into the mesh along direction of normal and prevent z-fighting
+        if (Physics.Raycast(origin, direction, out bulletRayCastHit, Mathf.Infinity, layerMask, QueryTriggerInteraction.Ignore))
+        {
+            Quaternion newBulletHoleDecalRotation = Quaternion.LookRotation(bulletRayCastHit.normal, Vector3.up);
+            GameObject newBulletHoleDecal = Instantiate(bulletHoleDecal, bulletRayCastHit.point - (bulletRayCastHit.normal * 0.1f), newBulletHoleDecalRotation);
+
+            newBulletHoleDecal.transform.parent = bulletRayCastHit.collider.gameObject.transform;
+        }
+
+        StartCoroutine(SmokeEffect(1f));
+
+        audioSourceGunFire.PlayOneShot(_audioClip[0]);
+        StartCoroutine(BoltAction(0.25f, fromOtherPlayer));
+    }
+
+#if DUMP_WORLDGEN
+    public void DebugFire()
+    {
+        Vector3 forward = transform.root.forward;
+        Shoot(muzzle.position, forward, false);
+        CoopShots.Fired(muzzle.position, forward);
+    }
+#endif
 
     IEnumerator SmokeEffect(float duration)
     {
@@ -97,12 +117,15 @@ public class PlayerGunController : MonoBehaviour
         Destroy(newBarrelSmoke);
     }
 
-    IEnumerator BoltAction(float duration)
+    IEnumerator BoltAction(float duration, bool fromOtherPlayer)
     {
         yield return new WaitForSeconds(duration);
         audioSourceGunBolt.PlayOneShot(_audioClip[1]);
-        anim.SetTrigger("reload");
-        reload = true;
+        if (!fromOtherPlayer)
+        {
+            anim.SetTrigger("reload");
+            reload = true;
+        }
     }
 
 

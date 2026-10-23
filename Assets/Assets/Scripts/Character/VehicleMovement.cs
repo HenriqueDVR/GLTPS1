@@ -32,6 +32,9 @@ public class VehicleMovement : MonoBehaviour
 
     [SerializeField] private AudioSource vehicleAudioSource;
 
+    public Animator Anim => anim;
+    public AudioSource EngineAudio => vehicleAudioSource;
+
     void Start()
     {
         rb = GetComponent<Rigidbody>();
@@ -44,6 +47,14 @@ public class VehicleMovement : MonoBehaviour
     {
         //get input
         movement = playerInputScript.actions.Vehicle.Drive.ReadValue<Vector2>();
+#if DUMP_WORLDGEN
+        // -coopdrive: drive back and forth
+        if (playerInputScript.actions.Vehicle.enabled && System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-coopdrive") >= 0)
+        {
+            movement = new Vector2(0.6f, Mathf.Repeat(Time.time, 6f) < 3f ? 1f : -1f);
+            ketBarrelMesh.enabled = true;
+        }
+#endif
 
         //set speed
         if (playerInputScript.actions.Vehicle.Accelerate.IsPressed())
@@ -67,13 +78,18 @@ public class VehicleMovement : MonoBehaviour
             vehicleAudioSource.volume = 0.06f;
         }
         //set movement animation
-        if (rb != null)
+        // other player is driving, CoopKettenkrad handles it
+        if (rb != null && !CoopKettenkrad.FollowsRemote)
         {
             MovementAnim();
         }
     }
     void FixedUpdate()
     {
+        if (CoopKettenkrad.FollowsRemote)
+        {
+            return;
+        }
         isGrounded = Physics.CheckBox(transform.position + boxCastOffset, boxCastHalfExtents, transform.rotation, layerMask, QueryTriggerInteraction.Ignore);
         //move
         if (Mathf.Abs(movement.y) > 0 && isGrounded && vehicleFuelManagerScript.currentFuel > 0 && ketBarrelMesh.enabled)

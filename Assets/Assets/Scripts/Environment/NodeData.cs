@@ -35,9 +35,24 @@ public class NodeData : MonoBehaviour
     public bool istracePathFromPlayerNodeComplete;
 
 
+    void Awake()
+    {
+#if DUMP_WORLDGEN
+        if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-originalgen") >= 0)
+        {
+            gameObject.AddComponent<WorldGenOverheadView>();
+            return;
+        }
+#endif
+        gameObject.AddComponent<WorldGenerator>();
+    }
+
     void Start()
     {
         branch = new List<EdgeCollection>();
+#if DUMP_WORLDGEN
+        WorldGenDump.Run(this);
+#endif
     }
 
     public void SetIntersectionNode(Node intersectionNode)

@@ -29,6 +29,17 @@ public class Node : MonoBehaviour
     {
         nodeDataScript = GameObject.FindWithTag("NodeData").GetComponent<NodeData>();
     }
+
+    // already placed by WorldGenerator, skip the overlap checks
+    public void MarkPlaced()
+    {
+        resetPorts = false;
+        isColliding = false;
+        allowCollisionCheck = false;
+        isActive = true;
+        portList = new List<Transform>(portPrefab);
+        transform.GetChild(0).gameObject.SetActive(true);
+    }
     IEnumerator GenerateSceneGeometry()
     {
         // enable GenerateEdge script for each port

@@ -7,7 +7,8 @@ public class SetPositionConstraintElevator : MonoBehaviour
 {
     public Transform target;
     public float offsetY = 0.15f;
-    private void Update()
+    // after the elevator anim moves, or she sinks into the floor
+    private void LateUpdate()
     {
         if (target != null)
         {

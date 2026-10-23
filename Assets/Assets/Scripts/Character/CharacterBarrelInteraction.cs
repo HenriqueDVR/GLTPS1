@@ -38,36 +38,48 @@ public class CharacterBarrelInteraction : MonoBehaviour
     {
         if (Time.timeScale == 1)
         {
-            if (context.performed && isPickupable && !anim.GetCurrentAnimatorStateInfo(2).IsTag("Carry") && inBarrelDropArea && !GameObject.FindWithTag("Barrel"))
+            // near the ket tap vs hold is decided on release (hold = get in)
+            if (context.performed && !GetComponent<CharacterVehicleInteraction>().ClaimsInteract)
             {
-                //disable player jump and sprint
-                playerInputScript.actions.Player.Jump.Disable();
-                playerInputScript.actions.Player.Sprint.Disable();
-
-                SetCarryParameters(true, 0.6f, 0f, true, true);
-
-                newBarrel = Instantiate(barrelPrefab, transform.position, transform.rotation);
-                newBarrel.GetComponent<VehicleBarrel>().characterBarrelInteractionScript = this;
-                SetParentConstraint();
-
-                _audioSource.PlayOneShot(_audioClip);
-
-            }
-            if (context.performed && isPickupable && !anim.GetCurrentAnimatorStateInfo(2).IsTag("Carry") && !inBarrelDropArea && !isCarrying)
-            {
-                //disable player jump and sprint
-                playerInputScript.actions.Player.Jump.Disable();
-                playerInputScript.actions.Player.Sprint.Disable();
-                SetCarryParameters(true, 0.6f, 0f, true, true);
-                newBarrel.GetComponent<VehicleBarrel>().characterBarrelInteractionScript = this;
-                SetParentConstraint();
-
-                _audioSource.PlayOneShot(_audioClip);
+                PickUp();
             }
             if (context.performed && anim.GetCurrentAnimatorStateInfo(2).IsTag("Carry"))
             {
                 DropBarrel();
             }
+        }
+    }
+
+    public void PickUp()
+    {
+        if (isPickupable && !anim.GetCurrentAnimatorStateInfo(2).IsTag("Carry") && inBarrelDropArea && !GameObject.FindWithTag("Barrel"))
+        {
+            //disable player jump and sprint
+            playerInputScript.actions.Player.Jump.Disable();
+            playerInputScript.actions.Player.Sprint.Disable();
+
+            SetCarryParameters(true, 0.6f, 0f, true, true);
+
+            newBarrel = SpawnBarrel();
+            newBarrel.GetComponent<VehicleBarrel>().characterBarrelInteractionScript = this;
+            SetParentConstraint();
+            CoopBarrel.LocalTook(newBarrel, true);
+
+            _audioSource.PlayOneShot(_audioClip);
+
+        }
+        // barrel can get mounted without a trigger exit
+        if (isPickupable && newBarrel != null && !CoopBarrel.RemoteCarrying && !anim.GetCurrentAnimatorStateInfo(2).IsTag("Carry") && !inBarrelDropArea && !isCarrying)
+        {
+            //disable player jump and sprint
+            playerInputScript.actions.Player.Jump.Disable();
+            playerInputScript.actions.Player.Sprint.Disable();
+            SetCarryParameters(true, 0.6f, 0f, true, true);
+            newBarrel.GetComponent<VehicleBarrel>().characterBarrelInteractionScript = this;
+            SetParentConstraint();
+            CoopBarrel.LocalTook(newBarrel, false);
+
+            _audioSource.PlayOneShot(_audioClip);
         }
     }
 
@@ -81,10 +93,96 @@ public class CharacterBarrelInteraction : MonoBehaviour
         if (newBarrel != null)
         {
             newBarrel.GetComponent<ParentConstraint>().constraintActive = false;
+            CoopBarrel.LocalDropped(this, newBarrel);
         }
 
         isPickupable = false;
     }
+
+    public GameObject SpawnBarrel()
+    {
+        return Instantiate(barrelPrefab, transform.position, transform.rotation);
+    }
+
+    public void ShowCarrying(GameObject barrel)
+    {
+        newBarrel = barrel;
+        barrel.GetComponent<VehicleBarrel>().characterBarrelInteractionScript = this;
+        SetParentConstraint();
+    }
+
+#if DUMP_WORLDGEN
+    // -coopbarrel
+    // use the trigger, the transform sits at the ket's origin
+    private static Vector3 DebugDropArea()
+    {
+        foreach (GameObject dropArea in GameObject.FindGameObjectsWithTag("BarrelDropArea"))
+        {
+            Collider trigger = dropArea.GetComponent<Collider>();
+            if (trigger != null && trigger.isTrigger)
+            {
+                return trigger.bounds.center;
+            }
+        }
+        return GameObject.FindWithTag("BarrelDropArea").transform.position;
+    }
+
+    private void DebugTeleport(Vector3 position)
+    {
+        controller.enabled = false;
+        transform.position = position;
+        controller.enabled = true;
+    }
+
+    public void DebugTakeFromVehicle()
+    {
+        DebugTeleport(DebugDropArea() + Vector3.right);
+        playerInputScript.actions.Player.Jump.Disable();
+        playerInputScript.actions.Player.Sprint.Disable();
+        SetCarryParameters(true, 0.6f, 0f, true, true);
+        newBarrel = SpawnBarrel();
+        newBarrel.GetComponent<VehicleBarrel>().characterBarrelInteractionScript = this;
+        SetParentConstraint();
+        CoopBarrel.LocalTook(newBarrel, true);
+    }
+
+    public void DebugPickUp()
+    {
+        newBarrel = GameObject.FindWithTag("Barrel");
+        DebugTeleport(newBarrel.transform.position + Vector3.right);
+        playerInputScript.actions.Player.Jump.Disable();
+        playerInputScript.actions.Player.Sprint.Disable();
+        SetCarryParameters(true, 0.6f, 0f, true, true);
+        newBarrel.GetComponent<VehicleBarrel>().characterBarrelInteractionScript = this;
+        SetParentConstraint();
+        CoopBarrel.LocalTook(newBarrel, false);
+    }
+
+    public void DebugDrop(bool onVehicle)
+    {
+        if (onVehicle)
+        {
+            DebugTeleport(DebugDropArea() + Vector3.right);
+        }
+        else
+        {
+            // away from the ket or it mounts right away
+            DebugTeleport(DebugDropArea() + Vector3.right * 4f);
+        }
+        DropBarrel();
+        if (onVehicle)
+        {
+            newBarrel.transform.position = DebugDropArea();
+        }
+    }
+
+    public static string DebugState()
+    {
+        GameObject barrel = GameObject.FindWithTag("Barrel");
+        string state = barrel == null ? "none" : CoopPlayers.Instance.ToLayout(barrel.transform.position).ToString("F1") + " kinematic " + barrel.GetComponent<Rigidbody>().isKinematic + " held " + barrel.GetComponent<ParentConstraint>().constraintActive;
+        return "barrel " + state + " mounted " + GameObject.FindWithTag("BarrelDropArea").GetComponent<SkinnedMeshRenderer>().enabled + " remoteOwned " + CoopBarrel.RemoteOwned;
+    }
+#endif
 
     private void SetParentConstraint()
     {
@@ -107,6 +205,16 @@ public class CharacterBarrelInteraction : MonoBehaviour
         controller.radius = radius;
         //set carry animation
         anim.SetBool("carry", carryAnimParameter);
+    }
+
+    // reset every physics step, OnTriggerExit doesn't fire while she rides (collider's off)
+    void FixedUpdate()
+    {
+        if (!isCarrying)
+        {
+            inBarrelDropArea = false;
+            isPickupable = false;
+        }
     }
 
     private void OnTriggerStay(Collider other)

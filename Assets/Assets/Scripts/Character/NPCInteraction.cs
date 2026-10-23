@@ -58,8 +58,9 @@ public class NPCInteraction : MonoBehaviour
         {
             kanazawa = other.gameObject;
             kanazawa.GetComponent<DialogueManager>().NPCInteractionScript = this;
-            kanazawa.GetComponent<UnlockDialogueItem>().dialogueItems[0].reference[0] = chito;
-            kanazawa.GetComponent<UnlockDialogueItem>().dialogueItems[1].reference[0] = chito;
+            // coop: map goes to whoever talked to him
+            kanazawa.GetComponent<UnlockDialogueItem>().dialogueItems[0].reference[0] = CoopKanazawa.Recipient(chito);
+            kanazawa.GetComponent<UnlockDialogueItem>().dialogueItems[1].reference[0] = CoopKanazawa.Recipient(chito);
             node.GetComponent<KanazawaInstanceManager>().firstKanazawa = kanazawa;
             isInteractable = true;
         }

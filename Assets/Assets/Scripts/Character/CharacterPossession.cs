@@ -26,6 +26,12 @@ public class CharacterPossession : MonoBehaviour
 
     private ConstraintSource source;
 
+    // downed player watches their partner
+    public GameObject FollowTarget => CMFollowTarget;
+    public GameObject LookAtTarget => CMLookAtTarget;
+    public Vector3 FollowTargetOffset => CMFollowTargetOffsetPos;
+    public Vector3 LookAtTargetOffset => CMLookAtTargetOffsetPos;
+
 
 
 

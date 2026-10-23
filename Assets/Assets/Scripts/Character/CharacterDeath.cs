@@ -35,6 +35,12 @@ public class CharacterDeath : MonoBehaviour
     private bool gameOver;
     void LateUpdate()
     {
+        // coop uses CoopDowned instead, this would swap girls
+        if (CoopSession.InGame)
+        {
+            return;
+        }
+
         isChitoDead = IsDead(chitoItemInteractionScript,
                              chitoAnim,
                              chitoInputScript,

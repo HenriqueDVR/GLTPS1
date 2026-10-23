@@ -26,8 +26,15 @@ public class GenerateNode : MonoBehaviour
     public bool tracePathFromPillarNode;
     public bool tracePathFromPlayerNode;
 
+    public List<GameObject> NodePrefabs => nodePrefabs;
+    public List<int> SpawnChance => spawnChance;
+
     void Start()
     {
+        if (WorldGenerator.Active)
+        {
+            return;
+        }
         nodeDataScript = GameObject.FindWithTag("NodeData").GetComponent<NodeData>();
 
         //initialize list of nodes
@@ -50,6 +57,16 @@ public class GenerateNode : MonoBehaviour
     }
 
     // Update is called once per frame
+    public void MarkPlaced(GenerateEdge fromPort, int entryPortIndex)
+    {
+        port = fromPort;
+        portIndex = entryPortIndex;
+        isColliding = false;
+        allowCollisionCheck = false;
+        isActive = true;
+        transform.GetChild(0).gameObject.SetActive(true);
+    }
+
     void Update()
     {
         // //respawn node after despawn

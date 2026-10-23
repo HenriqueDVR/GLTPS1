@@ -18,6 +18,9 @@ public class PlayerGunMovement : MonoBehaviour
     [SerializeField] private Transform camera;
     [SerializeField] private Transform spineBone;
 
+    public Transform AimCamera => camera;
+    public Transform SpineBone => spineBone;
+
     [SerializeField] private Vector3 CMFollowTargetOffsetPos;
     [SerializeField] private Vector3 CMLookAtTargetOffsetPos;
     [SerializeField] private Vector3 CMFollowTargetOffsetPosRight;
@@ -117,6 +120,22 @@ public class PlayerGunMovement : MonoBehaviour
             spineBone.rotation = camera.rotation;
         }
     }
+    public void ShowAiming(bool aiming)
+    {
+        if (aiming == flagEquip)
+        {
+            if (aiming)
+            {
+                AttachToGunFrontSocket();
+            }
+            else
+            {
+                AttachToGunBackSocket();
+            }
+            flagEquip = !aiming;
+        }
+    }
+
     public void AttachToGunBackSocket()
     {
         //set parent of gun to back

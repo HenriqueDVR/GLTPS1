@@ -41,8 +41,9 @@ public class CharacterElevatorInteraction : MonoBehaviour
     }
     private void Interact(InputAction.CallbackContext context)
     {
-        if (context.performed && inElevatorInteractArea && elevatorAnim.GetBool("isGateOpen"))
+        if (context.performed && inElevatorInteractArea && elevatorAnim.GetBool("isGateOpen") && CoopElevator.ReadyToLeave(elevatorAnim))
         {
+            CoopElevator.GateClosed();
             elevatorAnim.SetBool("CloseGate", true);
             elevatorAnim.SetBool("isGateOpen", false);
 
@@ -56,6 +57,32 @@ public class CharacterElevatorInteraction : MonoBehaviour
 
         }
     }
+
+#if DUMP_WORLDGEN
+    // -cooptravel
+    public void DebugInteract()
+    {
+        inElevatorInteractArea = true;
+        if (elevatorAnim == null)
+        {
+            foreach (GameObject elevator in GameObject.FindGameObjectsWithTag("Elevator"))
+            {
+                if (elevator.GetComponent<Animator>() != null)
+                {
+                    elevatorAnim = elevator.GetComponent<Animator>();
+                }
+            }
+        }
+        Debug.Log("CoopTour gate open " + elevatorAnim.GetBool("isGateOpen"));
+        if (elevatorAnim.GetBool("isGateOpen") && CoopElevator.ReadyToLeave(elevatorAnim))
+        {
+            CoopElevator.GateClosed();
+            elevatorAnim.SetBool("CloseGate", true);
+            elevatorAnim.SetBool("isGateOpen", false);
+            Debug.Log("CoopTour gate closing");
+        }
+    }
+#endif
 
     void OnTriggerEnter(Collider other)
     {

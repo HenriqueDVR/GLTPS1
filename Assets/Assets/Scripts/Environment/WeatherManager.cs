@@ -47,6 +47,19 @@ public class WeatherManager : MonoBehaviour
         fogDensity[0] = RenderSettings.fogDensity;
         lightIntensity[0] = directionalLight.intensity;
 
+#if DUMP_WORLDGEN
+        // -coopfastweather
+        if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-coopfastweather") >= 0)
+        {
+            repeatInvokeDuration = 5f;
+            weatherDuration = 5f;
+        }
+#endif
+        if (CoopWeather.FollowsHost)
+        {
+            CoopWeather.Register(this);
+            return;
+        }
         StartCoroutine(StartWeather());
     }
 
@@ -66,16 +79,24 @@ public class WeatherManager : MonoBehaviour
 
     IEnumerator StartWeather()
     {
-
+#if DUMP_WORLDGEN
+        if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-coopfastweather") >= 0)
+        {
+            for (int i = 0; i < weatherChance.Length; i++)
+            {
+                weatherChance[i] = 1;
+            }
+        }
+#endif
         index = RandomWeightedGenerator.GenerateRandomIndex(weatherChance);
+#if DUMP_WORLDGEN
+        Debug.Log("CoopDebug weather odds " + string.Join(",", weatherChance) + " systems " + weatherParticleSystem.Length + " -> " + index);
+#endif
 
-        //stop weather  
+        //stop weather
         if (index == 0)
         {
-            elapsed1 = 0f;
-
-            start = false;
-            stop = true;
+            EndWeather();
 
             yield return new WaitForSeconds(repeatInvokeDuration);
             StartCoroutine(StartWeather());
@@ -83,30 +104,55 @@ public class WeatherManager : MonoBehaviour
         // start weather
         else
         {
-            elapsed2 = 0f;
-
-            weatherData.weatherParticleSystem = weatherParticleSystem[index];
-            weatherData.particleSystemEmissionRate = particleSystemEmissionRate[index];
-            weatherData.tintColor = tintColor[index];
-            weatherData.fogColor = fogColor[index];
-            weatherData.fogDensity = fogDensity[index];
-            weatherData.lightIntensity = lightIntensity[index];
-            weatherData.ambientIntensity = ambientIntensity[index];
-            weatherData.audioSource = audioSource[index];
-            weatherData.audioVolume = audioVolume[index];
-            weatherData.mapTextureOverlayColor = mapTextureOverlayColor[index];
-
-            start = true;
-            stop = false;
+            BeginWeather();
             yield return new WaitForSeconds(weatherDuration);
 
-            elapsed1 = 0f;
-
-            start = false;
-            stop = true;
+            EndWeather();
             yield return new WaitForSeconds(transitionDuration);
             StartCoroutine(StartWeather());
         }
+    }
+
+    public void ApplyHostWeather(int hostIndex, bool on)
+    {
+        index = hostIndex;
+        if (on)
+        {
+            BeginWeather();
+        }
+        else
+        {
+            EndWeather();
+        }
+    }
+
+    private void BeginWeather()
+    {
+        elapsed2 = 0f;
+
+        weatherData.weatherParticleSystem = weatherParticleSystem[index];
+        weatherData.particleSystemEmissionRate = particleSystemEmissionRate[index];
+        weatherData.tintColor = tintColor[index];
+        weatherData.fogColor = fogColor[index];
+        weatherData.fogDensity = fogDensity[index];
+        weatherData.lightIntensity = lightIntensity[index];
+        weatherData.ambientIntensity = ambientIntensity[index];
+        weatherData.audioSource = audioSource[index];
+        weatherData.audioVolume = audioVolume[index];
+        weatherData.mapTextureOverlayColor = mapTextureOverlayColor[index];
+
+        start = true;
+        stop = false;
+        CoopWeather.Changed(index, true);
+    }
+
+    private void EndWeather()
+    {
+        elapsed1 = 0f;
+
+        start = false;
+        stop = true;
+        CoopWeather.Changed(index, false);
     }
 
     void Update()

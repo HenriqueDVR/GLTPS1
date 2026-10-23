@@ -28,6 +28,9 @@ public class FloatingOrigin : MonoBehaviour
 
     private ParticleSystem.Particle[] parts = null;
 
+    // world pos + TotalOffset = pos before any shifting
+    public Vector3 TotalOffset { get; private set; }
+
     void LateUpdate()
     {
         if (ReferenceObject == null)
@@ -40,6 +43,7 @@ public class FloatingOrigin : MonoBehaviour
 
         if (referencePosition.magnitude > Threshold)
         {
+            TotalOffset += referencePosition;
             MoveRootTransforms(referencePosition);
 
             if (UpdateParticles)

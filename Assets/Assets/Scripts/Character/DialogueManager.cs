@@ -18,8 +18,20 @@ public class DialogueManager : MonoBehaviour
     public int sequenceCount;
     void Awake()
     {
-        textComponent = GameObject.FindWithTag("Text").GetComponent<TextMeshProUGUI>();
-        dialogueBoxAnim = GameObject.FindWithTag("DialogueBox").GetComponent<Animator>();
+        FindDialogueBox();
+    }
+
+    // FindWithTag skips hidden objects (pause menu) so look it up every time
+    private void FindDialogueBox()
+    {
+        if (textComponent == null && GameObject.FindWithTag("Text") != null)
+        {
+            textComponent = GameObject.FindWithTag("Text").GetComponent<TextMeshProUGUI>();
+        }
+        if (dialogueBoxAnim == null && GameObject.FindWithTag("DialogueBox") != null)
+        {
+            dialogueBoxAnim = GameObject.FindWithTag("DialogueBox").GetComponent<Animator>();
+        }
     }
 
     public void OnEnable()
@@ -28,6 +40,8 @@ public class DialogueManager : MonoBehaviour
     }
     public IEnumerator TypeLine()
     {
+        FindDialogueBox();
+        CoopKanazawa.LineShown(index);
         audioSource.Stop();
         audioSource.PlayOneShot(voicelines[index]);
 
@@ -75,11 +89,14 @@ public class DialogueManager : MonoBehaviour
 
     public void ShowDialogueBox()
     {
+        FindDialogueBox();
         dialogueBoxAnim.SetTrigger("open");
+        CoopKanazawa.Opened();
     }
 
     public void HideDialogueBox()
     {
+        CoopKanazawa.Closed();
         StopAllCoroutines();
 
         dialogueBoxAnim.SetTrigger("close");

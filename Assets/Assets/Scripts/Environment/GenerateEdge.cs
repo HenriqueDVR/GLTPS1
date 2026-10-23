@@ -13,6 +13,9 @@ public class GenerateEdge : MonoBehaviour
     private bool spawnedBarrier = false;
     private bool resetEdge = false;
 
+    public List<GameObject> EdgePrefabs => edgePrefabs;
+    public List<GameObject> BarrierPrefabs => barrierPrefabs;
+
     void Start()
     {
         //initialize list of edges

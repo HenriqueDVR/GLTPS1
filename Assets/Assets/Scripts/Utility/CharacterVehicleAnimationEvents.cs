@@ -19,6 +19,11 @@ public class CharacterVehicleAnimationEvents : MonoBehaviour
     //animation events
     public void EnableVehicle()
     {
+        // remote girl just replays the anim, her side drives the ket
+        if (CoopPlayers.IsPuppet(this))
+        {
+            return;
+        }
         vehicleMovementScript.playerInputScript = playerInputScript;
         playerInputScript.actions.Vehicle.Enable();
         vehicleAudioSource.Play();
@@ -30,49 +35,90 @@ public class CharacterVehicleAnimationEvents : MonoBehaviour
     }
     public void DisableVehicle()
     {
+        if (CoopPlayers.IsPuppet(this))
+        {
+            return;
+        }
         playerInputScript.actions.Vehicle.Disable();
         vehicleAudioSource.Stop();
     }
 
     public void ExitVehicle()
     {
+        if (CoopPlayers.IsPuppet(this))
+        {
+            return;
+        }
+        // movement comes back in DelayExit
         characterVehicleInteractionScript.preOrientExit = true;
-        playerInputScript.actions.Player.Enable();
     }
     public void SetConstraintTrue()
     {
+        if (CoopPlayers.IsPuppet(this))
+        {
+            return;
+        }
         characterVehicleInteractionScript.constraint = true;
         characterVehicleInteractionScript.changeCameraRadiusFlag1 = true;
     }
     public void SetConstraintFalse()
     {
+        if (CoopPlayers.IsPuppet(this))
+        {
+            return;
+        }
         characterVehicleInteractionScript.constraint = false;
         characterVehicleInteractionScript.changeCameraRadiusFlag2 = true;
     }
     public void EnableCharacterCollider()
     {
+        if (CoopPlayers.IsPuppet(this))
+        {
+            return;
+        }
         characterCollider.enabled = true;
     }
 
     public void ExitRight()
     {
+        if (CoopPlayers.IsPuppet(this))
+        {
+            return;
+        }
         characterVehicleInteractionScript.exitRight = true;
     }
     public void ExitLeft()
     {
+        if (CoopPlayers.IsPuppet(this))
+        {
+            return;
+        }
         characterVehicleInteractionScript.exitLeft = true;
     }
     public void AgentEnter()
     {
+        // no AI companion in coop
+        if (CoopSession.InGame)
+        {
+            return;
+        }
         navMeshAgentVehicleInteractionScript.enter = true;
     }
     public void AgentExitBack()
     {
+        if (CoopSession.InGame)
+        {
+            return;
+        }
         navMeshAgentVehicleInteractionScript.exit = true;
         navMeshAgentVehicleInteractionScript.agentAnim.SetTrigger("ket exit");
     }
     public void AgentExitVehicle()
     {
+        if (CoopSession.InGame)
+        {
+            return;
+        }
         navMeshAgentSelfVehicleInteractionScript.preOrientExit = true;
     }
 }

@@ -20,6 +20,7 @@ public class CharacterItemInteraction : MonoBehaviour
     public float hungerLevel = 100f;
     [SerializeField] private float eatValue = 20f;
     [SerializeField] private int maxRandomFoodCount = 5;
+    private const int maxFoodCount = 18;
 
     public float thirstLevel = 100f;
     [SerializeField] private float drinkValue = 20f;
@@ -65,40 +66,20 @@ public class CharacterItemInteraction : MonoBehaviour
     {
         if (context.performed && Time.timeScale == 1)
         {
-            if (isFood && characterStatusScript.index < 18 && other.gameObject.CompareTag("Food"))
+            if (isFood && characterStatusScript.index < maxFoodCount && other.gameObject.CompareTag("Food"))
             {
-                //destroy scene food gameobject
-                Destroy(other.gameObject);
-
-                //increase food count by random amount
-                for (int i = 0; i < Random.Range(1, maxRandomFoodCount + 1); i++)
+                if (TakeItem())
                 {
-                    //add food ui object and set rotation and position on canvas
-                    characterStatusScript.newFoodbar.Add(Instantiate(foodbarPrefab.gameObject, panel.transform));
-                    characterStatusScript.newFoodbar[characterStatusScript.index].GetComponent<RectTransform>().localRotation = Quaternion.identity;
-                    characterStatusScript.newFoodbar[characterStatusScript.index].GetComponent<RectTransform>().anchoredPosition3D = new Vector3(foodbarPrefab.rectTransform.anchoredPosition3D.x + characterStatusScript.offsetXPos
-                                                                                                    , foodbarPrefab.rectTransform.anchoredPosition3D.y
-                                                                                                    , foodbarPrefab.rectTransform.anchoredPosition3D.z);
-                    //offset position for adding ui objects
-                    characterStatusScript.offsetXPos += -30;
-                    characterStatusScript.index++;
+                    GiveFood();
                 }
-                _audioSource.PlayOneShot(_audioClip[2]);
                 isFood = false;
-
             }
             else if (isAmmo && other.gameObject.CompareTag("Ammo"))
             {
-                //destroy scene ammo gameobject
-                Destroy(other.gameObject);
-
-                //increase ammo count by random amount
-                playerGunControllerScript.ammoCount += Random.Range(1, maxRandomAmmoCount + 1);
-
-                //change ammo ui
-                ammoCountText.text = playerGunControllerScript.ammoCount.ToString();
-
-                _audioSource.PlayOneShot(_audioClip[2]);
+                if (TakeItem())
+                {
+                    GiveAmmo();
+                }
                 isAmmo = false;
             }
             else if (isCampfire && other.gameObject.CompareTag("CampfireInteractArea"))
@@ -106,12 +87,138 @@ public class CharacterItemInteraction : MonoBehaviour
                 if (other.gameObject.GetComponentInParent<CampfireFuelLevel>().currentFuelLevel > 0)
                 {
                     other.gameObject.GetComponentInParent<CampfireFuelLevel>().currentFuelLevel = 0;
+                    CoopCampfire.Extinguished(other.gameObject.GetComponentInParent<CampfireFuelLevel>());
                     _audioSource.PlayOneShot(_audioClip[1]);
                     isCampfire = false;
                 }
             }
         }
     }
+
+    // false if the loot comes later (coop friend asks the host first)
+    private bool TakeItem()
+    {
+        CoopItem coopItem = CoopItem.Find(other);
+        if (coopItem != null && !CoopSession.Instance.IsHost)
+        {
+            coopItem.RequestAsFriend();
+            return false;
+        }
+        coopItem?.TakeAsHost();
+        Destroy(other.gameObject);
+        return true;
+    }
+
+    public void GiveFood()
+    {
+        //increase food count by random amount
+        AddFood(RollFood());
+        PlayPickupSound();
+    }
+
+    public void GiveAmmo()
+    {
+        //increase ammo count by random amount
+        playerGunControllerScript.ammoCount += Random.Range(1, maxRandomAmmoCount + 1);
+
+        //change ammo ui
+        ammoCountText.text = playerGunControllerScript.ammoCount.ToString();
+        PlayPickupSound();
+    }
+
+    public void PlayPickupSound()
+    {
+        _audioSource.PlayOneShot(_audioClip[2]);
+    }
+
+    public int RollFood()
+    {
+        return Random.Range(1, maxRandomFoodCount + 1);
+    }
+
+    // host owns the food count in coop
+    public void AddFood(int count)
+    {
+        int foodCount = Mathf.Min(count, maxFoodCount - characterStatusScript.index);
+        for (int i = 0; i < foodCount; i++)
+        {
+            //add food ui object and set rotation and position on canvas
+            characterStatusScript.newFoodbar.Add(Instantiate(foodbarPrefab.gameObject, panel.transform));
+            characterStatusScript.newFoodbar[characterStatusScript.index].GetComponent<RectTransform>().localRotation = Quaternion.identity;
+            characterStatusScript.newFoodbar[characterStatusScript.index].GetComponent<RectTransform>().anchoredPosition3D = new Vector3(foodbarPrefab.rectTransform.anchoredPosition3D.x + characterStatusScript.offsetXPos
+                                                                                            , foodbarPrefab.rectTransform.anchoredPosition3D.y
+                                                                                            , foodbarPrefab.rectTransform.anchoredPosition3D.z);
+            //offset position for adding ui objects
+            characterStatusScript.offsetXPos += -30;
+            characterStatusScript.index++;
+        }
+    }
+
+    public void RemoveFood(int count)
+    {
+        for (int i = 0; i < count && characterStatusScript.index > 0; i++)
+        {
+            Destroy(characterStatusScript.newFoodbar[characterStatusScript.index - 1]);
+            characterStatusScript.newFoodbar.RemoveAt(characterStatusScript.index - 1);
+            characterStatusScript.offsetXPos += 30;
+            characterStatusScript.index--;
+        }
+    }
+
+    public void SetFood(int count)
+    {
+        count = Mathf.Clamp(count, 0, maxFoodCount);
+        if (count > characterStatusScript.index)
+        {
+            AddFood(count - characterStatusScript.index);
+        }
+        else
+        {
+            RemoveFood(characterStatusScript.index - count);
+        }
+    }
+
+    private bool IsCoopPuppet => CoopPlayers.Instance != null && CoopPlayers.Instance.Remote != null && transform.IsChildOf(CoopPlayers.Instance.Remote);
+
+#if DUMP_WORLDGEN
+    // -coopsupplies
+    public void DebugEatAndDrink()
+    {
+        if (characterStatusScript.index > 0)
+        {
+            hungerLevel += eatValue;
+            RemoveFood(1);
+        }
+        // stop at half so both sides can be compared
+        if (characterStatusScript.waterLevel > 100f)
+        {
+            thirstLevel += drinkValue;
+            characterStatusScript.waterLevel -= drinkValue;
+        }
+    }
+
+    public string DebugSupplies()
+    {
+        return "food " + characterStatusScript.index + " water " + characterStatusScript.waterLevel.ToString("F2");
+    }
+
+    // -cooptake
+    public void DebugTake(Collider item)
+    {
+        other = item;
+        if (TakeItem())
+        {
+            if (item.CompareTag("Ammo"))
+            {
+                GiveAmmo();
+            }
+            else
+            {
+                GiveFood();
+            }
+        }
+    }
+#endif
 
     void Update()
     {
@@ -131,11 +238,7 @@ public class CharacterItemInteraction : MonoBehaviour
         if (context.performed && characterStatusScript.index > 0 && !anim.GetCurrentAnimatorStateInfo(3).IsTag("ADS") && Time.timeScale == 1)
         {
             hungerLevel += eatValue;
-
-            Destroy(characterStatusScript.newFoodbar[characterStatusScript.index - 1]);
-            characterStatusScript.newFoodbar.RemoveAt(characterStatusScript.index - 1);
-            characterStatusScript.offsetXPos += 30;
-            characterStatusScript.index--;
+            RemoveFood(1);
 
             //trigger eating animation
             anim.SetTrigger("eat");
@@ -159,9 +262,17 @@ public class CharacterItemInteraction : MonoBehaviour
 
     private void PlaceCampfire(InputAction.CallbackContext context)
     {
-        if (context.performed && vehicleFuelManagerScript.currentFuel > 0)
+        if (context.performed)
         {
-            // check if previous campfire is extinguised before allowing for placing new one 
+            TryPlaceCampfire();
+        }
+    }
+
+    private void TryPlaceCampfire()
+    {
+        if (vehicleFuelManagerScript.currentFuel > 0)
+        {
+            // check if previous campfire is extinguised before allowing for placing new one
             if (characterStatusScript.newCampfire != null)
             {
                 if (characterStatusScript.newCampfire.GetComponent<CampfireFuelLevel>().currentFuelLevel > 0)
@@ -174,17 +285,52 @@ public class CharacterItemInteraction : MonoBehaviour
             RaycastHit hit;
             if (Physics.Raycast(transform.position + new Vector3(0, 0.4f, 0), transform.forward, out hit, campfireOffsetPosition.magnitude))
             {
-                characterStatusScript.newCampfire = Instantiate(campfirePrefab, hit.point, transform.rotation);
+                SpawnCampfire(hit.point, transform.rotation);
             }
             //spawn at default offset position
             else
             {
-                characterStatusScript.newCampfire = Instantiate(campfirePrefab, transform.position + transform.forward, transform.rotation);
+                SpawnCampfire(transform.position + transform.forward, transform.rotation);
             }
+            CoopCampfire.Placed(characterStatusScript.newCampfire);
             vehicleFuelManagerScript.currentFuel -= fuelValue;
             _audioSource.PlayOneShot(_audioClip[0]);
         }
     }
+
+    public GameObject SpawnCampfire(Vector3 position, Quaternion rotation)
+    {
+        characterStatusScript.newCampfire = Instantiate(campfirePrefab, position, rotation);
+        return characterStatusScript.newCampfire;
+    }
+
+#if DUMP_WORLDGEN
+    // -coopcampfire
+    public void DebugPlaceCampfire()
+    {
+        TryPlaceCampfire();
+    }
+
+    public void DebugPutOutCampfire()
+    {
+        if (characterStatusScript.newCampfire != null && characterStatusScript.newCampfire.GetComponent<CampfireFuelLevel>().currentFuelLevel > 0f)
+        {
+            characterStatusScript.newCampfire.GetComponent<CampfireFuelLevel>().currentFuelLevel = 0f;
+            CoopCampfire.Extinguished(characterStatusScript.newCampfire.GetComponent<CampfireFuelLevel>());
+        }
+    }
+
+    public string DebugCampfire()
+    {
+        GameObject newCampfire = characterStatusScript.newCampfire;
+        if (newCampfire == null)
+        {
+            return "campfire none";
+        }
+        CoopCampfire coopCampfire = newCampfire.GetComponent<CoopCampfire>();
+        return "campfire " + (coopCampfire != null ? coopCampfire.Id.ToString() : "?") + " fuel " + newCampfire.GetComponent<CampfireFuelLevel>().currentFuelLevel.ToString("F0") + " tank " + vehicleFuelManagerScript.currentFuel.ToString("F1");
+    }
+#endif
 
     void OnTriggerStay(Collider other)
     {
@@ -200,7 +346,10 @@ public class CharacterItemInteraction : MonoBehaviour
         }
         else if (other.gameObject.CompareTag("Water"))
         {
-            characterStatusScript.waterLevel += waterRefillRate * Time.fixedDeltaTime;
+            if (!IsCoopPuppet)
+            {
+                characterStatusScript.waterLevel += waterRefillRate * Time.fixedDeltaTime;
+            }
         }
         else if (other.gameObject.CompareTag("CampfireInteractArea"))
         {
@@ -239,7 +388,7 @@ public class CharacterItemInteraction : MonoBehaviour
 
     void OnParticleCollision(GameObject other)
     {
-        if (other.gameObject.CompareTag("Water"))
+        if (other.gameObject.CompareTag("Water") && !IsCoopPuppet)
         {
             characterStatusScript.waterLevel += waterRefillRate * Time.fixedDeltaTime;
         }

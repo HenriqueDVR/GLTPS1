@@ -16,6 +16,9 @@ public class CharacterStatus : MonoBehaviour
     [SerializeField] private CharacterItemInteraction chitoItemInteraction;
 
     [SerializeField] private float slowDepletionRate = 0.5f;
+    // was multiplying by deltaTime twice. tuned so 60fps matches how it was
+    private const float referenceFrameRate = 60f;
+
     public float hungerRate = 1f;
     [SerializeField] private float maxHungerValue = 100f;
 
@@ -86,18 +89,19 @@ public class CharacterStatus : MonoBehaviour
         // set the scaled hunger and thirst rate
         if (chitoPlayerInput.actions.Vehicle.enabled || yuuriPlayerInput.actions.Vehicle.enabled)
         {
-            scaledHungerRate = hungerRate * slowDepletionRate  * Time.deltaTime;
-            scaledThirstRate = thirstRate * slowDepletionRate  * Time.deltaTime;
+            scaledHungerRate = hungerRate * slowDepletionRate / referenceFrameRate;
+            scaledThirstRate = thirstRate * slowDepletionRate / referenceFrameRate;
         }
         else
         {
-            scaledHungerRate = hungerRate  * Time.deltaTime;
-            scaledThirstRate = thirstRate  * Time.deltaTime; 
+            scaledHungerRate = hungerRate / referenceFrameRate;
+            scaledThirstRate = thirstRate / referenceFrameRate;
         }
         waterLevel = Mathf.Clamp(waterLevel, 0, maxWaterLevel);
 
         // set the water refill rate when exposed to rain
-        if (weatherManagerScript.index == 1 && (!chitoItemInteraction.isUnderCeiling || !yuuriItemInteraction.isUnderCeiling))
+        // friend gets water from the host
+        if (weatherManagerScript.index == 1 && (!chitoItemInteraction.isUnderCeiling || !yuuriItemInteraction.isUnderCeiling) && (!CoopSession.InGame || CoopSession.Instance.IsHost))
         {
             waterLevel += waterSlowRefillRate * Time.deltaTime;
         }
@@ -105,11 +109,11 @@ public class CharacterStatus : MonoBehaviour
         // set the scaled temperature loss rate when exposed to certain weather events
         if (!chitoItemInteraction.isUnderCeiling)
         {
-            scaledTemperatureLossRate = temperatureLossRate[weatherManagerScript.index] * Time.deltaTime;
+            scaledTemperatureLossRate = temperatureLossRate[weatherManagerScript.index] / referenceFrameRate;
         }
         else
         {
-            scaledTemperatureLossRate = temperatureLossRate[0] * Time.deltaTime;
+            scaledTemperatureLossRate = temperatureLossRate[0] / referenceFrameRate;
         }   
         
         // apply scaled values
@@ -122,11 +126,11 @@ public class CharacterStatus : MonoBehaviour
 
         if (!yuuriItemInteraction.isUnderCeiling)
         {
-            scaledTemperatureLossRate = temperatureLossRate[weatherManagerScript.index] * Time.deltaTime;
+            scaledTemperatureLossRate = temperatureLossRate[weatherManagerScript.index] / referenceFrameRate;
         }
         else
         {
-            scaledTemperatureLossRate = temperatureLossRate[0] * Time.deltaTime;
+            scaledTemperatureLossRate = temperatureLossRate[0] / referenceFrameRate;
         }
 
         yuuriItemInteraction.hungerLevel = Mathf.Clamp(yuuriItemInteraction.hungerLevel, 0, maxHungerValue);
