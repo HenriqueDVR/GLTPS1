@@ -85,14 +85,9 @@ public class PlayerGunController : MonoBehaviour
             }
 
             // Decrement ammo count
-            if (ammoCountUI[ammoCount - 1] != null)
-            {
-                Destroy(ammoCountUI[ammoCount - 1]);
-                ammoCountUI.RemoveAt(ammoCount - 1);
-            }
-
-            offsetXPos += 18;
+            RemoveAmmoIcon();
             ammoCount--;
+            CoopShots.AmmoChanged(this);
 
             // Set ray from the viewport to world space
             Ray ray = camera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
@@ -175,6 +170,24 @@ public class PlayerGunController : MonoBehaviour
     {
         maxAmmoCount += rounds;
         ammoCountText.text = maxAmmoCount.ToString();
+        CoopShots.AmmoChanged(this);
+    }
+
+    // coop HUD shows the other player's real ammo
+    public void ShowAmmo(int magazine, int spare)
+    {
+        while (ammoCount < magazine && ammoCount < maxClipCapacity)
+        {
+            AddAmmoIcon();
+            ammoCount++;
+        }
+        while (ammoCount > magazine && ammoCount > 0)
+        {
+            RemoveAmmoIcon();
+            ammoCount--;
+        }
+        maxAmmoCount = spare;
+        ammoCountText.text = maxAmmoCount.ToString();
     }
 
     IEnumerator ReloadWait(float duration)
@@ -196,15 +209,7 @@ public class PlayerGunController : MonoBehaviour
     {
         for (int i = 0; i < reloadCount; i++)
         {
-            //add ammo count ui object and set rotation and position on canvas
-            ammoCountUI.Add(Instantiate(ammoPrefab.gameObject, panel.transform));
-            ammoCountUI[ammoCount].GetComponent<RectTransform>().localRotation = Quaternion.identity;
-            ammoCountUI[ammoCount].GetComponent<RectTransform>().anchoredPosition3D = new Vector3(ammoPrefab.rectTransform.anchoredPosition3D.x + offsetXPos
-                                                                                            , ammoPrefab.rectTransform.anchoredPosition3D.y
-                                                                                            , ammoPrefab.rectTransform.anchoredPosition3D.z);
-            //offset position for adding ui objects
-            offsetXPos += -18;
-
+            AddAmmoIcon();
             ammoCount++;
             maxAmmoCount--;
         }
@@ -212,6 +217,29 @@ public class PlayerGunController : MonoBehaviour
         ammoCountText.text = maxAmmoCount.ToString();
 
         isReloading = false;
+        CoopShots.AmmoChanged(this);
+    }
+
+    private void AddAmmoIcon()
+    {
+        //add ammo count ui object and set rotation and position on canvas
+        ammoCountUI.Add(Instantiate(ammoPrefab.gameObject, panel.transform));
+        ammoCountUI[ammoCount].GetComponent<RectTransform>().localRotation = Quaternion.identity;
+        ammoCountUI[ammoCount].GetComponent<RectTransform>().anchoredPosition3D = new Vector3(ammoPrefab.rectTransform.anchoredPosition3D.x + offsetXPos
+                                                                                        , ammoPrefab.rectTransform.anchoredPosition3D.y
+                                                                                        , ammoPrefab.rectTransform.anchoredPosition3D.z);
+        //offset position for adding ui objects
+        offsetXPos += -18;
+    }
+
+    private void RemoveAmmoIcon()
+    {
+        if (ammoCountUI[ammoCount - 1] != null)
+        {
+            Destroy(ammoCountUI[ammoCount - 1]);
+            ammoCountUI.RemoveAt(ammoCount - 1);
+        }
+        offsetXPos += 18;
     }
 
     void OnDrawGizmos()

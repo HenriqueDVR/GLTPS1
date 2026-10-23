@@ -50,6 +50,8 @@ public class CoopSession : MonoBehaviour
 		Kanazawa = 17,
 		ElevatorClosed = 18,
 		Ammo = 19,
+		// yuuri's ammo for the HUD
+		AmmoState = 20,
 		// EOS only (no handshake there)
 		Hello = 100,
 		Welcome = 101,
@@ -75,7 +77,7 @@ public class CoopSession : MonoBehaviour
 	private const float lanHeadStart = 1f;
 
 	// bump on protocol changes
-	private const string connectionKey = "GLTPS1-coop-14";
+	private const string connectionKey = "GLTPS1-coop-15";
 
 	private const int gameplayScene = 1;
 
@@ -823,6 +825,9 @@ public class CoopSession : MonoBehaviour
 			break;
 		case MessageType.Ammo:
 			CoopShots.OnAmmo(reader);
+			break;
+		case MessageType.AmmoState:
+			CoopShots.OnAmmoState(reader);
 			break;
 		case MessageType.Barrel:
 			CoopBarrel.OnMessage(reader);

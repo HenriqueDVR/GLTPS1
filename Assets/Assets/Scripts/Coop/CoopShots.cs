@@ -9,6 +9,11 @@ public static class CoopShots
 
 	private static int pendingRounds;
 
+	// resent now and then in case one got lost in a level load
+	private const float ammoStateInterval = 1f;
+
+	private static float nextAmmoState;
+
 	public static void Fired(Vector3 origin, Vector3 direction)
 	{
 		if (!CoopSession.InGame || CoopPlayers.Instance == null)
@@ -61,17 +66,58 @@ public static class CoopShots
 		CoopNotice.Show(instance.Remote.name.Replace("Parent", "") + " found you " + rounds + ((rounds == 1) ? " round." : " rounds."));
 	}
 
-	public static void GivePendingAmmo(Transform local)
+	public static void Tick(Transform local)
 	{
-		if (pendingRounds == 0)
+		PlayerGunController gun = local.GetComponentInChildren<PlayerGunController>();
+		if (gun == null)
 		{
 			return;
 		}
-		PlayerGunController gun = local.GetComponentInChildren<PlayerGunController>();
-		if (gun != null)
+		if (pendingRounds != 0)
 		{
 			gun.AddSpareAmmo(pendingRounds);
 			pendingRounds = 0;
+		}
+		if (Time.unscaledTime >= nextAmmoState)
+		{
+			nextAmmoState = Time.unscaledTime + ammoStateInterval;
+			SendAmmoState(gun, DeliveryMethod.Sequenced);
+		}
+	}
+
+	public static void AmmoChanged(PlayerGunController gun)
+	{
+		if (CoopSession.InGame && !CoopPlayers.IsPuppet(gun))
+		{
+			SendAmmoState(gun, DeliveryMethod.ReliableOrdered);
+		}
+	}
+
+	private static void SendAmmoState(PlayerGunController gun, DeliveryMethod method)
+	{
+		if (!CoopSession.InGame)
+		{
+			return;
+		}
+		writer.Reset();
+		writer.Put((byte)CoopSession.MessageType.AmmoState);
+		writer.Put(gun.ammoCount);
+		writer.Put(gun.maxAmmoCount);
+		CoopSession.Instance.Send(writer, method);
+	}
+
+	public static void OnAmmoState(NetDataReader reader)
+	{
+		int magazine = reader.GetInt();
+		int spare = reader.GetInt();
+		CoopPlayers instance = CoopPlayers.Instance;
+		PlayerGunController gun = (instance != null && instance.Remote != null) ? instance.Remote.GetComponentInChildren<PlayerGunController>() : null;
+		if (gun != null)
+		{
+			gun.ShowAmmo(magazine, spare);
+#if DUMP_WORLDGEN
+			Debug.Log("CoopDebug other player's ammo " + magazine + " + " + spare + ", shown " + gun.ammoCount + " + " + gun.maxAmmoCount + " with " + gun.ammoCountUI.Count + " icons");
+#endif
 		}
 	}
 
