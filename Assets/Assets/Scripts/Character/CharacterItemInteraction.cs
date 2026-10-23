@@ -119,10 +119,12 @@ public class CharacterItemInteraction : MonoBehaviour
     public void GiveAmmo()
     {
         //increase ammo count by random amount
-        playerGunControllerScript.maxAmmoCount += Random.Range(1, maxRandomAmmoCount + 1);
-
-        //change ammo ui
-        ammoCountText.text = playerGunControllerScript.maxAmmoCount.ToString();
+        int rounds = Random.Range(1, maxRandomAmmoCount + 1);
+        // only yuuri has the gun
+        if (!CoopShots.GiveAmmoToGunOwner(playerGunControllerScript, rounds))
+        {
+            playerGunControllerScript.AddSpareAmmo(rounds);
+        }
         PlayPickupSound();
     }
 

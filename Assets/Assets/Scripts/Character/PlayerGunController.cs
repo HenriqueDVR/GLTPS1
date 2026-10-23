@@ -58,7 +58,7 @@ public class PlayerGunController : MonoBehaviour
         {
             return;
         }
-        if (context.performed && !isReloading && maxAmmoCount > 0)
+        if (context.performed && !isReloading && maxAmmoCount > 0 && ammoCount < maxClipCapacity)
         {
             StartCoroutine(ReloadWait(3.5f));
         }
@@ -169,6 +169,12 @@ public class PlayerGunController : MonoBehaviour
         {
             isReloading = false;
         }
+    }
+
+    public void AddSpareAmmo(int rounds)
+    {
+        maxAmmoCount += rounds;
+        ammoCountText.text = maxAmmoCount.ToString();
     }
 
     IEnumerator ReloadWait(float duration)

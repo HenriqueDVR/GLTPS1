@@ -49,6 +49,7 @@ public class CoopSession : MonoBehaviour
 		Revived = 16,
 		Kanazawa = 17,
 		ElevatorClosed = 18,
+		Ammo = 19,
 		// EOS only (no handshake there)
 		Hello = 100,
 		Welcome = 101,
@@ -74,7 +75,7 @@ public class CoopSession : MonoBehaviour
 	private const float lanHeadStart = 1f;
 
 	// bump on protocol changes
-	private const string connectionKey = "GLTPS1-coop-13";
+	private const string connectionKey = "GLTPS1-coop-14";
 
 	private const int gameplayScene = 1;
 
@@ -819,6 +820,9 @@ public class CoopSession : MonoBehaviour
 			break;
 		case MessageType.Shot:
 			CoopShots.OnShot(reader);
+			break;
+		case MessageType.Ammo:
+			CoopShots.OnAmmo(reader);
 			break;
 		case MessageType.Barrel:
 			CoopBarrel.OnMessage(reader);

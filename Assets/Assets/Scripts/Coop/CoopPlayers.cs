@@ -196,6 +196,7 @@ public class CoopPlayers : MonoBehaviour
 		{
 			return;
 		}
+		CoopShots.GivePendingAmmo(Local);
 		if (Time.unscaledTime >= nextSend && !(CoopKettenkrad.Instance != null && CoopKettenkrad.Instance.MountPending))
 		{
 			nextSend = Time.unscaledTime + sendInterval;
