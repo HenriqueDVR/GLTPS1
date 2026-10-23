@@ -5,40 +5,63 @@ using UnityEngine.InputSystem;
 using Cinemachine;
 using UnityEngine.Animations;
 using TMPro;
+using UnityEngine.UI;
+using Unity.VisualScripting;
 public class PlayerGunController : MonoBehaviour
 {
     [SerializeField] private PlayerInputInitialize playerInputScript;
     [SerializeField] private Transform muzzle;
     [SerializeField] private Camera camera;
     [SerializeField] private GameObject bulletHoleDecal;
-    public int ammoCount = 10;
-
+    public int maxAmmoCount = 10;
+    [SerializeField] private int maxClipCapacity = 5;
+    public int ammoCount = 0;
     [SerializeField] private CinemachineFreeLook freeLookCamera;
     [SerializeField] private float recoilValue;
     [SerializeField] private GameObject barrelSmoke;
     private ConstraintSource source;
-    [SerializeField] private Animator anim;
+    public Animator anim;
     [SerializeField] private TextMeshProUGUI ammoCountText;
     private LayerMask layerMask;
 
     public AudioSource audioSourceGunFire;
     public AudioSource audioSourceGunBolt;
-
+    public AudioSource audioSourceGunEmpty;
     [SerializeField] private AudioClip[] _audioClip;
-    private bool reload = true;
+    public List<GameObject> ammoCountUI;
+    [SerializeField] private RawImage ammoPrefab;
+    [SerializeField] private GameObject panel;
+    [SerializeField] private int offsetXPos;
+    public bool isReloading = false;
+    [SerializeField] private CrosshairRecoil crosshairRecoilScript;
 
     void OnEnable()
     {
         playerInputScript.actions.Player.Fire.performed += Fire;
+        playerInputScript.actions.Player.Reload.performed += Reload;
         layerMask = LayerMask.GetMask("Default", "Vehicle");
 
-        ammoCountText.text = ammoCount.ToString();
-
+        //initailize ammo count ui
+        Reload(maxClipCapacity);
+        ammoCountText.text = maxAmmoCount.ToString();
     }
 
     void OnDisable()
     {
         playerInputScript.actions.Player.Fire.performed -= Fire;
+        playerInputScript.actions.Player.Reload.performed -= Reload;
+    }
+
+    private void Reload(InputAction.CallbackContext context)
+    {
+        if (CoopPlayers.IsPuppet(this))
+        {
+            return;
+        }
+        if (context.performed && !isReloading && maxAmmoCount > 0)
+        {
+            StartCoroutine(ReloadWait(3.5f));
+        }
     }
 
     private void Fire(InputAction.CallbackContext context)
@@ -47,12 +70,30 @@ public class PlayerGunController : MonoBehaviour
         {
             return;
         }
-        if (context.performed && ammoCount != 0 &&
+        if (context.performed &&
             !anim.GetCurrentAnimatorStateInfo(5).IsTag("Reload") &&
             anim.GetCurrentAnimatorStateInfo(3).IsTag("ADS") &&
-            reload &&
+            !isReloading &&
             Time.timeScale == 1)
         {
+
+            // If ammo has been exhausted
+            if (ammoCount == 0)
+            {
+                audioSourceGunEmpty.PlayOneShot(_audioClip[2]);
+                return;
+            }
+
+            // Decrement ammo count
+            if (ammoCountUI[ammoCount - 1] != null)
+            {
+                Destroy(ammoCountUI[ammoCount - 1]);
+                ammoCountUI.RemoveAt(ammoCount - 1);
+            }
+
+            offsetXPos += 18;
+            ammoCount--;
+
             // Set ray from the viewport to world space
             Ray ray = camera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0));
 
@@ -66,17 +107,13 @@ public class PlayerGunController : MonoBehaviour
             Shoot(muzzle.position, bulletDirection, false);
             CoopShots.Fired(muzzle.position, bulletDirection);
 
-            //decrease ammo count per shot
-            ammoCount--;
-            ammoCountText.text = ammoCount.ToString();
-
             //camera recoil effect
             freeLookCamera.m_YAxis.Value += recoilValue;
-
-            reload = false;
+            crosshairRecoilScript.fire = true;
         }
     }
 
+    // also used for the other player's shots
     public void Shoot(Vector3 origin, Vector3 direction, bool fromOtherPlayer)
     {
         //cast ray from muzzle position to camera raycast hit position
@@ -98,6 +135,7 @@ public class PlayerGunController : MonoBehaviour
     }
 
 #if DUMP_WORLDGEN
+    // -coopmisc
     public void DebugFire()
     {
         Vector3 forward = transform.root.forward;
@@ -119,15 +157,56 @@ public class PlayerGunController : MonoBehaviour
 
     IEnumerator BoltAction(float duration, bool fromOtherPlayer)
     {
+        // remote girl: bolt anim already comes with her anim state
+        if (!fromOtherPlayer)
+        {
+            isReloading = true;
+            anim.SetTrigger("reload");
+        }
         yield return new WaitForSeconds(duration);
         audioSourceGunBolt.PlayOneShot(_audioClip[1]);
         if (!fromOtherPlayer)
         {
-            anim.SetTrigger("reload");
-            reload = true;
+            isReloading = false;
         }
     }
 
+    IEnumerator ReloadWait(float duration)
+    {
+        isReloading = true;
+        audioSourceGunEmpty.PlayOneShot(_audioClip[3]);
+        yield return new WaitForSeconds(duration);
+
+        int reloadCount = maxClipCapacity - ammoCount;
+        if (maxAmmoCount < reloadCount)
+        {
+            reloadCount = maxAmmoCount;
+        }
+        Reload(reloadCount);
+
+    }
+
+    private void Reload(int reloadCount)
+    {
+        for (int i = 0; i < reloadCount; i++)
+        {
+            //add ammo count ui object and set rotation and position on canvas
+            ammoCountUI.Add(Instantiate(ammoPrefab.gameObject, panel.transform));
+            ammoCountUI[ammoCount].GetComponent<RectTransform>().localRotation = Quaternion.identity;
+            ammoCountUI[ammoCount].GetComponent<RectTransform>().anchoredPosition3D = new Vector3(ammoPrefab.rectTransform.anchoredPosition3D.x + offsetXPos
+                                                                                            , ammoPrefab.rectTransform.anchoredPosition3D.y
+                                                                                            , ammoPrefab.rectTransform.anchoredPosition3D.z);
+            //offset position for adding ui objects
+            offsetXPos += -18;
+
+            ammoCount++;
+            maxAmmoCount--;
+        }
+
+        ammoCountText.text = maxAmmoCount.ToString();
+
+        isReloading = false;
+    }
 
     void OnDrawGizmos()
     {

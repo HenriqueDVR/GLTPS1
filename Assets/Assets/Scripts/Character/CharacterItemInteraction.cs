@@ -119,10 +119,10 @@ public class CharacterItemInteraction : MonoBehaviour
     public void GiveAmmo()
     {
         //increase ammo count by random amount
-        playerGunControllerScript.ammoCount += Random.Range(1, maxRandomAmmoCount + 1);
+        playerGunControllerScript.maxAmmoCount += Random.Range(1, maxRandomAmmoCount + 1);
 
         //change ammo ui
-        ammoCountText.text = playerGunControllerScript.ammoCount.ToString();
+        ammoCountText.text = playerGunControllerScript.maxAmmoCount.ToString();
         PlayPickupSound();
     }
 
