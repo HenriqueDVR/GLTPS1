@@ -142,7 +142,7 @@ public class CoopItem : MonoBehaviour
 		}
 	}
 
-	public static void OnTakenList(NetPacketReader reader)
+	public static void OnTakenList(NetDataReader reader)
 	{
 		int @int = reader.GetInt();
 		for (int i = 0; i < @int; i++)

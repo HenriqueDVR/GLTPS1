@@ -119,7 +119,7 @@ public class CoopKanazawa : MonoBehaviour
 		CoopSession.Instance.Send(writer, DeliveryMethod.ReliableOrdered);
 	}
 
-	public void OnMessage(NetPacketReader reader)
+	public void OnMessage(NetDataReader reader)
 	{
 		Op op = (Op)reader.GetByte();
 		int @int = reader.GetInt();

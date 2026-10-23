@@ -70,3 +70,7 @@ crashlytics-build.properties
 # Temporary auto-generated Android Assets
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
+
+# EOS credentials: in the built game, but not in the repository.
+Assets/Assets/Scripts/Coop/EosCredentials.cs
+Assets/Assets/Scripts/Coop/EosCredentials.cs.meta

@@ -25,7 +25,7 @@ public static class CoopShots
 		CoopSession.Instance.Send(writer, DeliveryMethod.ReliableOrdered);
 	}
 
-	public static void OnShot(NetPacketReader reader)
+	public static void OnShot(NetDataReader reader)
 	{
 		Vector3 layout = new Vector3(reader.GetFloat(), reader.GetFloat(), reader.GetFloat());
 		Vector3 direction = new Vector3(reader.GetFloat(), reader.GetFloat(), reader.GetFloat());

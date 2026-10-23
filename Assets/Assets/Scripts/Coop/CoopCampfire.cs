@@ -47,7 +47,7 @@ public class CoopCampfire : MonoBehaviour
 		CoopSession.Instance.Send(writer, DeliveryMethod.ReliableOrdered);
 	}
 
-	public static void OnPlaced(NetPacketReader reader)
+	public static void OnPlaced(NetDataReader reader)
 	{
 		int id = reader.GetInt();
 		Vector3 layout = new Vector3(reader.GetFloat(), reader.GetFloat(), reader.GetFloat());
@@ -63,7 +63,7 @@ public class CoopCampfire : MonoBehaviour
 #endif
 	}
 
-	public static void OnOut(NetPacketReader reader)
+	public static void OnOut(NetDataReader reader)
 	{
 		int @int = reader.GetInt();
 		if (placed.TryGetValue(@int, out var value) && value != null)

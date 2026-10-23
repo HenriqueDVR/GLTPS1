@@ -136,7 +136,7 @@ public class CoopSupplies : MonoBehaviour
 		session.Send(writer, DeliveryMethod.Sequenced);
 	}
 
-	private void OnSupplies(NetPacketReader reader)
+	private void OnSupplies(NetDataReader reader)
 	{
 		if (status == null)
 		{

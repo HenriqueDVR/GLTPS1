@@ -40,6 +40,10 @@ public class CoopMenu : MonoBehaviour
 
 	private TextMeshProUGUI copyLabel;
 
+	private Button connectionButton;
+
+	private TextMeshProUGUI connectionLabel;
+
 	private float copiedUntil;
 
 	private GUIStyle overlayStyle;
@@ -83,6 +87,8 @@ public class CoopMenu : MonoBehaviour
 		{
 			session.Join(GUIUtility.systemCopyBuffer);
 		});
+		connectionButton = CloneButton(transform, page.transform, "connection: auto", 0f, NextConnectionChoice);
+		connectionLabel = connectionButton.GetComponentInChildren<TextMeshProUGUI>();
 		copyButton = CloneButton(transform, page.transform, "copy invite", 0f, CopyInvite);
 		copyLabel = copyButton.GetComponentInChildren<TextMeshProUGUI>();
 		startGameButton = CloneButton(transform, page.transform, "start game", 0f, StartGame);
@@ -135,6 +141,37 @@ public class CoopMenu : MonoBehaviour
 		titleMenu.SetActive(value: true);
 	}
 
+	private void NextConnectionChoice()
+	{
+		session.Choice = (CoopSession.ConnectionChoice)(((int)session.Choice + 1) % 3);
+	}
+
+	private static string ConnectionName(CoopSession.ConnectionChoice choice)
+	{
+		switch (choice)
+		{
+		case CoopSession.ConnectionChoice.DirectOnly:
+			return "connection: direct only";
+		case CoopSession.ConnectionChoice.EpicOnly:
+			return "connection: Epic only";
+		default:
+			return "connection: auto";
+		}
+	}
+
+	private static string ConnectionHelp(CoopSession.ConnectionChoice choice)
+	{
+		switch (choice)
+		{
+		case CoopSession.ConnectionChoice.DirectOnly:
+			return "Direct only: needs the host's router to let it through.";
+		case CoopSession.ConnectionChoice.EpicOnly:
+			return "Epic only: works through any router, relayed by Epic if it has to be.";
+		default:
+			return "Auto: direct first, then through Epic if that doesn't connect.";
+		}
+	}
+
 	private void CopyInvite()
 	{
 		GUIUtility.systemCopyBuffer = session.Invite;
@@ -159,6 +196,7 @@ public class CoopMenu : MonoBehaviour
 		List<Button> list = new List<Button>();
 		SetVisible(hostButton, flag, list);
 		SetVisible(joinButton, flag, list);
+		SetVisible(connectionButton, flag, list);
 		SetVisible(copyButton, flag2, list);
 		SetVisible(startGameButton, flag2 && session.Connected, list);
 		SetVisible(leaveButton, !flag, list);
@@ -169,8 +207,10 @@ public class CoopMenu : MonoBehaviour
 		}
 		backButton.gameObject.SetActive(!(mode == CoopSession.SessionMode.Joining && session.Connected));
 		leaveButton.GetComponentInChildren<TextMeshProUGUI>().text = (flag2 ? "stop hosting" : (session.Connected ? "leave" : "cancel"));
-		bool inviteReady = session.PortOpener == null || session.PortOpener.State != PortOpener.Result.Working;
+		// router + EOS add to the invite a few secs after hosting starts
+		bool inviteReady = session.InviteReady;
 		copyButton.interactable = inviteReady;
+		connectionLabel.text = ConnectionName(session.Choice);
 		copyLabel.text = (!inviteReady ? "getting invite..." : ((Time.unscaledTime < copiedUntil) ? "copied!" : "copy invite"));
 		statusText.text = StatusText();
 	}
@@ -191,7 +231,7 @@ public class CoopMenu : MonoBehaviour
 		{
 			if (text == "")
 			{
-				return "Play together with a friend.\nHost: copy the invite and send it to them. Friend: copy the invite, then press join.";
+				return "Play together with a friend.\nHost: copy the invite and send it to them. Friend: copy the invite, then press join.\n" + ConnectionHelp(session.Choice);
 			}
 			return text;
 		}
@@ -233,7 +273,7 @@ public class CoopMenu : MonoBehaviour
 			};
 			overlayStyle.normal.textColor = new Color(1f, 1f, 1f, 0.8f);
 		}
-		string text = (session.Connected ? ("co-op: together, " + session.Ping + " ms") : (session.IsHost ? "co-op: waiting for your friend" : "co-op: connecting"));
+		string text = (session.Connected ? ("co-op: together, " + session.Ping + " ms" + ((session.LinkKind != "") ? (" (" + session.LinkKind + ")") : "")) : (session.IsHost ? "co-op: waiting for your friend" : "co-op: connecting"));
 		if (session.Warning != "")
 		{
 			text = text + "\n" + session.Warning;

@@ -5,11 +5,12 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 
+// invite = host's EOS id + every address it might be reachable on, friend tries all
 public static class CoopInvite
 {
 	private const string prefix = "GLT-";
 
-	private const byte version = 1;
+	private const byte version = 2;
 
 	private const byte hasPublic = 1;
 
@@ -17,7 +18,11 @@ public static class CoopInvite
 
 	private const byte hasIPv6 = 4;
 
-	public static string Encode(int port, IPAddress publicIPv4, IPAddress lanIPv4, IPAddress ipv6)
+	private const byte hasEos = 8;
+
+	private const int eosIdBytes = 16;
+
+	public static string Encode(int port, IPAddress publicIPv4, IPAddress lanIPv4, IPAddress ipv6, string eosId)
 	{
 		List<byte> list = new List<byte> { version, (byte)(port >> 8), (byte)port, 0 };
 		byte b = 0;
@@ -36,13 +41,23 @@ public static class CoopInvite
 			b |= hasIPv6;
 			list.AddRange(ipv6.GetAddressBytes());
 		}
+		if (eosId != null && eosId.Length == eosIdBytes * 2)
+		{
+			b |= hasEos;
+			for (int i = 0; i < eosIdBytes; i++)
+			{
+				list.Add(Convert.ToByte(eosId.Substring(i * 2, 2), 16));
+			}
+		}
 		list[3] = b;
 		return prefix + Convert.ToBase64String(list.ToArray()).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 	}
 
 	// also takes a plain address for lan/testing
-	public static List<IPEndPoint> Decode(string text, int defaultPort)
+	public static List<IPEndPoint> Decode(string text, int defaultPort, out string eosId, out bool publicAddress)
 	{
+		eosId = null;
+		publicAddress = false;
 		List<IPEndPoint> list = new List<IPEndPoint>();
 		text = (text ?? "").Trim();
 		if (text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
@@ -67,6 +82,7 @@ public static class CoopInvite
 			if ((b & hasPublic) != 0 && TryRead(array, ref num, 4, out var address))
 			{
 				list.Add(new IPEndPoint(address, port));
+				publicAddress = true;
 			}
 			if ((b & hasLan) != 0 && TryRead(array, ref num, 4, out var address2))
 			{
@@ -75,6 +91,10 @@ public static class CoopInvite
 			if ((b & hasIPv6) != 0 && TryRead(array, ref num, 16, out var address3))
 			{
 				list.Add(new IPEndPoint(address3, port));
+			}
+			if ((b & hasEos) != 0 && num + eosIdBytes <= array.Length)
+			{
+				eosId = BitConverter.ToString(array, num, eosIdBytes).Replace("-", "").ToLowerInvariant();
 			}
 			return list;
 		}

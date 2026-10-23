@@ -659,7 +659,7 @@ public class CoopPlayers : MonoBehaviour
 		return (Quaternion.Inverse(root.rotation) * model.rotation).eulerAngles.y;
 	}
 
-	private void OnPlayerState(NetPacketReader reader)
+	private void OnPlayerState(NetDataReader reader)
 	{
 		Snapshot item = new Snapshot
 		{

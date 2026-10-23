@@ -69,7 +69,7 @@ public static class CoopWeather
 		CoopSession.Instance.Send(writer, DeliveryMethod.ReliableOrdered);
 	}
 
-	public static void OnMessage(NetPacketReader reader)
+	public static void OnMessage(NetDataReader reader)
 	{
 		index = reader.GetByte();
 		on = reader.GetBool();

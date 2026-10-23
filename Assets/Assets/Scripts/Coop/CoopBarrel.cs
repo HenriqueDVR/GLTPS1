@@ -153,7 +153,7 @@ public class CoopBarrel : MonoBehaviour
 		CoopSession.Instance.Send(writer, (op == Op.Pose) ? DeliveryMethod.Sequenced : DeliveryMethod.ReliableOrdered);
 	}
 
-	public static void OnMessage(NetPacketReader reader)
+	public static void OnMessage(NetDataReader reader)
 	{
 		CoopPlayers instance = CoopPlayers.Instance;
 		if (instance == null || instance.Remote == null)
