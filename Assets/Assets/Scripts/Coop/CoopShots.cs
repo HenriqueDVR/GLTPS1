@@ -29,7 +29,7 @@ public static class CoopShots
 		writer.Put(direction.x);
 		writer.Put(direction.y);
 		writer.Put(direction.z);
-		CoopSession.Instance.Send(writer, DeliveryMethod.ReliableOrdered);
+		CoopSession.Instance.Send(writer, DeliveryMethod.ReliableOrdered, side: true);
 	}
 
 	public static bool GiveAmmoToGunOwner(PlayerGunController gun, int rounds)
@@ -41,7 +41,7 @@ public static class CoopShots
 		writer.Reset();
 		writer.Put((byte)CoopSession.MessageType.Ammo);
 		writer.Put(rounds);
-		CoopSession.Instance.Send(writer, DeliveryMethod.ReliableOrdered);
+		CoopSession.Instance.Send(writer, DeliveryMethod.ReliableOrdered, side: true);
 #if DUMP_WORLDGEN
 		Debug.Log("CoopDebug ammo sent to the other player: " + rounds);
 #endif
@@ -103,7 +103,7 @@ public static class CoopShots
 		writer.Put((byte)CoopSession.MessageType.AmmoState);
 		writer.Put(gun.ammoCount);
 		writer.Put(gun.maxAmmoCount);
-		CoopSession.Instance.Send(writer, method);
+		CoopSession.Instance.Send(writer, method, side: true);
 	}
 
 	public static void OnAmmoState(NetDataReader reader)

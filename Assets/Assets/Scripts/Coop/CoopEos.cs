@@ -24,6 +24,9 @@ public class CoopEos
 
 	private const byte unreliableChannel = 1;
 
+	// reliable too, but not held up behind channel 0
+	private const byte sideChannel = 2;
+
 	// first byte of reliable packets, longer messages get split
 	private const byte wholeMessage = 0;
 
@@ -43,7 +46,8 @@ public class CoopEos
 
 	private readonly byte[] sendBuffer = new byte[maxPacket];
 
-	private readonly Dictionary<ProductUserId, List<byte>> pieces = new Dictionary<ProductUserId, List<byte>>();
+	// per user + channel
+	private readonly Dictionary<string, List<byte>> pieces = new Dictionary<string, List<byte>>();
 
 	public LoginState State { get; private set; }
 
@@ -59,7 +63,8 @@ public class CoopEos
 
 	public event Action<ProductUserId, ConnectionClosedReason> Closed;
 
-	public event Action<ProductUserId, byte[], int> MessageReceived;
+	// last bool: came reliable
+	public event Action<ProductUserId, byte[], int, bool> MessageReceived;
 
 	public void Start()
 	{
@@ -213,7 +218,7 @@ public class CoopEos
 		};
 		p2p.AddNotifyPeerConnectionClosed(ref closed, null, (ref OnRemoteConnectionClosedInfo info) =>
 		{
-			pieces.Remove(info.RemoteUserId);
+			ForgetPieces(info.RemoteUserId);
 			Closed?.Invoke(info.RemoteUserId, info.Reason);
 		});
 #if DUMP_WORLDGEN
@@ -289,19 +294,20 @@ public class CoopEos
 		}
 		if (channel == unreliableChannel)
 		{
-			MessageReceived?.Invoke(from, Copy(receiveBuffer, 1, length - 1), length - 1);
+			MessageReceived?.Invoke(from, Copy(receiveBuffer, 1, length - 1), length - 1, false);
 			return;
 		}
 		byte kind = receiveBuffer[0];
-		if (kind == wholeMessage && !pieces.ContainsKey(from))
+		string key = from + "/" + channel;
+		if (kind == wholeMessage && !pieces.ContainsKey(key))
 		{
-			MessageReceived?.Invoke(from, Copy(receiveBuffer, 1, length - 1), length - 1);
+			MessageReceived?.Invoke(from, Copy(receiveBuffer, 1, length - 1), length - 1, true);
 			return;
 		}
-		if (!pieces.TryGetValue(from, out List<byte> message))
+		if (!pieces.TryGetValue(key, out List<byte> message))
 		{
 			message = new List<byte>();
-			pieces[from] = message;
+			pieces[key] = message;
 		}
 		for (int i = 1; i < length; i++)
 		{
@@ -309,8 +315,8 @@ public class CoopEos
 		}
 		if (kind != morePieces)
 		{
-			pieces.Remove(from);
-			MessageReceived?.Invoke(from, message.ToArray(), message.Count);
+			pieces.Remove(key);
+			MessageReceived?.Invoke(from, message.ToArray(), message.Count, true);
 		}
 	}
 
@@ -321,7 +327,7 @@ public class CoopEos
 		return copy;
 	}
 
-	public void Send(ProductUserId to, byte[] data, int length, bool reliable)
+	public void Send(ProductUserId to, byte[] data, int length, bool reliable, bool side = false)
 	{
 		if (State != LoginState.Ready || to == null)
 		{
@@ -341,7 +347,7 @@ public class CoopEos
 		{
 			int piece = Math.Min(maxPacket - 1, length - offset);
 			byte kind = (offset == 0 && piece == length) ? wholeMessage : ((offset + piece < length) ? morePieces : lastPiece);
-			SendPacket(to, reliableChannel, PacketReliability.ReliableOrdered, kind, data, offset, piece);
+			SendPacket(to, side ? sideChannel : reliableChannel, PacketReliability.ReliableOrdered, kind, data, offset, piece);
 			offset += piece;
 		}
 		while (offset < length);
@@ -370,7 +376,7 @@ public class CoopEos
 		{
 			return;
 		}
-		pieces.Remove(remote);
+		ForgetPieces(remote);
 		CloseConnectionOptions options = new CloseConnectionOptions
 		{
 			LocalUserId = LocalUser,
@@ -378,6 +384,12 @@ public class CoopEos
 			SocketId = socket
 		};
 		p2p.CloseConnection(ref options);
+	}
+
+	private void ForgetPieces(ProductUserId remote)
+	{
+		pieces.Remove(remote + "/" + reliableChannel);
+		pieces.Remove(remote + "/" + sideChannel);
 	}
 
 	public void Shutdown()

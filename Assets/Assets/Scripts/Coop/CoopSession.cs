@@ -59,6 +59,8 @@ public class CoopSession : MonoBehaviour
 		Pipes = 23,
 		Music = 24,
 		MusicNext = 25,
+		// numbered wrapper so stale unreliable ones get dropped (EOS has no sequenced)
+		Sequenced = 26,
 		// EOS only (no handshake there)
 		Hello = 100,
 		Welcome = 101,
@@ -84,7 +86,7 @@ public class CoopSession : MonoBehaviour
 	private const float lanHeadStart = 1f;
 
 	// bump on protocol changes
-	private const string connectionKey = "GLTPS1-coop-18";
+	private const string connectionKey = "GLTPS1-coop-19";
 
 	private const int gameplayScene = 1;
 
@@ -98,6 +100,12 @@ public class CoopSession : MonoBehaviour
 
 	// partner this quiet is gone, let a new join take the slot
 	private const float stalePartnerSeconds = 3f;
+
+	private ushort nextSequence;
+
+	private readonly Dictionary<byte, ushort> lastSequence = new Dictionary<byte, ushort>();
+
+	private readonly NetDataWriter sequencedWriter = new NetDataWriter();
 
 	private float lastEosPacket;
 
@@ -149,6 +157,39 @@ public class CoopSession : MonoBehaviour
 #if DUMP_WORLDGEN
 	// -coopeosonly
 	private bool eosOnly;
+
+	// -cooplag <ms> -coopjitter <ms> -cooploss <%>: held back on arrival, both links
+	private struct Delayed
+	{
+		public float At;
+
+		public bool Direct;
+
+		public int Link;
+
+		public ProductUserId From;
+
+		public byte[] Data;
+
+		public bool Reliable;
+	}
+
+	private readonly List<Delayed> delayed = new List<Delayed>();
+
+	private float simLag;
+
+	private float simJitter;
+
+	private float simLoss;
+
+	private float lastReliableAt;
+
+	private bool releasing;
+
+	// drops held packets from an old connection
+	private int link;
+
+	private bool Simulating => simLag > 0f || simJitter > 0f || simLoss > 0f;
 #endif
 
 	public static CoopSession Instance { get; private set; }
@@ -196,7 +237,12 @@ public class CoopSession : MonoBehaviour
 		{
 			if (peer != null)
 			{
+#if DUMP_WORLDGEN
+				// litenetlib's own pings skip the fake lag
+				return peer.RoundTripTime + Mathf.RoundToInt(simLag * 1000f);
+#else
 				return peer.RoundTripTime;
+#endif
 			}
 			return (eosPeer != null) ? eosRoundTrip : 0;
 		}
@@ -291,6 +337,18 @@ public class CoopSession : MonoBehaviour
 			{
 				Application.runInBackground = true;
 			}
+			else if (commandLineArgs[i] == "-cooplag" && float.TryParse(text, out var lag))
+			{
+				simLag = lag / 1000f;
+			}
+			else if (commandLineArgs[i] == "-coopjitter" && float.TryParse(text, out var jitter))
+			{
+				simJitter = jitter / 1000f;
+			}
+			else if (commandLineArgs[i] == "-cooploss" && float.TryParse(text, out var loss))
+			{
+				simLoss = loss / 100f;
+			}
 #endif
 		}
 		SceneManager.sceneLoaded += OnSceneLoaded;
@@ -361,6 +419,9 @@ public class CoopSession : MonoBehaviour
 			}
 		}
 		UpdateEosJoin();
+#if DUMP_WORLDGEN
+		ReleaseDelayed();
+#endif
 		if (eosPeer != null && Time.unscaledTime >= nextEosPing)
 		{
 			nextEosPing = Time.unscaledTime + eosPingInterval;
@@ -517,6 +578,9 @@ public class CoopSession : MonoBehaviour
 		eosPeer = null;
 		eosTarget = null;
 		LinkKind = "";
+#if DUMP_WORLDGEN
+		link++;
+#endif
 		PortOpener?.Close();
 		PortOpener = null;
 		lastPortDetail = null;
@@ -544,7 +608,9 @@ public class CoopSession : MonoBehaviour
 		{
 			IPv6Enabled = true,
 			// level load can stall for a few secs
-			DisconnectTimeout = 20000
+			DisconnectTimeout = 20000,
+			// 1 = shots/ammo, so a resend there doesn't hold up the rest
+			ChannelsCount = 2
 		};
 		previousRunInBackground = Application.runInBackground;
 		Application.runInBackground = true;
@@ -609,6 +675,7 @@ public class CoopSession : MonoBehaviour
 			eos.Close(eosTarget);
 		}
 		eosTarget = null;
+		lastSequence.Clear();
 		Debug.Log("Coop: connected (" + LinkKind + ")");
 		if (IsHost)
 		{
@@ -735,12 +802,19 @@ public class CoopSession : MonoBehaviour
 		}
 	}
 
-	private void OnEosMessage(ProductUserId from, byte[] data, int length)
+	private void OnEosMessage(ProductUserId from, byte[] data, int length, bool reliable)
 	{
 		if (length < 1)
 		{
 			return;
 		}
+#if DUMP_WORLDGEN
+		if (Simulating && !releasing)
+		{
+			Hold(false, from, data, length, reliable);
+			return;
+		}
+#endif
 		NetDataReader reader = new NetDataReader(data, 0, length);
 		MessageType messageType = (MessageType)data[0];
 		switch (messageType)
@@ -794,7 +868,9 @@ public class CoopSession : MonoBehaviour
 			return;
 		case MessageType.Pong:
 			reader.GetByte();
-			eosRoundTrip = Mathf.RoundToInt((Time.unscaledTime - reader.GetFloat()) * 1000f);
+			int roundTrip = Mathf.RoundToInt((Time.unscaledTime - reader.GetFloat()) * 1000f);
+			// smoothed so the HUD doesn't flicker
+			eosRoundTrip = (eosRoundTrip == 0) ? roundTrip : Mathf.RoundToInt(Mathf.Lerp(eosRoundTrip, roundTrip, 0.5f));
 			return;
 		}
 		if (SameUser(from, eosPeer))
@@ -808,16 +884,100 @@ public class CoopSession : MonoBehaviour
 	{
 		if (from == peer)
 		{
+#if DUMP_WORLDGEN
+			if (Simulating)
+			{
+				byte[] data = reader.GetRemainingBytes();
+				Hold(true, null, data, data.Length, deliveryMethod == DeliveryMethod.ReliableOrdered || deliveryMethod == DeliveryMethod.ReliableUnordered || deliveryMethod == DeliveryMethod.ReliableSequenced);
+				reader.Recycle();
+				return;
+			}
+#endif
 			Dispatch(reader);
 		}
 		reader.Recycle();
 	}
+
+#if DUMP_WORLDGEN
+	private void Hold(bool direct, ProductUserId from, byte[] data, int length, bool reliable)
+	{
+		float at = Time.unscaledTime + simLag + UnityEngine.Random.Range(0f, simJitter);
+		if (UnityEngine.Random.value < simLoss)
+		{
+			if (!reliable)
+			{
+				return;
+			}
+			// lost and sent again
+			at += simLag * 2f + 0.1f;
+		}
+		if (reliable)
+		{
+			at = Mathf.Max(at, lastReliableAt);
+			lastReliableAt = at;
+		}
+		byte[] copy = new byte[length];
+		Array.Copy(data, copy, length);
+		delayed.Add(new Delayed
+		{
+			At = at,
+			Direct = direct,
+			Link = link,
+			From = from,
+			Data = copy,
+			Reliable = reliable
+		});
+	}
+
+	private void ReleaseDelayed()
+	{
+		releasing = true;
+		for (int i = 0; i < delayed.Count; i++)
+		{
+			Delayed item = delayed[i];
+			if (item.At > Time.unscaledTime)
+			{
+				continue;
+			}
+			delayed.RemoveAt(i--);
+			if (item.Link != link)
+			{
+				continue;
+			}
+			if (!item.Direct)
+			{
+				OnEosMessage(item.From, item.Data, item.Data.Length, item.Reliable);
+			}
+			else if (peer != null)
+			{
+				Dispatch(new NetDataReader(item.Data));
+			}
+		}
+		releasing = false;
+	}
+#endif
 
 	private void Dispatch(NetDataReader reader)
 	{
 		MessageType messageType = (MessageType)reader.GetByte();
 		switch (messageType)
 		{
+		case MessageType.Sequenced:
+		{
+			ushort sequence = reader.GetUShort();
+			if (reader.AvailableBytes < 1)
+			{
+				break;
+			}
+			byte inner = reader.PeekByte();
+			if (lastSequence.TryGetValue(inner, out ushort last) && (short)(sequence - last) <= 0)
+			{
+				break;
+			}
+			lastSequence[inner] = sequence;
+			Dispatch(reader);
+			break;
+		}
 		case MessageType.Start:
 			if (!IsHost)
 			{
@@ -1018,6 +1178,8 @@ public class CoopSession : MonoBehaviour
 	public void SendPlayerState(NetDataWriter state)
 	{
 		Send(state, DeliveryMethod.Sequenced);
+		// out now instead of on litenetlib's next tick
+		manager?.TriggerUpdate();
 	}
 
 	public void RestartLevel()
@@ -1033,8 +1195,21 @@ public class CoopSession : MonoBehaviour
 		Send(writer, DeliveryMethod.ReliableOrdered);
 	}
 
-	public void Send(NetDataWriter message, DeliveryMethod method)
+	// side: own reliable lane, for things nothing else waits on (shots, ammo)
+	public void Send(NetDataWriter message, DeliveryMethod method, bool side = false)
 	{
+		if (!Connected)
+		{
+			return;
+		}
+		if (method == DeliveryMethod.Unreliable || method == DeliveryMethod.Sequenced)
+		{
+			sequencedWriter.Reset();
+			sequencedWriter.Put((byte)MessageType.Sequenced);
+			sequencedWriter.Put(nextSequence++);
+			sequencedWriter.Put(message.Data, 0, message.Length);
+			message = sequencedWriter;
+		}
 		if (peer != null)
 		{
 			// too big for unreliable, send reliable (gets split)
@@ -1042,12 +1217,12 @@ public class CoopSession : MonoBehaviour
 			{
 				method = DeliveryMethod.ReliableOrdered;
 			}
-			peer.Send(message, method);
+			peer.Send(message, side ? (byte)1 : (byte)0, method);
 		}
 		else if (eosPeer != null)
 		{
 			bool reliable = method == DeliveryMethod.ReliableOrdered || method == DeliveryMethod.ReliableUnordered || method == DeliveryMethod.ReliableSequenced;
-			eos.Send(eosPeer, message.Data, message.Length, reliable);
+			eos.Send(eosPeer, message.Data, message.Length, reliable, side);
 		}
 	}
 
