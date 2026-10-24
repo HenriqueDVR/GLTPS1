@@ -2,9 +2,13 @@
 
 A two-player co-op version of [GLTPS1](https://github.com/snavu/GLTPS1), the Girls' Last Tour fan game. One player is Chito, the other is Yuuri, and you travel the same world together.
 
-![image](https://github.com/Rumodeus/GLTPS1/assets/91802844/07a0dbdc-b604-4f4a-856e-1d7ff2c442dc)
+![Both players riding the Kettenkrad, each on their own screen](docs/coop-ride.gif)
 
-![image](https://github.com/Rumodeus/GLTPS1/assets/91802844/5eed27e9-5b4d-4311-a97c-553c23d0b183)
+*Two players' screens side by side, playing together.*
+
+![Chito and Yuuri together at the start](docs/coop-together.jpg)
+
+![Both girls on the Kettenkrad](docs/coop-kettenkrad.jpg)
 
 All credit for the game goes to its original developers. This fork only adds co-op and a few fixes.
 
