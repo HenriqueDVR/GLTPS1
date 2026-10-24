@@ -129,6 +129,17 @@ public class PlayerGunController : MonoBehaviour
         StartCoroutine(BoltAction(0.25f, fromOtherPlayer));
     }
 
+    // other player's shot: hit the same spot, but from this puppet's muzzle since she's drawn a bit behind
+    public void ShootFromPuppet(Vector3 origin, Vector3 direction)
+    {
+        if (Vector3.Distance(origin, muzzle.position) < 3f && Physics.Raycast(origin, direction, out RaycastHit hit, Mathf.Infinity, layerMask, QueryTriggerInteraction.Ignore))
+        {
+            origin = muzzle.position;
+            direction = (hit.point - origin).normalized;
+        }
+        Shoot(origin, direction, true);
+    }
+
 #if DUMP_WORLDGEN
     // -coopmisc
     public void DebugFire()

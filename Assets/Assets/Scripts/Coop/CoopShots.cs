@@ -133,7 +133,7 @@ public static class CoopShots
 		PlayerGunController componentInChildren = instance.Remote.GetComponentInChildren<PlayerGunController>();
 		if (componentInChildren != null)
 		{
-			componentInChildren.Shoot(instance.FromLayout(layout), direction, fromOtherPlayer: true);
+			componentInChildren.ShootFromPuppet(instance.FromLayout(layout), direction);
 		}
 #if DUMP_WORLDGEN
 		Debug.Log("CoopDebug shot from the other player at " + layout.ToString("F1") + " toward " + direction.ToString("F2"));
