@@ -62,6 +62,12 @@ public class PillarNodeAnimationEvents : MonoBehaviour
 #if DUMP_WORLDGEN
         Debug.Log("CoopTour ending event PauseGameState");
 #endif
+        // ending has its own song, fade the radio
+        PlaylistPlayer playlistPlayer = FindObjectOfType<PlaylistPlayer>();
+        if (playlistPlayer != null)
+        {
+            playlistPlayer.EndMusic();
+        }
         // can fire again after they're already off
         GameObject characterManager = GameObject.FindWithTag("CharacterManager");
         if (characterManager != null)

@@ -621,6 +621,15 @@
                     "initialStateCheck": false
                 },
                 {
+                    "name": "NextSong",
+                    "type": "Button",
+                    "id": "3803e68b-09d6-4610-9bda-8f7c2b95f1ed",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
                     "name": "Map",
                     "type": "Button",
                     "id": "661d7baf-0df6-4850-9e95-75c2274a21b8",
@@ -820,6 +829,28 @@
                     "processors": "",
                     "groups": "",
                     "action": "Light",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "eeaa1215-1b38-49a3-b972-495bd0319a10",
+                    "path": "<Keyboard>/n",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "NextSong",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "97126059-d445-437c-ab01-d3d7326fccd9",
+                    "path": "<Gamepad>/dpad/right",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Gamepad",
+                    "action": "NextSong",
                     "isComposite": false,
                     "isPartOfComposite": false
                 },

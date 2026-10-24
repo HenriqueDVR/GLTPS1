@@ -643,6 +643,15 @@ public partial class @InputActions: IInputActionCollection2, IDisposable
                     ""initialStateCheck"": false
                 },
                 {
+                    ""name"": ""NextSong"",
+                    ""type"": ""Button"",
+                    ""id"": ""3803e68b-09d6-4610-9bda-8f7c2b95f1ed"",
+                    ""expectedControlType"": ""Button"",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
+                },
+                {
                     ""name"": ""Map"",
                     ""type"": ""Button"",
                     ""id"": ""661d7baf-0df6-4850-9e95-75c2274a21b8"",
@@ -847,6 +856,28 @@ public partial class @InputActions: IInputActionCollection2, IDisposable
                 },
                 {
                     ""name"": """",
+                    ""id"": ""eeaa1215-1b38-49a3-b972-495bd0319a10"",
+                    ""path"": ""<Keyboard>/n"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": ""Keyboard&Mouse"",
+                    ""action"": ""NextSong"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""97126059-d445-437c-ab01-d3d7326fccd9"",
+                    ""path"": ""<Gamepad>/dpad/right"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": ""Gamepad"",
+                    ""action"": ""NextSong"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
                     ""id"": ""7d342e41-e939-4009-b3b6-734619188961"",
                     ""path"": ""<Keyboard>/leftCtrl"",
                     ""interactions"": """",
@@ -1002,6 +1033,7 @@ public partial class @InputActions: IInputActionCollection2, IDisposable
         m_Vehicle_Exit = m_Vehicle.FindAction("Exit", throwIfNotFound: true);
         m_Vehicle_Accelerate = m_Vehicle.FindAction("Accelerate", throwIfNotFound: true);
         m_Vehicle_Light = m_Vehicle.FindAction("Light", throwIfNotFound: true);
+        m_Vehicle_NextSong = m_Vehicle.FindAction("NextSong", throwIfNotFound: true);
         m_Vehicle_Map = m_Vehicle.FindAction("Map", throwIfNotFound: true);
         m_Vehicle_CameraZoom = m_Vehicle.FindAction("CameraZoom", throwIfNotFound: true);
         m_Vehicle_ADS = m_Vehicle.FindAction("ADS", throwIfNotFound: true);
@@ -1245,6 +1277,7 @@ public partial class @InputActions: IInputActionCollection2, IDisposable
     private readonly InputAction m_Vehicle_Exit;
     private readonly InputAction m_Vehicle_Accelerate;
     private readonly InputAction m_Vehicle_Light;
+    private readonly InputAction m_Vehicle_NextSong;
     private readonly InputAction m_Vehicle_Map;
     private readonly InputAction m_Vehicle_CameraZoom;
     private readonly InputAction m_Vehicle_ADS;
@@ -1257,6 +1290,7 @@ public partial class @InputActions: IInputActionCollection2, IDisposable
         public InputAction @Exit => m_Wrapper.m_Vehicle_Exit;
         public InputAction @Accelerate => m_Wrapper.m_Vehicle_Accelerate;
         public InputAction @Light => m_Wrapper.m_Vehicle_Light;
+        public InputAction @NextSong => m_Wrapper.m_Vehicle_NextSong;
         public InputAction @Map => m_Wrapper.m_Vehicle_Map;
         public InputAction @CameraZoom => m_Wrapper.m_Vehicle_CameraZoom;
         public InputAction @ADS => m_Wrapper.m_Vehicle_ADS;
@@ -1282,6 +1316,9 @@ public partial class @InputActions: IInputActionCollection2, IDisposable
             @Light.started += instance.OnLight;
             @Light.performed += instance.OnLight;
             @Light.canceled += instance.OnLight;
+            @NextSong.started += instance.OnNextSong;
+            @NextSong.performed += instance.OnNextSong;
+            @NextSong.canceled += instance.OnNextSong;
             @Map.started += instance.OnMap;
             @Map.performed += instance.OnMap;
             @Map.canceled += instance.OnMap;
@@ -1310,6 +1347,9 @@ public partial class @InputActions: IInputActionCollection2, IDisposable
             @Light.started -= instance.OnLight;
             @Light.performed -= instance.OnLight;
             @Light.canceled -= instance.OnLight;
+            @NextSong.started -= instance.OnNextSong;
+            @NextSong.performed -= instance.OnNextSong;
+            @NextSong.canceled -= instance.OnNextSong;
             @Map.started -= instance.OnMap;
             @Map.performed -= instance.OnMap;
             @Map.canceled -= instance.OnMap;
@@ -1410,6 +1450,7 @@ public partial class @InputActions: IInputActionCollection2, IDisposable
         void OnExit(InputAction.CallbackContext context);
         void OnAccelerate(InputAction.CallbackContext context);
         void OnLight(InputAction.CallbackContext context);
+        void OnNextSong(InputAction.CallbackContext context);
         void OnMap(InputAction.CallbackContext context);
         void OnCameraZoom(InputAction.CallbackContext context);
         void OnADS(InputAction.CallbackContext context);

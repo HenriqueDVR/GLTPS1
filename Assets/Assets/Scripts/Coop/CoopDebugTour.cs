@@ -7,6 +7,7 @@ using UnityEngine;
 // -coopkanazawa  host gets the map + some of his lines
 // -cooptravel    hop along the route to the pillar and try the elevator
 // -coopelevator  hop into the elevator and wait there
+// -coopnextsong  friend skips the song every 15s
 public class CoopDebugTour : MonoBehaviour
 {
 	private CoopSession session;
@@ -30,6 +31,20 @@ public class CoopDebugTour : MonoBehaviour
 		if (System.Array.IndexOf(commandLineArgs, "-coopelevator") >= 0)
 		{
 			StartCoroutine(StandInElevator());
+		}
+		if (System.Array.IndexOf(commandLineArgs, "-coopnextsong") >= 0 && !session.IsHost)
+		{
+			StartCoroutine(SkipSongs());
+		}
+	}
+
+	private IEnumerator SkipSongs()
+	{
+		while (true)
+		{
+			yield return new WaitForSeconds(15f);
+			Debug.Log("CoopDebug friend skips the song");
+			CoopMusic.Next();
 		}
 	}
 

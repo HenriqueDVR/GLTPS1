@@ -57,6 +57,8 @@ public class CoopSession : MonoBehaviour
 		KanazawaPoses = 22,
 		// pipe levels
 		Pipes = 23,
+		Music = 24,
+		MusicNext = 25,
 		// EOS only (no handshake there)
 		Hello = 100,
 		Welcome = 101,
@@ -82,7 +84,7 @@ public class CoopSession : MonoBehaviour
 	private const float lanHeadStart = 1f;
 
 	// bump on protocol changes
-	private const string connectionKey = "GLTPS1-coop-17";
+	private const string connectionKey = "GLTPS1-coop-18";
 
 	private const int gameplayScene = 1;
 
@@ -528,6 +530,7 @@ public class CoopSession : MonoBehaviour
 		hostSeed = 0uL;
 		CoopItem.ResetLevel();
 		CoopWeather.ResetLevel();
+		CoopMusic.ResetLevel();
 	}
 
 	private void CreateManager()
@@ -829,6 +832,7 @@ public class CoopSession : MonoBehaviour
 				WorldGenerator.RequestedSeed = @ulong;
 				CoopItem.ResetLevel();
 				CoopWeather.ResetLevel();
+				CoopMusic.ResetLevel();
 				Status = "Loading the host's world...";
 				SceneManager.LoadScene(gameplayScene);
 			}
@@ -839,6 +843,7 @@ public class CoopSession : MonoBehaviour
 				uint @uint = reader.GetUInt();
 				Warning = ((@uint == hostLayoutHash) ? "" : "Your friend's world came out different from yours. Make sure you both have the same version of the mod.");
 				CoopWeather.SendCurrent();
+				CoopMusic.SendCurrent();
 			}
 			break;
 		case MessageType.PlayerState:
@@ -869,6 +874,18 @@ public class CoopSession : MonoBehaviour
 			if (!IsHost)
 			{
 				CoopWeather.OnMessage(reader);
+			}
+			break;
+		case MessageType.Music:
+			if (!IsHost)
+			{
+				CoopMusic.OnMessage(reader);
+			}
+			break;
+		case MessageType.MusicNext:
+			if (IsHost)
+			{
+				CoopMusic.OnNextRequest();
 			}
 			break;
 		case MessageType.Downed:

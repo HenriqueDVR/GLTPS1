@@ -77,6 +77,7 @@ public class CharacterVehicleInteraction : MonoBehaviour
         playerInputScript.actions.Player.Interact.performed += Interact;
         playerInputScript.actions.Vehicle.Exit.performed += Exit;
         playerInputScript.actions.Vehicle.Light.performed += Light;
+        playerInputScript.actions.Vehicle.NextSong.performed += NextSong;
     }
 
     void OnDisable()
@@ -84,6 +85,7 @@ public class CharacterVehicleInteraction : MonoBehaviour
         playerInputScript.actions.Player.Interact.performed -= Interact;
         playerInputScript.actions.Vehicle.Exit.performed -= Exit;
         playerInputScript.actions.Vehicle.Light.performed -= Light;
+        playerInputScript.actions.Vehicle.NextSong.performed -= NextSong;
     }
 
     void Update()
@@ -385,6 +387,14 @@ public class CharacterVehicleInteraction : MonoBehaviour
                     audioSourceToggleLight.PlayOneShot(toggleLightOn);
                 }
             }
+        }
+    }
+
+    private void NextSong(InputAction.CallbackContext context)
+    {
+        if (context.performed && anim.GetCurrentAnimatorStateInfo(1).IsName("Ket Steer") && Time.timeScale == 1)
+        {
+            CoopMusic.Next();
         }
     }
 
