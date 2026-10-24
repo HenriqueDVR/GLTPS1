@@ -280,7 +280,23 @@ public class CoopMenu : MonoBehaviour
 			};
 			overlayStyle.normal.textColor = new Color(1f, 1f, 1f, 0.8f);
 		}
-		string text = (session.Connected ? ("co-op: together, " + session.Ping + " ms" + ((session.LinkKind != "") ? (" (" + session.LinkKind + ")") : "")) : (session.IsHost ? "co-op: waiting for your friend" : "co-op: connecting"));
+		string text;
+		if (session.Unstable)
+		{
+			text = "co-op: connection unstable, nothing heard for " + session.SilentFor.ToString("F0") + "s";
+		}
+		else if (session.Connected)
+		{
+			text = "co-op: together, " + session.Ping + " ms" + ((session.LinkKind != "") ? (" (" + session.LinkKind + ")") : "");
+		}
+		else if (session.Reconnecting)
+		{
+			text = "co-op: lost the host, reconnecting (" + session.ReconnectSecondsLeft.ToString("F0") + "s)";
+		}
+		else
+		{
+			text = session.IsHost ? "co-op: waiting for your friend" : "co-op: connecting";
+		}
 		if (session.Warning != "")
 		{
 			text = text + "\n" + session.Warning;

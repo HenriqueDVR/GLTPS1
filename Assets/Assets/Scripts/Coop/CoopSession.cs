@@ -101,6 +101,40 @@ public class CoopSession : MonoBehaviour
 	// partner this quiet is gone, let a new join take the slot
 	private const float stalePartnerSeconds = 3f;
 
+	// this quiet in game, tell the player
+	private const float unstableSeconds = 1.5f;
+
+	// litenetlib pings go on through a level load, so this much silence means the link is gone
+	private const float deadAfterDirect = 6f;
+
+	// EOS pings run on the main thread and stop while the host loads
+	private const float deadAfterEpic = 12f;
+
+	// friend keeps trying the same invite this long after a drop
+	private const float reconnectWindow = 30f;
+
+	private const float retryDelay = 2f;
+
+	private string lastInvite;
+
+	private float reconnectUntil = -1f;
+
+	private float nextRetry;
+
+	// friend: which world we're in, so a reconnect into the same one skips the reload
+	private ulong joinedSeed;
+
+	private int joinedLevelRun;
+
+	private uint joinedLayoutHash;
+
+	private bool reconnected;
+
+	private bool skipRejoin;
+
+	// host: bumped on every level load
+	private int hostLevelRun;
+
 	private ushort nextSequence;
 
 	private readonly Dictionary<byte, ushort> lastSequence = new Dictionary<byte, ushort>();
@@ -119,7 +153,13 @@ public class CoopSession : MonoBehaviour
 
 	private ProductUserId eosTarget;
 
-	private bool eosHelloSent;
+	// hello repeats until welcomed, the host may not be ready for the first one
+	private const float helloInterval = 1f;
+
+	private float nextHello;
+
+	// friend: this join attempt. host: the attempt it let in, so repeats of it are just re-welcomed
+	private int eosAttempt;
 
 	private float eosStartTime;
 
@@ -190,6 +230,27 @@ public class CoopSession : MonoBehaviour
 	private int link;
 
 	private bool Simulating => simLag > 0f || simJitter > 0f || simLoss > 0f;
+
+	// -coopdropat <s>: friend's link dies silently that long into the level, host isn't told
+	private float simDropAt = -1f;
+
+	private void SimulateDrop()
+	{
+		if (simDropAt < 0f || IsHost || !Together || Time.timeSinceLevelLoad < simDropAt)
+		{
+			return;
+		}
+		simDropAt = -1f;
+		Debug.Log("Coop: simulating a dropped link");
+		if (manager != null)
+		{
+			manager.Stop(sendDisconnectMessages: false);
+			manager = null;
+		}
+		peer = null;
+		eosPeer = null;
+		LinkDown("simulated drop");
+	}
 #endif
 
 	public static CoopSession Instance { get; private set; }
@@ -247,6 +308,24 @@ public class CoopSession : MonoBehaviour
 			return (eosPeer != null) ? eosRoundTrip : 0;
 		}
 	}
+
+	public float SilentFor
+	{
+		get
+		{
+			if (peer != null)
+			{
+				return peer.TimeSinceLastPacket / 1000f;
+			}
+			return (eosPeer != null) ? (Time.unscaledTime - lastEosPacket) : 0f;
+		}
+	}
+
+	public bool Unstable => Together && SilentFor > unstableSeconds;
+
+	public bool Reconnecting => reconnectUntil >= 0f;
+
+	public float ReconnectSecondsLeft => Mathf.Max(0f, reconnectUntil - Time.unscaledTime);
 
 	public string LinkKind { get; private set; } = "";
 
@@ -349,6 +428,10 @@ public class CoopSession : MonoBehaviour
 			{
 				simLoss = loss / 100f;
 			}
+			else if (commandLineArgs[i] == "-coopdropat" && float.TryParse(text, out var dropAt))
+			{
+				simDropAt = dropAt;
+			}
 #endif
 		}
 		SceneManager.sceneLoaded += OnSceneLoaded;
@@ -419,8 +502,16 @@ public class CoopSession : MonoBehaviour
 			}
 		}
 		UpdateEosJoin();
+		UpdateReconnect();
+		// don't sit out the 20s transport timeout
+		if (!IsHost && Together && SilentFor > ((peer != null) ? deadAfterDirect : deadAfterEpic))
+		{
+			Debug.Log("Coop: nothing from the host for " + SilentFor.ToString("F0") + "s");
+			LinkDown("no answer");
+		}
 #if DUMP_WORLDGEN
 		ReleaseDelayed();
+		SimulateDrop();
 #endif
 		if (eosPeer != null && Time.unscaledTime >= nextEosPing)
 		{
@@ -477,11 +568,26 @@ public class CoopSession : MonoBehaviour
 
 	public void Join(string inviteText)
 	{
-		List<IPEndPoint> list = CoopInvite.Decode(inviteText, DefaultPort, out string eosId, out bool publicAddress);
+		if (!ReadInvite(inviteText, out List<IPEndPoint> list, out string eosId, out bool publicAddress, out string problem))
+		{
+			Status = problem;
+			return;
+		}
+		Leave();
+		lastInvite = inviteText;
+		Connect(list, eosId, publicAddress);
+		Status = "Connecting...";
+		Warning = "";
+	}
+
+	private bool ReadInvite(string inviteText, out List<IPEndPoint> list, out string eosId, out bool publicAddress, out string problem)
+	{
+		problem = null;
+		list = CoopInvite.Decode(inviteText, DefaultPort, out eosId, out publicAddress);
 		if (list.Count == 0 && eosId == null)
 		{
-			Status = "That invite doesn't look right. Copy it again from your friend.";
-			return;
+			problem = "That invite doesn't look right. Copy it again from your friend.";
+			return false;
 		}
 		if (Choice == ConnectionChoice.DirectOnly)
 		{
@@ -493,15 +599,17 @@ public class CoopSession : MonoBehaviour
 		}
 		if (list.Count == 0 && eosId == null)
 		{
-			Status = (Choice == ConnectionChoice.DirectOnly) ? "That invite only works through Epic: set the connection to auto." : "That invite has no Epic connection: set the connection to auto.";
-			return;
+			problem = (Choice == ConnectionChoice.DirectOnly) ? "That invite only works through Epic: set the connection to auto." : "That invite has no Epic connection: set the connection to auto.";
+			return false;
 		}
-		Leave();
+		return true;
+	}
+
+	private void Connect(List<IPEndPoint> list, string eosId, bool publicAddress)
+	{
 		CreateManager();
 		manager.Start();
 		Mode = SessionMode.Joining;
-		Status = "Connecting...";
-		Warning = "";
 #if DUMP_WORLDGEN
 		if (eosOnly)
 		{
@@ -519,10 +627,62 @@ public class CoopSession : MonoBehaviour
 		if (eosId != null)
 		{
 			eosTarget = ProductUserId.FromString(eosId);
-			eosHelloSent = false;
+			nextHello = 0f;
+			eosAttempt = UnityEngine.Random.Range(1, int.MaxValue);
 			// direct gets a head start
 			eosStartTime = Time.unscaledTime + ((list.Count == 0) ? 0f : (publicAddress ? directHeadStart : lanHeadStart));
 			eosDeadline = eosStartTime + eosJoinTimeout;
+			if (Reconnecting)
+			{
+				eosDeadline = Mathf.Min(eosDeadline, reconnectUntil);
+			}
+		}
+	}
+
+	// friend dropped mid game: stay in the world and keep knocking
+	private bool StartReconnect(string reason)
+	{
+		if (IsHost || lastInvite == null || SceneManager.GetActiveScene().buildIndex != gameplayScene)
+		{
+			return false;
+		}
+		Debug.Log("Coop: lost the host (" + reason + "), reconnecting");
+		reconnectUntil = Time.unscaledTime + reconnectWindow;
+		Status = "Lost the host (" + reason + "). Reconnecting...";
+		PartnerLeft?.Invoke();
+		RetryJoin();
+		return true;
+	}
+
+	private void RetryJoin()
+	{
+		nextRetry = Time.unscaledTime + retryDelay;
+		CloseLinks();
+		if (ReadInvite(lastInvite, out List<IPEndPoint> list, out string eosId, out bool publicAddress, out string _))
+		{
+			Connect(list, eosId, publicAddress);
+		}
+	}
+
+	private void UpdateReconnect()
+	{
+		if (!Reconnecting || Connected)
+		{
+			return;
+		}
+		if (Time.unscaledTime > reconnectUntil)
+		{
+			reconnectUntil = -1f;
+			Leave();
+			Status = "Lost the host and couldn't reconnect.";
+			if (SceneManager.GetActiveScene().buildIndex == gameplayScene)
+			{
+				SceneManager.LoadScene(titleScene);
+			}
+		}
+		else if (pendingConnections.Count == 0 && eosTarget == null && Time.unscaledTime >= nextRetry)
+		{
+			RetryJoin();
 		}
 	}
 
@@ -532,12 +692,13 @@ public class CoopSession : MonoBehaviour
 		{
 			return;
 		}
-		if (eos.State == CoopEos.LoginState.Ready && !eosHelloSent && Time.unscaledTime >= eosStartTime)
+		if (eos.State == CoopEos.LoginState.Ready && Time.unscaledTime >= eosStartTime && Time.unscaledTime >= nextHello)
 		{
-			eosHelloSent = true;
+			nextHello = Time.unscaledTime + helloInterval;
 			writer.Reset();
 			writer.Put((byte)MessageType.Hello);
 			writer.Put(connectionKey);
+			writer.Put(eosAttempt);
 			eos.Send(eosTarget, writer.Data, writer.Length, reliable: true);
 		}
 		if (eos.State == CoopEos.LoginState.Failed || Time.unscaledTime > eosDeadline)
@@ -551,6 +712,11 @@ public class CoopSession : MonoBehaviour
 
 	private void FailIfNothingLeft(string reason)
 	{
+		// UpdateReconnect tries again
+		if (Reconnecting)
+		{
+			return;
+		}
 		if (Mode == SessionMode.Joining && !Connected && pendingConnections.Count == 0 && eosTarget == null)
 		{
 			Status = "Couldn't connect (" + reason + "). Check the invite, and that the host is still hosting.";
@@ -558,7 +724,7 @@ public class CoopSession : MonoBehaviour
 		}
 	}
 
-	public void Leave()
+	private void CloseLinks()
 	{
 		if (manager != null)
 		{
@@ -581,6 +747,16 @@ public class CoopSession : MonoBehaviour
 #if DUMP_WORLDGEN
 		link++;
 #endif
+	}
+
+	public void Leave()
+	{
+		CloseLinks();
+		reconnectUntil = -1f;
+		reconnected = false;
+		skipRejoin = false;
+		lastInvite = null;
+		joinedSeed = 0uL;
 		PortOpener?.Close();
 		PortOpener = null;
 		lastPortDetail = null;
@@ -612,7 +788,11 @@ public class CoopSession : MonoBehaviour
 			// 1 = shots/ammo, so a resend there doesn't hold up the rest
 			ChannelsCount = 2
 		};
-		previousRunInBackground = Application.runInBackground;
+		// a reconnect makes a new one mid session
+		if (Mode == SessionMode.Off)
+		{
+			previousRunInBackground = Application.runInBackground;
+		}
 		Application.runInBackground = true;
 	}
 
@@ -685,10 +865,23 @@ public class CoopSession : MonoBehaviour
 				SendStart();
 				PartnerJoined?.Invoke();
 			}
-			else if (autoStart && SceneManager.GetActiveScene().buildIndex == titleScene)
+			else if (SceneManager.GetActiveScene().buildIndex == titleScene)
 			{
-				AutoStartGame();
+				// they may be reconnecting from inside the old world
+				writer.Reset();
+				writer.Put((byte)MessageType.Menu);
+				Send(writer, DeliveryMethod.ReliableOrdered);
+				if (autoStart)
+				{
+					AutoStartGame();
+				}
 			}
+		}
+		else if (Reconnecting)
+		{
+			reconnectUntil = -1f;
+			reconnected = true;
+			Status = "Reconnected. Catching up...";
 		}
 		else
 		{
@@ -705,16 +898,21 @@ public class CoopSession : MonoBehaviour
 			return;
 		}
 		peer = null;
-		LinkDown(info.Reason.ToString());
+		LinkDown(info.Reason.ToString(), info.Reason != DisconnectReason.RemoteConnectionClose && info.Reason != DisconnectReason.ConnectionRejected);
 	}
 
-	private void LinkDown(string reason)
+	// canRetry false when the host closed it on purpose
+	private void LinkDown(string reason, bool canRetry = true)
 	{
 		LinkKind = "";
 		if (IsHost)
 		{
 			Status = "Your friend left. Waiting for someone to join...";
 			PartnerLeft?.Invoke();
+			return;
+		}
+		if (canRetry && StartReconnect(reason))
+		{
 			return;
 		}
 		Status = "Disconnected from the host (" + reason + ").";
@@ -738,7 +936,8 @@ public class CoopSession : MonoBehaviour
 		return false;
 	}
 
-	private void DropStalePartner()
+	// newcomer: same EOS user coming back, their new hello is on that same connection so keep it open
+	private void DropStalePartner(ProductUserId newcomer = null)
 	{
 		Debug.Log("Coop: the old connection went quiet; letting the new one in");
 		if (peer != null)
@@ -749,7 +948,10 @@ public class CoopSession : MonoBehaviour
 		}
 		if (eosPeer != null)
 		{
-			eos.Close(eosPeer);
+			if (!SameUser(eosPeer, newcomer))
+			{
+				eos.Close(eosPeer);
+			}
 			eosPeer = null;
 		}
 		LinkDown("timed out");
@@ -793,9 +995,10 @@ public class CoopSession : MonoBehaviour
 		if (SameUser(remote, eosPeer))
 		{
 			eosPeer = null;
-			LinkDown(reason.ToString());
+			LinkDown(reason.ToString(), reason != ConnectionClosedReason.ClosedByPeer);
 		}
-		else if (SameUser(remote, eosTarget) && !Connected)
+		// our own close of the old link can land after a reconnect already reopened it
+		else if (SameUser(remote, eosTarget) && !Connected && reason != ConnectionClosedReason.ClosedByLocalUser)
 		{
 			eosTarget = null;
 			FailIfNothingLeft(reason.ToString());
@@ -815,21 +1018,43 @@ public class CoopSession : MonoBehaviour
 			return;
 		}
 #endif
+		// pings count too, or a quiet title screen looks like a dead link
+		if (SameUser(from, eosPeer))
+		{
+			lastEosPacket = Time.unscaledTime;
+		}
 		NetDataReader reader = new NetDataReader(data, 0, length);
 		MessageType messageType = (MessageType)data[0];
 		switch (messageType)
 		{
 		case MessageType.Hello:
+		{
 			reader.GetByte();
-			if (IsHost && PartnerIsStale())
+			string key = reader.GetString();
+			int attempt = (reader.AvailableBytes >= 4) ? reader.GetInt() : 0;
+			if (!IsHost)
 			{
-				DropStalePartner();
+				return;
 			}
-			if (IsHost && !Connected)
+			if (SameUser(from, eosPeer) && attempt == eosAttempt)
+			{
+				// repeat of the hello we took, the welcome is still on its way
+				writer.Reset();
+				writer.Put((byte)MessageType.Welcome);
+				eos.Send(from, writer.Data, writer.Length, reliable: true);
+				return;
+			}
+			// a new hello from the partner we have means they lost us and came back, no need to wait for stale
+			if (PartnerIsStale() || SameUser(from, eosPeer))
+			{
+				DropStalePartner(from);
+			}
+			if (!Connected)
 			{
 				writer.Reset();
-				if (reader.GetString() == connectionKey)
+				if (key == connectionKey)
 				{
+					eosAttempt = attempt;
 					eosPeer = from;
 					lastEosPacket = Time.unscaledTime;
 					writer.Put((byte)MessageType.Welcome);
@@ -844,6 +1069,7 @@ public class CoopSession : MonoBehaviour
 				}
 			}
 			return;
+		}
 		case MessageType.Welcome:
 			if (Mode == SessionMode.Joining && !Connected && SameUser(from, eosTarget))
 			{
@@ -875,7 +1101,6 @@ public class CoopSession : MonoBehaviour
 		}
 		if (SameUser(from, eosPeer))
 		{
-			lastEosPacket = Time.unscaledTime;
 			Dispatch(reader);
 		}
 	}
@@ -981,10 +1206,27 @@ public class CoopSession : MonoBehaviour
 		case MessageType.Start:
 			if (!IsHost)
 			{
-				GameSave.RestoreTaken = null;
-				CoopPipes.SetRestore(null);
 				ulong @ulong = reader.GetULong();
 				string @string = reader.GetString();
+				int levelRun = reader.GetInt();
+				bool resume = reconnected && joinedSeed == @ulong && joinedLevelRun == levelRun && SceneManager.GetActiveScene().buildIndex == gameplayScene;
+				reconnected = false;
+				skipRejoin = resume;
+				if (resume)
+				{
+					// same world still running, carry on from where we are
+					Debug.Log("Coop: back in the same world, no reload");
+					writer.Reset();
+					writer.Put((byte)MessageType.Ready);
+					writer.Put(joinedLayoutHash);
+					Send(writer, DeliveryMethod.ReliableOrdered);
+					Status = "Playing together.";
+					break;
+				}
+				joinedSeed = @ulong;
+				joinedLevelRun = levelRun;
+				GameSave.RestoreTaken = null;
+				CoopPipes.SetRestore(null);
 				if (!string.IsNullOrEmpty(@string))
 				{
 					PlayerPrefs.SetString(difficultyKey, @string);
@@ -1074,7 +1316,12 @@ public class CoopSession : MonoBehaviour
 			CoopShots.OnAmmoState(reader);
 			break;
 		case MessageType.Rejoin:
-			if (!IsHost)
+			// after a resume our own spot is newer than the host's copy
+			if (skipRejoin)
+			{
+				skipRejoin = false;
+			}
+			else if (!IsHost)
 			{
 				CoopGirlState.OnRejoin(reader);
 			}
@@ -1124,6 +1371,7 @@ public class CoopSession : MonoBehaviour
 		{
 			hostSeed = generator.Seed;
 			hostLayoutHash = generator.LayoutHash;
+			hostLevelRun++;
 			CoopItem.ResetLevel();
 			Warning = "";
 			if (Connected)
@@ -1133,6 +1381,7 @@ public class CoopSession : MonoBehaviour
 		}
 		else if (Connected)
 		{
+			joinedLayoutHash = generator.LayoutHash;
 			writer.Reset();
 			writer.Put((byte)MessageType.Ready);
 			writer.Put(generator.LayoutHash);
@@ -1147,6 +1396,7 @@ public class CoopSession : MonoBehaviour
 		writer.Put((byte)MessageType.Start);
 		writer.Put(hostSeed);
 		writer.Put(PlayerPrefs.GetString(difficultyKey, ""));
+		writer.Put(hostLevelRun);
 		Send(writer, DeliveryMethod.ReliableOrdered);
 		CoopItem.SendTakenList();
 		CoopPipes.Send();
@@ -1228,6 +1478,12 @@ public class CoopSession : MonoBehaviour
 
 	private void OnSceneLoaded(Scene scene, LoadSceneMode loadMode)
 	{
+		// they quit to the title while we were still trying
+		if (scene.buildIndex == titleScene && Reconnecting)
+		{
+			Leave();
+			Status = "Stopped reconnecting.";
+		}
 		if (scene.buildIndex == titleScene)
 		{
 			CoopGirlState.HostKept = null;
