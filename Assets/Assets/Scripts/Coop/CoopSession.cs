@@ -61,6 +61,8 @@ public class CoopSession : MonoBehaviour
 		MusicNext = 25,
 		// numbered wrapper so stale unreliable ones get dropped (EOS has no sequenced)
 		Sequenced = 26,
+		// driver got off, where the ket ended up
+		KetPlaced = 27,
 		// EOS only (no handshake there)
 		Hello = 100,
 		Welcome = 101,
@@ -1334,6 +1336,9 @@ public class CoopSession : MonoBehaviour
 			break;
 		case MessageType.Barrel:
 			CoopBarrel.OnMessage(reader);
+			break;
+		case MessageType.KetPlaced:
+			CoopKettenkrad.Instance?.OnPlaced(reader);
 			break;
 		case MessageType.RestartLevel:
 			if (IsHost && SceneManager.GetActiveScene().buildIndex == gameplayScene)

@@ -127,6 +127,94 @@ public class CoopKettenkrad : MonoBehaviour
 		}
 	}
 
+	private readonly NetDataWriter placeWriter = new NetDataWriter();
+
+	private SeatState lastLocalSeat;
+
+	// again a bit later in case it rolled after she got off
+	private float resendPlaceAt = -1f;
+
+	// their final spot, for when our playback of their drive catches up
+	private bool hasPendingPlace;
+
+	private Vector3 pendingPlace;
+
+	private Quaternion pendingRotation;
+
+	private static bool Driving(SeatState seat)
+	{
+		return seat == SeatState.Boarding || seat == SeatState.Driver;
+	}
+
+	private void Update()
+	{
+		if (vehicle == null || !CoopSession.Together)
+		{
+			return;
+		}
+		SeatState seat = LocalSeat;
+		if (Driving(lastLocalSeat) && !Driving(seat) && !remoteDriving)
+		{
+			SendPlaced();
+			resendPlaceAt = Time.unscaledTime + 1f;
+		}
+		lastLocalSeat = seat;
+		if (resendPlaceAt >= 0f && Time.unscaledTime >= resendPlaceAt)
+		{
+			resendPlaceAt = -1f;
+			if (!Driving(seat) && !remoteDriving)
+			{
+				SendPlaced();
+			}
+		}
+	}
+
+	private void SendPlaced()
+	{
+		Vector3 layout = CoopPlayers.Instance.ToLayout(vehicle.transform.position);
+		Quaternion rotation = vehicle.transform.rotation;
+		placeWriter.Reset();
+		placeWriter.Put((byte)CoopSession.MessageType.KetPlaced);
+		placeWriter.Put(layout.x);
+		placeWriter.Put(layout.y);
+		placeWriter.Put(layout.z);
+		placeWriter.Put(rotation.x);
+		placeWriter.Put(rotation.y);
+		placeWriter.Put(rotation.z);
+		placeWriter.Put(rotation.w);
+		CoopSession.Instance.Send(placeWriter, LiteNetLib.DeliveryMethod.ReliableOrdered);
+	}
+
+	public void OnPlaced(NetDataReader reader)
+	{
+		Vector3 layout = new Vector3(reader.GetFloat(), reader.GetFloat(), reader.GetFloat());
+		Quaternion rotation = new Quaternion(reader.GetFloat(), reader.GetFloat(), reader.GetFloat(), reader.GetFloat());
+		if (vehicle == null || Driving(LocalSeat))
+		{
+			return;
+		}
+		pendingPlace = layout;
+		pendingRotation = rotation;
+		hasPendingPlace = true;
+		if (!remoteDriving)
+		{
+			ApplyPendingPlace();
+		}
+	}
+
+	private void ApplyPendingPlace()
+	{
+		if (hasPendingPlace && CoopPlayers.Instance != null && !Driving(LocalSeat))
+		{
+			hasPendingPlace = false;
+			Vector3 position = CoopPlayers.Instance.FromLayout(pendingPlace);
+#if DUMP_WORLDGEN
+			Debug.Log("CoopKet placed where the driver left it, was " + Vector3.Distance(vehicle.transform.position, position).ToString("F2") + "m off");
+#endif
+			Place(position, pendingRotation);
+		}
+	}
+
 	public void WriteVehicle(NetDataWriter writer, Vector3 layoutPosition)
 	{
 		Quaternion rotation = vehicle.transform.rotation;
@@ -174,6 +262,7 @@ public class CoopKettenkrad : MonoBehaviour
 
 	public void OnPartnerLeft()
 	{
+		hasPendingPlace = false;
 		SetRemoteDriving(false);
 		remoteSeat = SeatState.Off;
 	}
@@ -206,6 +295,7 @@ public class CoopKettenkrad : MonoBehaviour
 			body.constraints = RigidbodyConstraints.FreezeAll;
 			vehicle.EngineAudio.Stop();
 			vehicleAnimator.SetFloat(velocityParameter, 0f);
+			ApplyPendingPlace();
 		}
 	}
 
