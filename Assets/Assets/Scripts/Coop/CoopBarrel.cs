@@ -191,6 +191,19 @@ public class CoopBarrel : MonoBehaviour
 		{
 		case Op.TookFromVehicle:
 		case Op.Took:
+		{
+			// both grabbed it before hearing about the other: host keeps it
+			CharacterBarrelInteraction localCarrier = instance.Local.GetComponentInChildren<CharacterBarrelInteraction>();
+			if (!remoteOwned && barrel != null && localCarrier != null && localCarrier.isCarrying)
+			{
+				if (CoopSession.Instance.IsHost)
+				{
+					Send(Op.Took);
+					break;
+				}
+				localCarrier.LoseBarrel();
+				CoopNotice.Show(instance.Remote.name.Replace("Parent", "") + " got to the barrel first.");
+			}
 			if (barrel == null)
 			{
 				barrel = GameObject.FindWithTag("Barrel");
@@ -204,6 +217,7 @@ public class CoopBarrel : MonoBehaviour
 			barrel.GetComponent<Rigidbody>().isKinematic = true;
 			componentInChildren.ShowCarrying(barrel);
 			break;
+		}
 		case Op.Dropped:
 		case Op.Pose:
 		{

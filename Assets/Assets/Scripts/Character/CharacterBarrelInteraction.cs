@@ -104,6 +104,16 @@ public class CharacterBarrelInteraction : MonoBehaviour
         return Instantiate(barrelPrefab, transform.position, transform.rotation);
     }
 
+    // coop: both grabbed it at once and the host won, let go without dropping it
+    public void LoseBarrel()
+    {
+        playerInputScript.actions.Player.Jump.Enable();
+        playerInputScript.actions.Player.Sprint.Enable();
+        SetCarryParameters(false, 0.25f, 0.23f, false, false);
+        newBarrel = null;
+        isPickupable = false;
+    }
+
     public void ShowCarrying(GameObject barrel)
     {
         newBarrel = barrel;
