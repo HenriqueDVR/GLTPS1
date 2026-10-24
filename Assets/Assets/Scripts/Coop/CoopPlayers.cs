@@ -62,8 +62,43 @@ public class CoopPlayers : MonoBehaviour
 
 	private const float sendInterval = 0.05f;
 
-	// render a bit in the past so there's always 2 snapshots
-	private const float interpolationDelay = 0.12f;
+	// render a bit in the past so there's always 2 snapshots. grows with jitter
+	private const float minDelay = 0.08f;
+
+	private const float maxDelay = 0.4f;
+
+	private float renderDelay = 0.12f;
+
+	// bumped each time we run out of snapshots, fades back
+	private float underrunExtra;
+
+	private bool wasOver;
+
+	// keep her moving this long when packets stop
+	private const float maxExtrapolation = 0.25f;
+
+	private const float maxExtrapolationSpeed = 12f;
+
+	// blends out the jump when real data replaces a guess
+	private const float correctionTime = 0.12f;
+
+	private Vector3 correction;
+
+	private Vector3 vehicleCorrection;
+
+	private bool wasExtrapolating;
+
+	private bool vehicleWasExtrapolating;
+
+	private readonly List<float> lateness = new List<float>();
+
+	private CharacterController localController;
+
+	private SetPositionConstraintElevator localElevator;
+
+	private PlayerGunMovement localGun;
+
+	private PlayerGunMovement remoteGun;
 
 	// clock offset = smallest (arrival - send) seen in this window
 	private const float clockWindow = 3f;
@@ -175,6 +210,10 @@ public class CoopPlayers : MonoBehaviour
 		AddWaterCatcher(Remote, Local);
 		localAnimator = Local.GetComponentInChildren<Animator>();
 		remoteAnimator = Remote.GetComponentInChildren<Animator>();
+		localController = Local.GetComponent<CharacterController>();
+		localElevator = Local.GetComponent<SetPositionConstraintElevator>();
+		localGun = Local.GetComponentInChildren<PlayerGunMovement>(true);
+		remoteGun = Remote.GetComponentInChildren<PlayerGunMovement>(true);
 		localParameters = System.Array.FindAll(localAnimator.parameters, (AnimatorControllerParameter p) => p.type != AnimatorControllerParameterType.Trigger);
 		AnimatorControllerParameter[] parameters = remoteAnimator.parameters;
 		foreach (AnimatorControllerParameter animatorControllerParameter in parameters)
@@ -302,6 +341,11 @@ public class CoopPlayers : MonoBehaviour
 
 	private float nextSmoothLog;
 
+	// frames past the newest snapshot, and how far past
+	private int debugOverFrames;
+
+	private float debugMaxOver;
+
 	// -coopsmooth
 	private void DebugSmoothness()
 	{
@@ -321,7 +365,9 @@ public class CoopPlayers : MonoBehaviour
 		if (Time.unscaledTime >= nextSmoothLog)
 		{
 			nextSmoothLog = Time.unscaledTime + 2f;
-			Debug.Log("CoopSmooth girl " + Summary(remoteSpeeds) + " ket " + Summary(vehicleSpeeds) + " fps " + (remoteSpeeds.Count / 2f).ToString("F0") + " t " + Time.timeSinceLevelLoad.ToString("F0"));
+			Debug.Log("CoopSmooth girl " + Summary(remoteSpeeds) + " ket " + Summary(vehicleSpeeds) + " fps " + (remoteSpeeds.Count / 2f).ToString("F0") + " delay " + renderDelay.ToString("F2") + " over " + (remoteSpeeds.Count > 0 ? (100f * debugOverFrames / remoteSpeeds.Count) : 0f).ToString("F0") + "% maxover " + debugMaxOver.ToString("F2") + " ping " + session.Ping + " t " + Time.timeSinceLevelLoad.ToString("F0"));
+			debugOverFrames = 0;
+			debugMaxOver = 0f;
 			remoteSpeeds.Clear();
 			vehicleSpeeds.Clear();
 		}
@@ -429,7 +475,8 @@ public class CoopPlayers : MonoBehaviour
 		if (System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-coopwalk") >= 0)
 		{
 			CharacterController component = Local.GetComponent<CharacterController>();
-			Local.Rotate(0f, 20f * Time.deltaTime, 0f);
+			// tight circle, wider one reaches the hole left of spawn
+			Local.Rotate(0f, 45f * Time.deltaTime, 0f);
 			component.Move((Local.forward * 4f + Vector3.down * 2f) * Time.deltaTime);
 			localAnimator.SetFloat(speedParameter, 0.6f);
 		}
@@ -705,9 +752,8 @@ public class CoopPlayers : MonoBehaviour
 		{
 			coopKettenkrad.WriteVehicle(writer, ToLayout(coopKettenkrad.VehiclePosition));
 		}
-		Transform elevator = Local.GetComponent<SetPositionConstraintElevator>().target;
+		Transform elevator = localElevator.target;
 		writer.Put(elevator != null ? Local.position.y - elevator.position.y : float.NaN);
-		PlayerGunMovement localGun = Local.GetComponentInChildren<PlayerGunMovement>(true);
 		Vector3 aim = localGun != null ? localGun.AimCamera.eulerAngles : Vector3.zero;
 		writer.Put(aim.x);
 		writer.Put(aim.y);
@@ -776,7 +822,12 @@ public class CoopPlayers : MonoBehaviour
 		item.AimYaw = reader.GetFloat();
 		if (snapshots.Count > 0 && item.Time <= snapshots[snapshots.Count - 1].Time)
 		{
-			// out of order or they reloaded, start over
+			// late one, newer already here
+			if (snapshots[snapshots.Count - 1].Time - item.Time < 1f)
+			{
+				return;
+			}
+			// their clock went back, they restarted
 			snapshots.Clear();
 		}
 		snapshots.Add(item);
@@ -792,7 +843,8 @@ public class CoopPlayers : MonoBehaviour
 		{
 			return;
 		}
-		float num = Time.unscaledTime - clockOffset - interpolationDelay;
+		UpdateRenderDelay();
+		float num = Time.unscaledTime - clockOffset - renderDelay;
 		while (snapshots.Count > 2 && snapshots[1].Time <= num)
 		{
 			snapshots.RemoveAt(0);
@@ -805,17 +857,42 @@ public class CoopPlayers : MonoBehaviour
 		{
 			t = 1f;
 		}
-		Vector3 vector = FromLayout(Vector3.Lerp(snapshot.Position, snapshot2.Position, t));
+		// past the newest one: packets are late
+		float over = (snapshots.Count > 1) ? (num - snapshot2.Time) : 0f;
+		if (over > 0f && !wasOver)
+		{
+			underrunExtra = Mathf.Min(underrunExtra + 0.02f, 0.15f);
+		}
+		wasOver = over > 0f;
+#if DUMP_WORLDGEN
+		if (over > 0f)
+		{
+			debugOverFrames++;
+			debugMaxOver = Mathf.Max(debugMaxOver, over);
+		}
+#endif
+		Vector3 layout = Vector3.Lerp(snapshot.Position, snapshot2.Position, t);
+		bool extrapolating = over > 0f && snapshot2.Seat == CoopKettenkrad.SeatState.Off && float.IsNaN(snapshot2.ElevatorHeight);
+		if (extrapolating)
+		{
+			layout += Extrapolate(snapshot.Position, snapshot2.Position, snapshot2.Time - snapshot.Time, over);
+		}
+		Vector3 vector = FromLayout(layout);
 		if (Vector3.Distance(Remote.position, vector) > snapDistance)
 		{
 			// teleport, snap
 			snapshots.RemoveRange(0, snapshots.Count - 1);
 			vector = FromLayout(snapshots[0].Position);
+			correction = Vector3.zero;
+		}
+		else
+		{
+			vector = Smooth(vector, Remote.position, extrapolating, ref wasExtrapolating, ref correction);
 		}
 		PinRemoteToElevator(ref vector, snapshot2.ElevatorHeight);
 		Remote.position = vector;
 		Remote.rotation = Quaternion.Euler(0f, Mathf.LerpAngle(snapshot.RootYaw, snapshot2.RootYaw, t), 0f);
-		ApplyRemoteVehicle(snapshot, snapshot2, t);
+		ApplyRemoteVehicle(snapshot, snapshot2, t, over);
 		remoteAnimator.transform.rotation = Remote.rotation * Quaternion.Euler(0f, Mathf.LerpAngle(snapshot.ModelYaw, snapshot2.ModelYaw, t), 0f);
 		SyncParameters(snapshot, snapshot2, t);
 		SyncStates(snapshot2);
@@ -835,6 +912,52 @@ public class CoopPlayers : MonoBehaviour
 			debugMountLast = debugRoot.position;
 		}
 #endif
+	}
+
+	private static Vector3 Extrapolate(Vector3 from, Vector3 to, float span, float over)
+	{
+		if (span <= 0f)
+		{
+			return Vector3.zero;
+		}
+		Vector3 velocity = Vector3.ClampMagnitude((to - from) / span, maxExtrapolationSpeed);
+		return velocity * Mathf.Min(over, maxExtrapolation);
+	}
+
+	// when the guess ends, start from where she's shown and ease onto the real path
+	private static Vector3 Smooth(Vector3 target, Vector3 shown, bool extrapolating, ref bool wasExtrapolating, ref Vector3 offset)
+	{
+		if (wasExtrapolating && !extrapolating)
+		{
+			offset = shown - target;
+			if (offset.magnitude > 3f)
+			{
+				offset = Vector3.zero;
+			}
+		}
+		wasExtrapolating = extrapolating;
+		offset *= Mathf.Exp(-Time.deltaTime / correctionTime);
+		return target + offset;
+	}
+
+	// enough behind to cover the worst recent lateness
+	private void UpdateRenderDelay()
+	{
+		lateness.Clear();
+		foreach (Vector2 clockSample in clockSamples)
+		{
+			lateness.Add(clockSample.y - clockOffset);
+		}
+		float worst = 0f;
+		if (lateness.Count > 0)
+		{
+			lateness.Sort();
+			worst = lateness[Mathf.Min(lateness.Count - 1, lateness.Count * 95 / 100)];
+		}
+		underrunExtra = Mathf.Max(0f, underrunExtra - 0.01f * Time.unscaledDeltaTime);
+		float target = Mathf.Clamp(sendInterval * 1.5f + worst + 0.02f + underrunExtra, minDelay, maxDelay);
+		// slow drift so she doesn't visibly speed up or slow down much
+		renderDelay = Mathf.MoveTowards(renderDelay, target, ((target > renderDelay) ? 0.25f : 0.05f) * Time.unscaledDeltaTime);
 	}
 
 	// use our elevator floor, theirs is a bit ahead/behind and she'd sink or float
@@ -870,7 +993,7 @@ public class CoopPlayers : MonoBehaviour
 
 	private void SyncGun(Snapshot from, Snapshot to, float t)
 	{
-		PlayerGunMovement component = Remote.GetComponentInChildren<PlayerGunMovement>(includeInactive: true);
+		PlayerGunMovement component = remoteGun;
 		if (component != null)
 		{
 			bool aiming = remoteAnimator.GetBool("ADS");
@@ -925,7 +1048,7 @@ public class CoopPlayers : MonoBehaviour
 		}
 	}
 
-	private void ApplyRemoteVehicle(Snapshot from, Snapshot to, float t)
+	private void ApplyRemoteVehicle(Snapshot from, Snapshot to, float t, float over)
 	{
 		CoopKettenkrad instance = CoopKettenkrad.Instance;
 		if (instance == null)
@@ -940,7 +1063,19 @@ public class CoopPlayers : MonoBehaviour
 			{
 				from = to;
 			}
-			instance.ApplyRemoteVehicle(FromLayout(Vector3.Lerp(from.VehiclePosition, to.VehiclePosition, t)), Quaternion.Slerp(from.VehicleRotation, to.VehicleRotation, t), Mathf.Lerp(from.VehicleSpeed, to.VehicleSpeed, t), Mathf.Lerp(from.VehicleSteer, to.VehicleSteer, t), to.Headlight);
+			Vector3 layout = Vector3.Lerp(from.VehiclePosition, to.VehiclePosition, t);
+			bool extrapolating = over > 0f && from.Time < to.Time;
+			if (extrapolating)
+			{
+				layout += Extrapolate(from.VehiclePosition, to.VehiclePosition, to.Time - from.Time, over);
+			}
+			Vector3 position = Smooth(FromLayout(layout), instance.VehiclePosition, extrapolating, ref vehicleWasExtrapolating, ref vehicleCorrection);
+			instance.ApplyRemoteVehicle(position, Quaternion.Slerp(from.VehicleRotation, to.VehicleRotation, t), Mathf.Lerp(from.VehicleSpeed, to.VehicleSpeed, t), Mathf.Lerp(from.VehicleSteer, to.VehicleSteer, t), to.Headlight);
+		}
+		else
+		{
+			vehicleCorrection = Vector3.zero;
+			vehicleWasExtrapolating = false;
 		}
 		if (to.Seat == CoopKettenkrad.SeatState.Driver || to.Seat == CoopKettenkrad.SeatState.Back)
 		{
@@ -997,7 +1132,7 @@ public class CoopPlayers : MonoBehaviour
 
 	private void TrackSafeGround()
 	{
-		CharacterController controller = Local.GetComponent<CharacterController>();
+		CharacterController controller = localController;
 		if (controller.enabled && controller.isGrounded)
 		{
 			localSafe = ToLayout(Local.position);
