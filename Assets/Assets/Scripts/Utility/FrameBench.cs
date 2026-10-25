@@ -119,8 +119,48 @@ public class FrameBench : MonoBehaviour
 			yield return null;
 		}
 		yield return new WaitForSeconds(6f);
+		Transform page = SettingsShotPage;
 		yield return SettingsShot(menuShots + "_game");
+		// the world at the ps1 render height and at 720p
+		if (page != null)
+		{
+			page.gameObject.SetActive(false);
+		}
+		int renderBefore = DisplaySettings.RenderHeight;
+		while (DisplaySettings.RenderHeight != 360)
+		{
+			DisplaySettings.NextRenderHeight();
+		}
+		yield return new WaitForSeconds(1f);
+		ScreenCapture.CaptureScreenshot(menuShots + "_world_360.png");
+		yield return null;
+		while (DisplaySettings.RenderHeight != 720)
+		{
+			DisplaySettings.NextRenderHeight();
+		}
+		yield return new WaitForSeconds(1f);
+		ScreenCapture.CaptureScreenshot(menuShots + "_world_720.png");
+		yield return null;
+		while (DisplaySettings.RenderHeight != renderBefore)
+		{
+			DisplaySettings.NextRenderHeight();
+		}
 		Application.Quit();
+	}
+
+	private Transform SettingsShotPage
+	{
+		get
+		{
+			foreach (Slider slider in Resources.FindObjectsOfTypeAll<Slider>())
+			{
+				if (slider.gameObject.scene.isLoaded && slider.name.StartsWith("ADS"))
+				{
+					return slider.transform.parent;
+				}
+			}
+			return null;
+		}
 	}
 
 	private IEnumerator SettingsShot(string name)
