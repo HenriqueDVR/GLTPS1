@@ -1450,6 +1450,47 @@ public class CoopSession : MonoBehaviour
 		Send(writer, DeliveryMethod.ReliableOrdered);
 	}
 
+#if DUMP_WORLDGEN
+	// -coopbandwidth: what we send per message type, + udp/ip headers
+	private readonly Dictionary<MessageType, int> sentBytes = new Dictionary<MessageType, int>();
+
+	private readonly Dictionary<MessageType, int> sentCount = new Dictionary<MessageType, int>();
+
+	private float nextBandwidthLog = -1f;
+
+	private void CountSent(NetDataWriter message)
+	{
+		if (message.Length < 1 || Array.IndexOf(Environment.GetCommandLineArgs(), "-coopbandwidth") < 0)
+		{
+			return;
+		}
+		MessageType type = (MessageType)message.Data[0];
+		sentBytes.TryGetValue(type, out int bytes);
+		sentBytes[type] = bytes + message.Length + 28;
+		sentCount.TryGetValue(type, out int count);
+		sentCount[type] = count + 1;
+		if (nextBandwidthLog < 0f)
+		{
+			nextBandwidthLog = Time.unscaledTime + 10f;
+		}
+		if (Time.unscaledTime >= nextBandwidthLog)
+		{
+			float seconds = 10f + (Time.unscaledTime - nextBandwidthLog);
+			int total = 0;
+			string parts = "";
+			foreach (KeyValuePair<MessageType, int> pair in sentBytes.OrderByDescending((KeyValuePair<MessageType, int> p) => p.Value))
+			{
+				total += pair.Value;
+				parts += " " + pair.Key + " " + (pair.Value / seconds).ToString("F0") + "B/s (" + (pair.Value / sentCount[pair.Key]) + "B x" + (sentCount[pair.Key] / seconds).ToString("F1") + "/s)";
+			}
+			Debug.Log("CoopBandwidth up " + (total / seconds).ToString("F0") + "B/s:" + parts);
+			sentBytes.Clear();
+			sentCount.Clear();
+			nextBandwidthLog = Time.unscaledTime + 10f;
+		}
+	}
+#endif
+
 	// side: own reliable lane, for things nothing else waits on (shots, ammo)
 	public void Send(NetDataWriter message, DeliveryMethod method, bool side = false)
 	{
@@ -1457,6 +1498,9 @@ public class CoopSession : MonoBehaviour
 		{
 			return;
 		}
+#if DUMP_WORLDGEN
+		CountSent(message);
+#endif
 		if (method == DeliveryMethod.Unreliable || method == DeliveryMethod.Sequenced)
 		{
 			sequencedWriter.Reset();
