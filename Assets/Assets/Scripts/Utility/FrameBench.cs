@@ -11,10 +11,13 @@ using UnityEngine.Rendering.Universal;
 // -gfx old         shadows and lamp glows as they were before GraphicsTuning (map camera stays fixed)
 // -gfx oldglows    only the lamp glows as before
 // -benchshots <path prefix>  a picture at each stop
+// -benchstops <n>  how many map pieces to hop along (10)
+// -hidefar <m>     WorldGenerator.HideDistance, 0 = never hide far pieces
+// -benchhidecheck <path prefix>  at each stop a picture with far pieces hidden, then with all shown
 // -benchlamps <path prefix>  instead of the route, stand under the nearest lamps and take pictures
 public class FrameBench : MonoBehaviour
 {
-	private const int stops = 10;
+	private static int stops = 10;
 
 	private const float settle = 1.5f;
 
@@ -38,6 +41,16 @@ public class FrameBench : MonoBehaviour
 			{
 				GraphicsTuning.ThrottleGlows = false;
 			}
+		}
+		int stopsArg = System.Array.IndexOf(args, "-benchstops");
+		if (stopsArg >= 0 && stopsArg + 1 < args.Length && int.TryParse(args[stopsArg + 1], out int stopCount))
+		{
+			stops = stopCount;
+		}
+		int hideArg = System.Array.IndexOf(args, "-hidefar");
+		if (hideArg >= 0 && hideArg + 1 < args.Length && float.TryParse(args[hideArg + 1], out float hide))
+		{
+			WorldGenerator.HideDistance = hide;
 		}
 		if (System.Array.IndexOf(args, "-bench") >= 0)
 		{
@@ -85,6 +98,8 @@ public class FrameBench : MonoBehaviour
 		string[] args = System.Environment.GetCommandLineArgs();
 		int shotsArg = System.Array.IndexOf(args, "-benchshots");
 		string shots = (shotsArg >= 0 && shotsArg + 1 < args.Length) ? args[shotsArg + 1] : null;
+		int hideCheckArg = System.Array.IndexOf(args, "-benchhidecheck");
+		string hideCheck = (hideCheckArg >= 0 && hideCheckArg + 1 < args.Length) ? args[hideCheckArg + 1] : null;
 		// solo game straight from the title
 		yield return new WaitForSeconds(2f);
 		SetDifficultySetting difficulty = FindObjectOfType<SetDifficultySetting>(includeInactive: true);
@@ -134,6 +149,7 @@ public class FrameBench : MonoBehaviour
 		List<float> all = new List<float>();
 		string perStop = "";
 		int done = 0;
+		Node lastStop = null;
 		for (int i = 0; i < world.Layout.Nodes.Count && done < stops; i++)
 		{
 			GameObject node = world.Layout.Nodes[i].Instance;
@@ -141,15 +157,22 @@ public class FrameBench : MonoBehaviour
 			{
 				continue;
 			}
-			Vector3 spot = node.transform.position;
-			if (Physics.Raycast(spot + Vector3.up * 30f, Vector3.down, out RaycastHit hit, 60f, -1, QueryTriggerInteraction.Ignore))
-			{
-				spot = hit.point;
-			}
+			// frozen in the air while far pieces come back, then down onto whatever is there.
+			// falling out of the world restarts the level
+			PlayerMovement movement = local.GetComponent<PlayerMovement>();
+			movement.enabled = false;
 			controller.enabled = false;
-			local.SetPositionAndRotation(spot + Vector3.up * 0.2f, node.transform.rotation);
-			controller.enabled = true;
+			local.SetPositionAndRotation(node.transform.position + Vector3.up * 2f, node.transform.rotation);
 			yield return new WaitForSeconds(settle);
+			Vector3 spot = node.transform.position;
+			if (!Physics.Raycast(spot + Vector3.up * 30f, Vector3.down, out RaycastHit hit, 60f, -1, QueryTriggerInteraction.Ignore))
+			{
+				Debug.Log("FrameBench no ground at " + node.name + ", skipped");
+				continue;
+			}
+			local.position = hit.point + Vector3.up * 0.2f;
+			lastStop = node.GetComponent<Node>();
+			yield return new WaitForSeconds(0.5f);
 			if (shots != null)
 			{
 				ScreenCapture.CaptureScreenshot(shots + "_" + done + ".png");
@@ -162,9 +185,47 @@ public class FrameBench : MonoBehaviour
 				frames.Add(Time.unscaledDeltaTime * 1000f);
 				SampleTimings();
 			}
+			if (hideCheck != null)
+			{
+				// same moment, same weather: hidden as it plays, then everything shown
+				ScreenCapture.CaptureScreenshot(hideCheck + "_" + done + "_hidden.png");
+				yield return null;
+				float hideDistance = WorldGenerator.HideDistance;
+				WorldGenerator.HideDistance = 100000f;
+				yield return new WaitForSeconds(3f);
+				ScreenCapture.CaptureScreenshot(hideCheck + "_" + done + "_all.png");
+				yield return null;
+				WorldGenerator.HideDistance = hideDistance;
+			}
 			all.AddRange(frames);
 			perStop += " " + Average(frames).ToString("F1");
 			done++;
+		}
+		if (System.Array.IndexOf(args, "-benchtrace") >= 0)
+		{
+			// map path from where she ends up back to the start, through hidden pieces
+			NodeData nodeData = world.GetComponent<NodeData>();
+			StartEnvironmentTrace trace = local.GetComponent<PlayerMapController>().startEnvironmentTraceScript;
+			// teleporting skips the trigger that tracks which node she's on
+			trace.node = lastStop;
+			// hide nearly everything so the walk back really goes through switched off nodes
+			WorldGenerator.HideDistance = 60f;
+			yield return new WaitForSeconds(4f);
+			Node from = trace.node;
+			int hiddenNodes = 0;
+			for (Node walk = from; walk != null && walk.edge != null; walk = walk.edge.port.GetComponentInParent<Node>(true))
+			{
+				hiddenNodes += walk.gameObject.activeInHierarchy ? 0 : 1;
+			}
+			nodeData.istracePathFromPlayerNodeComplete = false;
+			nodeData.edgesFromPlayer = new List<GenerateNode>();
+			trace.triggerTraceFromPlayerNode = true;
+			float giveUp = Time.unscaledTime + 10f;
+			while (!nodeData.istracePathFromPlayerNodeComplete && Time.unscaledTime < giveUp)
+			{
+				yield return null;
+			}
+			Debug.Log("FrameBench trace from " + ((from != null) ? from.name : "none") + ": complete " + nodeData.istracePathFromPlayerNodeComplete + ", edges " + nodeData.edgesFromPlayer.Count + ", hidden nodes on the way " + hiddenNodes);
 		}
 		all.Sort();
 		int shadowed = 0;
@@ -177,6 +238,25 @@ public class FrameBench : MonoBehaviour
 				shadowed += (light.shadows != LightShadows.None) ? 1 : 0;
 			}
 		}
+		int pieces = 0;
+		int shownPieces = 0;
+		foreach (WorldLayout.PlacedNode placed in world.Layout.Nodes)
+		{
+			if (placed.Instance != null)
+			{
+				pieces++;
+				shownPieces += placed.Instance.activeSelf ? 1 : 0;
+			}
+		}
+		foreach (WorldLayout.PlacedEdge placed in world.Layout.Edges)
+		{
+			if (placed.Instance != null)
+			{
+				pieces++;
+				shownPieces += placed.Instance.activeSelf ? 1 : 0;
+			}
+		}
+		Debug.Log("FrameBench pieces spawned " + pieces + ", shown " + shownPieces + ", hide distance " + WorldGenerator.HideDistance);
 		Debug.Log("FrameBench split: main thread " + (mainThread / timed).ToString("F2") + "ms, render thread " + (renderThread / timed).ToString("F2") + "ms, gpu " + (gpu / timed).ToString("F2") + "ms (" + timed + " frames) | draw calls " + (drawCalls / counted).ToString("F0") + ", batches " + (batches / counted).ToString("F0") + ", setpass " + (setPass / counted).ToString("F0") + ", triangles " + (triangles / counted / 1000).ToString("F0") + "k, shadow casters " + (shadowCasters / counted).ToString("F0") + ", renderers " + FindObjectsOfType<Renderer>().Length + ", behaviours " + FindObjectsOfType<MonoBehaviour>().Length + ", colliders " + FindObjectsOfType<Collider>().Length);
 		Debug.Log("FrameBench markers (ms):" + MarkerSummary());
 		Camera camera = Camera.main;
