@@ -1,11 +1,12 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering.Universal;
 
 // only the lights nearest the camera cast shadows, the rest share the atlas and come out blocky.
 // also keeps the lamp glows from costing a constraint each every frame
 public class GraphicsTuning : MonoBehaviour
 {
-	// 4 x 1024 fills the 2048 additional light shadow atlas
+	// lamp shadow res comes from its height so tall lamps aren't blockier. sun is 2048, 2 cascades
 	public static int ShadowedLights = 4;
 
 	private const float budgetInterval = 0.25f;
@@ -15,6 +16,15 @@ public class GraphicsTuning : MonoBehaviour
 	private readonly Dictionary<Light, LightShadows> shadowing = new Dictionary<Light, LightShadows>();
 
 	private readonly List<Light> lights = new List<Light>();
+
+	private readonly HashSet<Light> fitted = new HashSet<Light>();
+
+	// kept while switched off so turning one on doesn't wait for a refresh
+	private readonly List<Light> headlights = new List<Light>();
+
+	private int headlightsOn;
+
+	private static GraphicsTuning instance;
 
 	private float nextBudget;
 
@@ -42,16 +52,50 @@ public class GraphicsTuning : MonoBehaviour
 	{
 		GameObject obj = new GameObject("GraphicsTuning");
 		DontDestroyOnLoad(obj);
-		obj.AddComponent<GraphicsTuning>();
+		instance = obj.AddComponent<GraphicsTuning>();
+	}
+
+	// new pieces' lamps start without shadows or the atlas overflows while loading
+	public static void Adopt(GameObject piece)
+	{
+		if (instance == null || ShadowedLights <= 0)
+		{
+			return;
+		}
+		foreach (Light light in piece.GetComponentsInChildren<Light>(true))
+		{
+			if ((light.type != LightType.Spot && light.type != LightType.Point) || instance.shadowing.ContainsKey(light))
+			{
+				continue;
+			}
+			instance.shadowing[light] = light.shadows;
+			if (light.shadows != LightShadows.None)
+			{
+				instance.lights.Add(light);
+				light.shadows = LightShadows.None;
+			}
+		}
+		instance.nextBudget = 0f;
+		// barriers and items spawn separately, refresh soon
+		instance.nextRefresh = Mathf.Min(instance.nextRefresh, Time.unscaledTime + budgetInterval);
 	}
 
 	private void Update()
 	{
 		UpdateGlows();
-		if (Time.unscaledTime < nextBudget)
+		int on = 0;
+		foreach (Light headlight in headlights)
+		{
+			if (headlight != null && headlight.isActiveAndEnabled)
+			{
+				on++;
+			}
+		}
+		if (Time.unscaledTime < nextBudget && on == headlightsOn)
 		{
 			return;
 		}
+		headlightsOn = on;
 		nextBudget = Time.unscaledTime + budgetInterval;
 		if (Time.unscaledTime >= nextRefresh)
 		{
@@ -71,7 +115,15 @@ public class GraphicsTuning : MonoBehaviour
 		}
 		// destroyed since the last FindLights
 		lights.RemoveAll((Light light) => light == null);
-		lights.Sort((Light a, Light b) => (a.transform.position - eye).sqrMagnitude.CompareTo((b.transform.position - eye).sqrMagnitude));
+		lights.Sort(delegate (Light a, Light b)
+		{
+			bool headlightA = headlights.Contains(a);
+			if (headlightA != headlights.Contains(b))
+			{
+				return headlightA ? -1 : 1;
+			}
+			return (a.transform.position - eye).sqrMagnitude.CompareTo((b.transform.position - eye).sqrMagnitude);
+		});
 		int given = 0;
 		foreach (Light light in lights)
 		{
@@ -79,6 +131,11 @@ public class GraphicsTuning : MonoBehaviour
 			if (cast && light.isActiveAndEnabled)
 			{
 				given++;
+				// colliders aren't there yet right when a piece spawns
+				if (fitted.Add(light))
+				{
+					Fit(light);
+				}
 			}
 			LightShadows wanted = cast ? shadowing[light] : LightShadows.None;
 			if (light.shadows != wanted)
@@ -109,6 +166,39 @@ public class GraphicsTuning : MonoBehaviour
 		glowCursor = (batchEnd >= glows.Count) ? (batchEnd - glows.Count) : batchEnd;
 	}
 
+	private const float texelSize = 0.05f;
+
+	private static readonly System.Reflection.FieldInfo tierField = typeof(UniversalAdditionalLightData).GetField("m_AdditionalLightsShadowResolutionTier", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+	// shadow footprint on the ground grows with height
+	private static void Fit(Light light)
+	{
+		if (!light.TryGetComponent(out UniversalAdditionalLightData data) || data.additionalLightsShadowResolutionTier != UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierCustom)
+		{
+			return;
+		}
+		// skip the lamp's own shade
+		float height = -1f;
+		foreach (RaycastHit hit in Physics.RaycastAll(light.transform.position, Vector3.down, light.range, ~0, QueryTriggerInteraction.Ignore))
+		{
+			if (hit.distance > 1f && (height < 0f || hit.distance < height))
+			{
+				height = hit.distance;
+			}
+		}
+		bool guessed = height < 0f;
+		if (guessed)
+		{
+			height = light.range * 0.5f;
+		}
+		float angle = light.type == LightType.Spot ? light.spotAngle : 90f;
+		float footprint = 2f * height * Mathf.Tan(angle * 0.5f * Mathf.Deg2Rad);
+		float wanted = footprint / texelSize;
+		// can't set a custom res from script, so asset tiers. 256 was too blocky
+		int tier = wanted < 724f ? UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierMedium : UniversalAdditionalLightData.AdditionalLightsShadowResolutionTierHigh;
+		tierField.SetValue(data, tier);
+	}
+
 	// spot/point lights that came with shadows on
 	private void FindLights()
 	{
@@ -126,7 +216,23 @@ public class GraphicsTuning : MonoBehaviour
 			glowCursor = 0;
 		}
 		lights.Clear();
-		foreach (Light light in FindObjectsOfType<Light>())
+		headlights.Clear();
+		foreach (CharacterVehicleInteraction vehicle in FindObjectsOfType<CharacterVehicleInteraction>())
+		{
+			if (vehicle.Headlight != null)
+			{
+				headlights.AddRange(vehicle.Headlight.GetComponentsInChildren<Light>(true));
+			}
+		}
+		List<Light> found = new List<Light>(FindObjectsOfType<Light>());
+		foreach (Light headlight in headlights)
+		{
+			if (!found.Contains(headlight))
+			{
+				found.Add(headlight);
+			}
+		}
+		foreach (Light light in found)
 		{
 			if (light.type != LightType.Spot && light.type != LightType.Point)
 			{
@@ -154,6 +260,7 @@ public class GraphicsTuning : MonoBehaviour
 			foreach (Light light in gone)
 			{
 				shadowing.Remove(light);
+				fitted.Remove(light);
 			}
 		}
 	}
