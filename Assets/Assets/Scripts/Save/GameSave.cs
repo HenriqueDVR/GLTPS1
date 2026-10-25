@@ -580,10 +580,8 @@ public static class GameSave
 			if (Time.unscaledTime >= nextAutosave && SceneManager.GetActiveScene().buildIndex == gameplayScene)
 			{
 				nextAutosave = Time.unscaledTime + autosaveInterval;
-				if (SaveIfPossible())
-				{
-					CoopNotice.Show("Saved.");
-				}
+				// no popup for autosave, too often
+				SaveIfPossible();
 			}
 		}
 
