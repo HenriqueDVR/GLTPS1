@@ -23,6 +23,13 @@ public class NavMeshAgentVehicleInteraction : MonoBehaviour
 
     [SerializeField] private CharacterDeath characterDeathScript;
 
+    // same as CoopKettenkrad.Mount, snapping to the seat dragged her through the ket
+    private const float glideDuration = 0.6f;
+    private Transform rootBone;
+    private Vector3 bodyBefore;
+    private Vector3 glideStart;
+    private bool measureGlide;
+
     // back seat, coop rider uses it too
     public Transform EnterPosition => enterPosition;
     public Transform ConstraintPosition => constraintPosition;
@@ -50,9 +57,19 @@ public class NavMeshAgentVehicleInteraction : MonoBehaviour
                     transform.rotation = Quaternion.RotateTowards(transform.rotation, enterPosition.rotation, rotationSpeed * Time.deltaTime);
                     if (AngleUtils.RotationsApproximatelyEqual(transform, enterPosition) && AngleUtils.RotationsApproximatelyEqual(child, enterPosition))
                     {
-                        agentAnim.SetTrigger("ket back");
+                        string girl = name.Replace("Parent", "");
+                        rootBone = agentAnim.transform.Find(girl + "/Root");
+                        bodyBefore = rootBone != null ? rootBone.position : transform.position;
+                        transform.rotation = constraintPosition.rotation;
+                        child.rotation = constraintPosition.rotation;
+                        agentAnim.Play(girl + "_Enter_Ket_Back", 1, 0f);
+                        glideStart = transform.position;
+                        measureGlide = true;
+                        elapsed = 0f;
                         preOrientEnter = true;
                         enter = false;
+                        // climb isn't posed until next frame
+                        return;
                     }
                 }
             }
@@ -61,14 +78,21 @@ public class NavMeshAgentVehicleInteraction : MonoBehaviour
 
             if (preOrientEnter)
             {
-                if (Vector3.Distance(transform.position, constraintPosition.position) > 0.01f)
+                if (measureGlide)
                 {
-                    rotationConstraint = true;
-
-                    elapsed += Time.deltaTime;
-                    transform.position = Vector3.Lerp(transform.position, constraintPosition.position, elapsed / duration);
+                    measureGlide = false;
+                    if (rootBone != null)
+                    {
+                        // sideways only
+                        Vector3 shift = bodyBefore - rootBone.position;
+                        shift.y = 0f;
+                        glideStart = transform.position + shift;
+                    }
                 }
-                else
+                rotationConstraint = true;
+                elapsed += Time.deltaTime;
+                transform.position = Vector3.Lerp(glideStart, constraintPosition.position, Mathf.Clamp01(elapsed / glideDuration));
+                if (elapsed >= glideDuration)
                 {
                     positionConstraint = true;
                     preOrientEnter = false;
