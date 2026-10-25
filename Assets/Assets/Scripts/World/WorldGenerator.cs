@@ -41,6 +41,8 @@ public class WorldGenerator : MonoBehaviour
 
 	private readonly List<Vector3> playerPoints = new List<Vector3>();
 
+	private bool builtAround;
+
 	public ulong Seed { get; private set; }
 
 	public WorldLayout Layout { get; private set; }
@@ -74,6 +76,7 @@ public class WorldGenerator : MonoBehaviour
 		base.gameObject.AddComponent<WorldGenOverheadView>();
 #endif
 		Layout.Nodes[0].Instance = node.gameObject;
+		base.gameObject.AddComponent<DistantPillar>();
 		SeedItemSpawners(node.gameObject, 0uL);
 		node.MarkPlaced();
 		if (CoopSession.Active)
@@ -106,6 +109,11 @@ public class WorldGenerator : MonoBehaviour
 
 	private void Update()
 	{
+		if (!builtAround)
+		{
+			builtAround = true;
+			BuildAround();
+		}
 		if (Time.time >= nextProximityCheck)
 		{
 			nextProximityCheck = Time.time + proximityCheckInterval;
@@ -137,6 +145,28 @@ public class WorldGenerator : MonoBehaviour
 				{
 					KanazawaInstanceManager.RemoveLeftovers(toggle.Key);
 				}
+			}
+		}
+	}
+
+	// spawn everything in reach before the first frame, one a frame showed a half built world
+	private void BuildAround()
+	{
+		bool queued = true;
+		while (queued)
+		{
+			queued = false;
+			foreach (WorldLayout.PlacedNode node in Layout.Nodes)
+			{
+				if (node.Instance != null && !node.ChildrenQueued && IsPlayerWithin(node.Instance.transform.position, nodeData.spawnThreshold))
+				{
+					QueueChildren(node);
+					queued = true;
+				}
+			}
+			while (spawnQueue.Count > 0)
+			{
+				spawnQueue.Dequeue()();
 			}
 		}
 	}
@@ -332,6 +362,7 @@ public class WorldGenerator : MonoBehaviour
 	{
 		GameObject obj = UnityEngine.Object.Instantiate(prefab, layoutPose.position - Offset(), layoutPose.rotation);
 		obj.name = name;
+		GraphicsTuning.Adopt(obj);
 		return obj;
 	}
 
@@ -343,6 +374,86 @@ public class WorldGenerator : MonoBehaviour
 			componentsInChildren[i].random = new WorldRandom(WorldRandom.Derive(Seed, stream, (ulong)(i + 1)));
 			componentsInChildren[i].itemId = (stream << 16) | (uint)(i + 1);
 		}
+	}
+
+	// route to the first pillar from the layout, so unspawned pieces count too
+	public List<Vector3> RouteToPillar(Vector3 from)
+	{
+		List<Vector3> route = new List<Vector3>();
+		WorldLayout.PlacedNode pillar = Pillar();
+		if (pillar == null)
+		{
+			return route;
+		}
+		Vector3 offset = Offset();
+		Vector3 point = from + offset;
+		WorldLayout.PlacedNode here = null;
+		float best = float.MaxValue;
+		foreach (WorldLayout.PlacedNode node in Layout.Nodes)
+		{
+			float distance = PieceDistance(node.Pose, node.Def.Boxes, point);
+			if (distance < best)
+			{
+				best = distance;
+				here = node;
+			}
+		}
+		// up to where it meets the pillar's branch, then down
+		List<WorldLayout.PlacedNode> up = Ancestors(here);
+		List<WorldLayout.PlacedNode> down = Ancestors(pillar);
+		route.Add(from);
+		WorldLayout.PlacedNode meet = null;
+		foreach (WorldLayout.PlacedNode node in up)
+		{
+			if (down.Contains(node))
+			{
+				meet = node;
+				break;
+			}
+			route.Add(WorldLayout.Combine(node.FromEdge.Pose, node.FromEdge.Def.Exit).position - offset);
+			route.Add(WorldLayout.Combine(node.FromEdge.Pose, node.FromEdge.Def.Entrance).position - offset);
+		}
+		for (int i = down.IndexOf(meet) - 1; i >= 0; i--)
+		{
+			WorldLayout.PlacedEdge edge = down[i].FromEdge;
+			route.Add(WorldLayout.Combine(edge.Pose, edge.Def.Entrance).position - offset);
+			route.Add(WorldLayout.Combine(edge.Pose, edge.Def.Exit).position - offset);
+		}
+		if (pillar.Def.Boxes.Count > 0)
+		{
+			route.Add(WorldLayout.Combine(pillar.Pose, new Pose(pillar.Def.Boxes[0].Center, Quaternion.identity)).position - offset);
+		}
+		return route;
+	}
+
+	// first pillar in the layout, spawned or not
+	public WorldLayout.PlacedNode Pillar()
+	{
+		WorldLayout.PlacedNode pillar = null;
+		foreach (WorldLayout.PlacedNode node in Layout.Nodes)
+		{
+			if (node.Def.Prefab == nodeData.pillarEdge && (pillar == null || node.Id < pillar.Id))
+			{
+				pillar = node;
+			}
+		}
+		return pillar;
+	}
+
+	public Vector3 ToWorld(Vector3 layout)
+	{
+		return layout - Offset();
+	}
+
+	// the node, its parent, ... the start
+	private static List<WorldLayout.PlacedNode> Ancestors(WorldLayout.PlacedNode node)
+	{
+		List<WorldLayout.PlacedNode> chain = new List<WorldLayout.PlacedNode>();
+		for (; node != null; node = node.FromEdge != null ? node.FromEdge.From : null)
+		{
+			chain.Add(node);
+		}
+		return chain;
 	}
 
 	// layout coords = world coords before floating origin
