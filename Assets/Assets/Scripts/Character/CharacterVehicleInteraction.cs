@@ -236,7 +236,7 @@ public class CharacterVehicleInteraction : MonoBehaviour
     public void Interact(InputAction.CallbackContext context)
     {
         // hold = get in, tap = barrel. decided in Update
-        if (context.performed && Time.timeScale == 1 && ClaimsInteract)
+        if (context.performed && Time.timeScale == 1 && ClaimsInteract && GetComponent<CharacterBarrelInteraction>().DropFrame != Time.frameCount)
         {
             interactHeldTime = 0f;
         }
@@ -350,7 +350,7 @@ public class CharacterVehicleInteraction : MonoBehaviour
 
     public void DebugExit()
     {
-        if (anim.GetCurrentAnimatorStateInfo(1).IsName("Ket Steer"))
+        if (anim.GetCurrentAnimatorStateInfo(1).IsName("Ket Steer") && PickExitSide())
         {
             anim.SetTrigger("ket exit");
             GetComponent<NavMeshObstacle>().enabled = true;
@@ -360,11 +360,21 @@ public class CharacterVehicleInteraction : MonoBehaviour
 
     public void Exit(InputAction.CallbackContext context)
     {
-        if (context.performed && anim.GetCurrentAnimatorStateInfo(1).IsName("Ket Steer") && Time.timeScale == 1)
+        if (context.performed && anim.GetCurrentAnimatorStateInfo(1).IsName("Ket Steer") && Time.timeScale == 1 && PickExitSide())
         {
             anim.SetTrigger("ket exit");
             GetComponent<NavMeshObstacle>().enabled = true;
         }
+    }
+
+    // both sides blocked: stay on and drive somewhere clear
+    private bool PickExitSide()
+    {
+        bool right = VehicleLeftTrigger.Blocked(FindObjectOfType<VehicleRightTrigger>());
+        bool left = VehicleLeftTrigger.Blocked(FindObjectOfType<VehicleLeftTrigger>());
+        anim.SetBool("right collision", right);
+        anim.SetBool("left collision", left);
+        return !right || !left;
     }
 
     private void Light(InputAction.CallbackContext context)

@@ -24,6 +24,9 @@ public class CharacterBarrelInteraction : MonoBehaviour
 
     public Rigidbody vehicleRigidbody;
 
+    // so the same press doesn't also start getting in
+    public int DropFrame { get; private set; } = -1;
+
     void OnEnable()
     {
         playerInputScript.actions.Player.Interact.performed += Interact;
@@ -85,6 +88,7 @@ public class CharacterBarrelInteraction : MonoBehaviour
 
     public void DropBarrel()
     {
+        DropFrame = Time.frameCount;
         playerInputScript.actions.Player.Jump.Enable();
         playerInputScript.actions.Player.Sprint.Enable();
 
