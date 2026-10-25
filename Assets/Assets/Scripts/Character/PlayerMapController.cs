@@ -24,6 +24,15 @@ public class PlayerMapController : MonoBehaviour
     public Matrix4x4 RenderedViewProjection { get; private set; }
     public RawImage MapImage => mapImage[0];
 
+    // our last map picture, freed when the next one is taken
+    private Texture2D mapPicture;
+
+    void Awake()
+    {
+        // only drawn on demand in RenderMap, enabled it drew the whole map every frame
+        mapCamera.enabled = false;
+    }
+
     void OnEnable()
     {
         playerInputScript.actions.Player.Map.performed += Map;
@@ -109,6 +118,11 @@ public class PlayerMapController : MonoBehaviour
         screenshotTexture.Apply();
         RenderTexture.active = null;
 
+        if (mapPicture != null)
+        {
+            Destroy(mapPicture);
+        }
+        mapPicture = screenshotTexture;
         mapImage[0].texture = screenshotTexture;
     }
 
