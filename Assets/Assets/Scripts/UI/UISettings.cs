@@ -16,8 +16,8 @@ public class UISettings : MonoBehaviour
 
     void Awake()
     {
-        // Sync the frame rate to the screen's refresh rate
-        QualitySettings.vSyncCount = 1;
+        FrameLimit.Apply();
+        AddFrameLimitButton();
 
         //set initial slider values
         mouseSensitivitySlider.value = PlayerPrefs.GetFloat("mouseSensitivitySliderValue", mouseSensitivitySlider.value);
@@ -45,6 +45,39 @@ public class UISettings : MonoBehaviour
         //set master volume
         AudioListener.volume = globalAudioVolumeSlider.value;
     }
+    // copy of the return button, in the gap between the ADS and volume sliders.
+    // the game scene has a second UISettings off the page, so go by the sliders' parent, and only once
+    private void AddFrameLimitButton()
+    {
+        Transform page = ADSSensitivitySlider.transform.parent;
+        Transform template = page.Find("Return");
+        if (template == null || page.Find("Frame Limit") != null)
+        {
+            return;
+        }
+        GameObject copy = Instantiate(template.gameObject, page, false);
+        copy.name = "Frame Limit";
+        RectTransform rect = (RectTransform)copy.transform;
+        RectTransform ads = (RectTransform)ADSSensitivitySlider.transform;
+        RectTransform volume = (RectTransform)globalAudioVolumeSlider.transform;
+        rect.anchorMin = ads.anchorMin;
+        rect.anchorMax = ads.anchorMax;
+        rect.pivot = ads.pivot;
+        rect.anchoredPosition = (ads.anchoredPosition + volume.anchoredPosition) / 2f;
+        rect.sizeDelta = new Vector2(Mathf.Max(ads.sizeDelta.x, 420f), rect.sizeDelta.y);
+        TMPro.TextMeshProUGUI label = copy.GetComponentInChildren<TMPro.TextMeshProUGUI>();
+        label.enableWordWrapping = false;
+        label.text = FrameLimit.Label;
+        Button button = copy.GetComponent<Button>();
+        // scene listeners can't be removed, so replace
+        button.onClick = new Button.ButtonClickedEvent();
+        button.onClick.AddListener(() =>
+        {
+            FrameLimit.Next();
+            label.text = FrameLimit.Label;
+        });
+    }
+
     public void SaveSettings()
     {
         PlayerPrefs.SetFloat("mouseSensitivitySliderValue", mouseSensitivitySlider.value);
