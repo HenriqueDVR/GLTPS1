@@ -7889,6 +7889,8 @@ MonoBehaviour:
 
     fire / take photo: left mouse
 
+    reload: R
+
     camera
     zoom: mouse scroll
 
@@ -7899,9 +7901,11 @@ MonoBehaviour:
     interact / enter kettengrad: F
 
     campfire
-    / kettengrad headlight: R
+    / kettengrad headlight: G
 
     exit kettengrad: hold F
+
+    next song (kettengrad radio): N
 
 
     wait command: X
