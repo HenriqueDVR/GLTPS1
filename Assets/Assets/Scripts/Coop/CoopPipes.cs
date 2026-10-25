@@ -31,7 +31,7 @@ public static class CoopPipes
 	public static Dictionary<ulong, float> Levels()
 	{
 		Dictionary<ulong, float> levels = new Dictionary<ulong, float>(restore);
-		foreach (PipeWaterLevel pipe in Object.FindObjectsOfType<PipeWaterLevel>())
+		foreach (PipeWaterLevel pipe in Object.FindObjectsOfType<PipeWaterLevel>(includeInactive: true))
 		{
 			if (pipe.waterlevel < pipe.StartLevel)
 			{
@@ -70,7 +70,7 @@ public static class CoopPipes
 			levels[key] = reader.GetFloat();
 		}
 		restore = levels;
-		foreach (PipeWaterLevel pipe in Object.FindObjectsOfType<PipeWaterLevel>())
+		foreach (PipeWaterLevel pipe in Object.FindObjectsOfType<PipeWaterLevel>(includeInactive: true))
 		{
 			Restore(pipe);
 		}
@@ -89,7 +89,7 @@ public static class CoopPipes
 		{
 			return;
 		}
-		PipeWaterLevel[] pipes = Object.FindObjectsOfType<PipeWaterLevel>();
+		PipeWaterLevel[] pipes = Object.FindObjectsOfType<PipeWaterLevel>(includeInactive: true);
 		if (host && !debugDrained && pipes.Length > 0)
 		{
 			debugDrained = true;

@@ -160,7 +160,7 @@ public class Node : MonoBehaviour
             nodeDataScript.edgesFromPlayer.Add(edge);
 
             // call same method for previous node
-            StartCoroutine(edge.port.GetComponentInParent<Node>().TracePathFromPlayerNode());
+            yield return edge.port.GetComponentInParent<Node>(true).TracePathFromPlayerNode();
         }
         // trace has reached origin node, set flag to true
         else
@@ -186,7 +186,7 @@ public class Node : MonoBehaviour
             nodeDataScript.branch[pillarIndex].edges.Add(edge);
 
             // call same method for previous node
-            edge.port.GetComponentInParent<Node>().TracePathFromPillarNode(pillarIndex);
+            edge.port.GetComponentInParent<Node>(true).TracePathFromPillarNode(pillarIndex);
         }
 
     }

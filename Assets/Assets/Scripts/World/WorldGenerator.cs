@@ -27,6 +27,20 @@ public class WorldGenerator : MonoBehaviour
 
 	private float nextProximityCheck;
 
+	// pieces this far from every player get switched off, and come back once someone is
+	// showMargin nearer. spawning reaches NodeData.spawnThreshold (400m), well inside this
+	public static float HideDistance = 700f;
+
+	private const float showMargin = 100f;
+
+	private const int togglesPerFrame = 2;
+
+	private readonly Queue<KeyValuePair<GameObject, bool>> toggleQueue = new Queue<KeyValuePair<GameObject, bool>>();
+
+	private readonly HashSet<GameObject> queuedToggles = new HashSet<GameObject>();
+
+	private readonly List<Vector3> playerPoints = new List<Vector3>();
+
 	public ulong Seed { get; private set; }
 
 	public WorldLayout Layout { get; private set; }
@@ -36,6 +50,7 @@ public class WorldGenerator : MonoBehaviour
 	private void Awake()
 	{
 		Active = true;
+		KanazawaInstanceManager.ResetLevel();
 		nodeData = GetComponent<NodeData>();
 		floatingOrigin = UnityEngine.Object.FindObjectOfType<FloatingOrigin>();
 		Seed = ChooseSeed();
@@ -101,12 +116,142 @@ public class WorldGenerator : MonoBehaviour
 					QueueChildren(node);
 				}
 			}
+			if (HideDistance > 0f)
+			{
+				CheckHidden();
+			}
 		}
 		// one per frame, instantiating several hitches
 		if (spawnQueue.Count > 0)
 		{
 			spawnQueue.Dequeue()();
 		}
+		for (int i = 0; i < togglesPerFrame && toggleQueue.Count > 0; i++)
+		{
+			KeyValuePair<GameObject, bool> toggle = toggleQueue.Dequeue();
+			queuedToggles.Remove(toggle.Key);
+			if (toggle.Key != null && toggle.Key.activeSelf != toggle.Value)
+			{
+				toggle.Key.SetActive(toggle.Value);
+				if (toggle.Value)
+				{
+					KanazawaInstanceManager.RemoveLeftovers(toggle.Key);
+				}
+			}
+		}
+	}
+
+	private void CheckHidden()
+	{
+		playerPoints.Clear();
+		Vector3 offset = Offset();
+		if (nodeData.player != null)
+		{
+			playerPoints.Add(nodeData.player.transform.position + offset);
+		}
+		// coop: the world stays around both girls
+		if (CoopPlayers.Instance != null)
+		{
+			if (CoopPlayers.Instance.Local != null)
+			{
+				playerPoints.Add(CoopPlayers.Instance.Local.position + offset);
+			}
+			if (CoopPlayers.Instance.Remote != null)
+			{
+				playerPoints.Add(CoopPlayers.Instance.Remote.position + offset);
+			}
+		}
+		if (playerPoints.Count == 0)
+		{
+			return;
+		}
+		// the start node carries StartEnvironmentTrace, which draws the map path, so it never goes
+		for (int i = 1; i < Layout.Nodes.Count; i++)
+		{
+			ConsiderHiding(Layout.Nodes[i].Instance, Layout.Nodes[i].Pose, Layout.Nodes[i].Def.Boxes);
+		}
+		foreach (WorldLayout.PlacedEdge edge in Layout.Edges)
+		{
+			ConsiderHiding(edge.Instance, edge.Pose, edge.Def.Boxes);
+		}
+#if DUMP_WORLDGEN
+		if (Time.time >= nextHideLog)
+		{
+			nextHideLog = Time.time + 5f;
+			int shown = 0;
+			int spawned = 0;
+			string under = "";
+			foreach (WorldLayout.PlacedNode node in Layout.Nodes)
+			{
+				if (node.Instance != null)
+				{
+					spawned++;
+					shown += node.Instance.activeSelf ? 1 : 0;
+				}
+			}
+			foreach (Vector3 point in playerPoints)
+			{
+				WorldLayout.PlacedNode nearest = null;
+				float best = float.MaxValue;
+				foreach (WorldLayout.PlacedNode node in Layout.Nodes)
+				{
+					if (node.Instance != null)
+					{
+						float distance = PieceDistance(node.Pose, node.Def.Boxes, point);
+						if (distance < best)
+						{
+							best = distance;
+							nearest = node;
+						}
+					}
+				}
+				under += " " + point.ToString("F0") + (nearest != null ? (" on #" + nearest.Id + " (" + best.ToString("F0") + "m, " + (nearest.Instance.activeSelf ? "shown" : "HIDDEN") + ")") : "");
+			}
+			Debug.Log("WorldGenHide nodes shown " + shown + "/" + spawned + " players" + under);
+		}
+#endif
+	}
+
+#if DUMP_WORLDGEN
+	private float nextHideLog;
+#endif
+
+	private void ConsiderHiding(GameObject piece, Pose pose, List<WorldLayout.LocalBox> boxes)
+	{
+		if (piece == null || queuedToggles.Contains(piece))
+		{
+			return;
+		}
+		float distance = float.MaxValue;
+		foreach (Vector3 point in playerPoints)
+		{
+			distance = Mathf.Min(distance, PieceDistance(pose, boxes, point));
+		}
+		bool shown = piece.activeSelf;
+		bool wanted = shown ? (distance < HideDistance) : (distance < HideDistance - showMargin);
+		if (wanted != shown)
+		{
+			queuedToggles.Add(piece);
+			toggleQueue.Enqueue(new KeyValuePair<GameObject, bool>(piece, wanted));
+		}
+	}
+
+	// to the nearest edge of the piece's footprint boxes, in layout space
+	private static float PieceDistance(Pose pose, List<WorldLayout.LocalBox> boxes, Vector3 point)
+	{
+		Vector3 local = Quaternion.Inverse(pose.rotation) * (point - pose.position);
+		if (boxes == null || boxes.Count == 0)
+		{
+			return local.magnitude;
+		}
+		float best = float.MaxValue;
+		foreach (WorldLayout.LocalBox box in boxes)
+		{
+			Vector3 outside = local - box.Center;
+			outside = new Vector3(Mathf.Max(Mathf.Abs(outside.x) - box.Size.x * 0.5f, 0f), Mathf.Max(Mathf.Abs(outside.y) - box.Size.y * 0.5f, 0f), Mathf.Max(Mathf.Abs(outside.z) - box.Size.z * 0.5f, 0f));
+			best = Mathf.Min(best, outside.magnitude);
+		}
+		return best;
 	}
 
 	private bool IsPlayerWithin(Vector3 position, float distance)

@@ -14,6 +14,32 @@ public class KanazawaInstanceManager : MonoBehaviour
 
     private bool flag;
 
+    // once the map is unlocked only the kanazawa the player met stays. pieces WorldGenerator
+    // had switched off at that moment missed the cleanup, it calls RemoveLeftovers when they come back
+    private static bool othersGone;
+    private static GameObject kept;
+
+    public static void ResetLevel()
+    {
+        othersGone = false;
+        kept = null;
+    }
+
+    public static void RemoveLeftovers(GameObject piece)
+    {
+        if (!othersGone)
+        {
+            return;
+        }
+        foreach (Transform child in piece.GetComponentsInChildren<Transform>(true))
+        {
+            if (child != null && child.CompareTag("Kanazawa") && child.gameObject != kept)
+            {
+                Destroy(child.parent.parent.gameObject);
+            }
+        }
+    }
+
     void Start()
     {
         nodeDataScript = GameObject.FindWithTag("NodeData").GetComponent<NodeData>();
@@ -47,6 +73,8 @@ public class KanazawaInstanceManager : MonoBehaviour
             }
 
             flag = true;
+            othersGone = true;
+            kept = firstKanazawa;
         }
     }
 

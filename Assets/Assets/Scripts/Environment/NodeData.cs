@@ -87,7 +87,7 @@ public class NodeData : MonoBehaviour
 
                 // note: perform intersection node check after assigning edge points, as the last edge of this trace has reference to the intersection node, 
                 //       doing the check before would prevent the last edge points of this trace from being added
-                if (edgesFromPlayer[i].port.GetComponentInParent<Node>().isIntersectionNodeSet)
+                if (edgesFromPlayer[i].port.GetComponentInParent<Node>(true).isIntersectionNodeSet)
                 {
                     isPastIntersectionNode = true;
                 }
