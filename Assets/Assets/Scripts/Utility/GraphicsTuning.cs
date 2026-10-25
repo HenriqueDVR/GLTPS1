@@ -69,6 +69,8 @@ public class GraphicsTuning : MonoBehaviour
 		{
 			glowNear[i] = glows[i] != null && (glows[i].transform.position - eye).sqrMagnitude < near;
 		}
+		// destroyed since the last FindLights
+		lights.RemoveAll((Light light) => light == null);
 		lights.Sort((Light a, Light b) => (a.transform.position - eye).sqrMagnitude.CompareTo((b.transform.position - eye).sqrMagnitude));
 		int given = 0;
 		foreach (Light light in lights)
