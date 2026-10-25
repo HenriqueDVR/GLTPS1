@@ -9,6 +9,9 @@ public class PlayerMovement : MonoBehaviour
     [SerializeField] private CharacterController controller;
     [SerializeField] private Animator anim;
     [SerializeField] private Transform child;
+
+    // the model, walking rotates this
+    public Transform Body => child;
     private Vector2 horizontalInput;
 
     private Vector2 horizontalMovement;

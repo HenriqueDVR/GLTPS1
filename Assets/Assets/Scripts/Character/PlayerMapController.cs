@@ -49,12 +49,18 @@ public class PlayerMapController : MonoBehaviour
     {
         if (context.performed && Time.timeScale == 1)
         {
+            // driver needs hands off the controls
+            if (!isMapEnabled && (DriverSteering() || GetComponent<PlayerCameraController>().equipCamera))
+            {
+                return;
+            }
             if (!isMapEnabled)
             {
                 playerInputScript.actions.Player.Possess.Disable();
 
                 //Time.timeScale = 0;
                 StartCoroutine(RenderMap(0f));
+                MapPaper.Open(this);
 
                 nodeDataScript.drawPath = true;
 
@@ -96,20 +102,43 @@ public class PlayerMapController : MonoBehaviour
             }
             else
             {
-                playerInputScript.actions.Player.Possess.Enable();
-
-                Time.timeScale = 1;
-                isMapEnabled = false;
-                elasped = 0;
+                CloseMap();
             }
         }
+    }
+
+    public void CloseMap()
+    {
+        playerInputScript.actions.Player.Possess.Enable();
+
+        Time.timeScale = 1;
+        isMapEnabled = false;
+        elasped = 0;
+        MapPaper.Close();
+    }
+
+    private bool DriverSteering()
+    {
+        InputActions.VehicleActions vehicle = playerInputScript.actions.Vehicle;
+        return vehicle.enabled && (vehicle.Drive.ReadValue<Vector2>() != Vector2.zero || vehicle.Accelerate.IsPressed());
     }
 
     IEnumerator RenderMap(float duration)
     {
         yield return new WaitForSeconds(duration);
-        // capture bird's eye view
+        // capture bird's eye view, no fog and a key colour behind for MapPaper
+        bool fog = RenderSettings.fog;
+        CameraClearFlags clear = mapCamera.clearFlags;
+        Color background = mapCamera.backgroundColor;
+        RenderSettings.fog = false;
+        mapCamera.clearFlags = CameraClearFlags.SolidColor;
+        mapCamera.backgroundColor = MapPaper.KeyColor;
+        DistantPillar.Hide(true);
         mapCamera.Render();
+        DistantPillar.Hide(false);
+        RenderSettings.fog = fog;
+        mapCamera.clearFlags = clear;
+        mapCamera.backgroundColor = background;
         RenderedViewProjection = mapCamera.projectionMatrix * mapCamera.worldToCameraMatrix;
 
         RenderTexture.active = renderTexture;
@@ -130,19 +159,7 @@ public class PlayerMapController : MonoBehaviour
     {
         float mapImageAlpha = mapImage[0].color.a;
 
-        // lerp map UI alpha
-        if (isMapEnabled)
-        {
-            elasped += Time.unscaledDeltaTime;
-
-            foreach (RawImage UIComponent in mapImage)
-            {
-                Color color = UIComponent.color;
-                color.a = Mathf.Lerp(mapImageAlpha, 1, elasped / duration);
-                UIComponent.color = color;
-            }
-        }
-        else
+        // flat overlay stays hidden, MapPaper shows it
         {
             elasped += Time.deltaTime;
 

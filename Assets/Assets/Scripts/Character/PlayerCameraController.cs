@@ -77,10 +77,29 @@ public class PlayerCameraController : MonoBehaviour
         ready = true;
     }
 
+    // first person while holding the map
+    public void HoldMap(bool hold)
+    {
+        thirdPersonCamera.enabled = !hold;
+        firstPersonCamera.enabled = hold;
+        if (hold)
+        {
+            CinemachinePOV pov = firstPersonCamera.GetCinemachineComponent<CinemachinePOV>();
+            pov.m_VerticalAxis.Value = 15f;
+            // walking turns the model, not the parent
+            Animator model = GetComponentInChildren<Animator>();
+            pov.m_HorizontalAxis.Value = (model != null ? model.transform : transform).eulerAngles.y;
+        }
+        foreach (GameObject body in characterBody)
+        {
+            body.SetActive(!hold);
+        }
+    }
+
     void Update()
     {
         //disable camera
-        if (Time.timeScale == 1)
+        if (Time.timeScale == 1 && !MapPaper.Holding)
         {
             if (playerInputScript.actions.Player.ADS.ReadValue<float>() > 0 ||
                 playerInputScript.actions.Vehicle.ADS.ReadValue<float>() > 0)

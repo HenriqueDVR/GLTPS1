@@ -47,6 +47,11 @@ public class VehicleMovement : MonoBehaviour
     {
         //get input
         movement = playerInputScript.actions.Vehicle.Drive.ReadValue<Vector2>();
+        // hands are on the map
+        if (MapPaper.Holding)
+        {
+            movement = Vector2.zero;
+        }
 #if DUMP_WORLDGEN
         // -coopdrive: drive back and forth
         if (playerInputScript.actions.Vehicle.enabled && System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-coopdrive") >= 0)

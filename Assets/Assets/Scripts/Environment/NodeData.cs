@@ -27,6 +27,9 @@ public class NodeData : MonoBehaviour
     public bool drawPath;
 
     [SerializeField] private LineRenderer lr;
+
+    // MapPaper draws this
+    public LineRenderer PathLine => lr;
     public List<Transform> points;
     [SerializeField] private Vector3 offsetPosition;
     private bool isPastIntersectionNode;
