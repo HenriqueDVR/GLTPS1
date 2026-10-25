@@ -5,6 +5,7 @@ using System.Reflection;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
+using UnityEngine.UI;
 
 // debug only
 // -bench           vsync off, hop along the first map pieces, log frame times, quit
@@ -52,6 +53,15 @@ public class FrameBench : MonoBehaviour
 		{
 			WorldGenerator.HideDistance = hide;
 		}
+		int menuArg = System.Array.IndexOf(args, "-menushots");
+		if (menuArg >= 0 && menuArg + 1 < args.Length)
+		{
+			Application.runInBackground = true;
+			GameObject shots = new GameObject("MenuShots");
+			DontDestroyOnLoad(shots);
+			shots.AddComponent<FrameBench>().menuShots = args[menuArg + 1];
+			return;
+		}
 		if (System.Array.IndexOf(args, "-bench") >= 0)
 		{
 			// keeps going without focus
@@ -91,8 +101,79 @@ public class FrameBench : MonoBehaviour
 		field.SetValue(target, (field.FieldType.IsEnum) ? System.Enum.ToObject(field.FieldType, value) : value);
 	}
 
+	private string menuShots;
+
+	// -menushots <path prefix>: the settings page on the title and in game, before and after two clicks on the fps limit
+	private IEnumerator MenuShots()
+	{
+		yield return new WaitForSeconds(3f);
+		yield return SettingsShot(menuShots + "_title");
+		SetDifficultySetting difficulty = FindObjectOfType<SetDifficultySetting>(includeInactive: true);
+		if (difficulty.save == null)
+		{
+			difficulty.save = new Save();
+		}
+		difficulty.SetEasyDifficulty();
+		while (GameObject.Find("ChitoParent") == null)
+		{
+			yield return null;
+		}
+		yield return new WaitForSeconds(6f);
+		yield return SettingsShot(menuShots + "_game");
+		Application.Quit();
+	}
+
+	private IEnumerator SettingsShot(string name)
+	{
+		// the page holding the sliders, whichever UISettings points at it
+		Transform page = null;
+		foreach (Slider slider in Resources.FindObjectsOfTypeAll<Slider>())
+		{
+			if (slider.gameObject.scene.isLoaded && slider.name.StartsWith("ADS"))
+			{
+				page = slider.transform.parent;
+				break;
+			}
+		}
+		if (page == null)
+		{
+			Debug.Log("FrameBench no settings page");
+			yield break;
+		}
+		for (Transform t = page; t != null; t = t.parent)
+		{
+			t.gameObject.SetActive(true);
+		}
+		yield return new WaitForSeconds(1f);
+		ScreenCapture.CaptureScreenshot(name + "_0.png");
+		yield return null;
+		Transform frameLimit = page.Find("Frame Limit");
+		Debug.Log("FrameBench settings page " + page.name + ", fps button " + (frameLimit != null));
+		if (frameLimit == null)
+		{
+			yield break;
+		}
+		Button button = frameLimit.GetComponent<Button>();
+		int before = FrameLimit.Current;
+		button.onClick.Invoke();
+		button.onClick.Invoke();
+		Debug.Log("FrameBench fps limit " + before + " -> " + FrameLimit.Current + " (vsync " + QualitySettings.vSyncCount + ", target " + Application.targetFrameRate + ")");
+		yield return new WaitForSeconds(0.5f);
+		ScreenCapture.CaptureScreenshot(name + "_1.png");
+		yield return null;
+		while (FrameLimit.Current != before)
+		{
+			button.onClick.Invoke();
+		}
+	}
+
 	private IEnumerator Start()
 	{
+		if (menuShots != null)
+		{
+			yield return MenuShots();
+			yield break;
+		}
 		QualitySettings.vSyncCount = 0;
 		Application.targetFrameRate = -1;
 		string[] args = System.Environment.GetCommandLineArgs();
