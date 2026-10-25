@@ -45,36 +45,52 @@ public class UISettings : MonoBehaviour
         //set master volume
         AudioListener.volume = globalAudioVolumeSlider.value;
     }
-    // copy of the return button, in the gap between the ADS and volume sliders.
+    // option buttons are copies of the return button. fps limit goes in the gap between the
+    // ADS and volume sliders, display ones under the volume slider.
     // the game scene has a second UISettings off the page, so go by the sliders' parent, and only once
     private void AddFrameLimitButton()
     {
         Transform page = ADSSensitivitySlider.transform.parent;
-        Transform template = page.Find("Return");
-        if (template == null || page.Find("Frame Limit") != null)
+        if (page.Find("Return") == null || page.Find("Frame Limit") != null)
         {
             return;
         }
-        GameObject copy = Instantiate(template.gameObject, page, false);
-        copy.name = "Frame Limit";
+        Vector2 ads = ((RectTransform)ADSSensitivitySlider.transform).anchoredPosition;
+        Vector2 volume = ((RectTransform)globalAudioVolumeSlider.transform).anchoredPosition;
+        Vector2 step = new Vector2(0f, (ads.y - volume.y) / 2f);
+        List<System.Action> refresh = new List<System.Action>();
+        AddOption(page, "Frame Limit", (ads + volume) / 2f, () => FrameLimit.Label, FrameLimit.Next, refresh);
+        AddOption(page, "Display Mode", volume - step, () => DisplaySettings.ModeLabel, DisplaySettings.NextMode, refresh);
+        AddOption(page, "Resolution", volume - step * 2f, () => DisplaySettings.SizeLabel, DisplaySettings.NextSize, refresh);
+        AddOption(page, "Render Resolution", volume - step * 3f, () => DisplaySettings.RenderLabel, DisplaySettings.NextRenderHeight, refresh);
+    }
+
+    private void AddOption(Transform page, string name, Vector2 position, System.Func<string> label, System.Action next, List<System.Action> refresh)
+    {
+        GameObject copy = Instantiate(page.Find("Return").gameObject, page, false);
+        copy.name = name;
         RectTransform rect = (RectTransform)copy.transform;
         RectTransform ads = (RectTransform)ADSSensitivitySlider.transform;
-        RectTransform volume = (RectTransform)globalAudioVolumeSlider.transform;
         rect.anchorMin = ads.anchorMin;
         rect.anchorMax = ads.anchorMax;
         rect.pivot = ads.pivot;
-        rect.anchoredPosition = (ads.anchoredPosition + volume.anchoredPosition) / 2f;
+        rect.anchoredPosition = position;
         rect.sizeDelta = new Vector2(Mathf.Max(ads.sizeDelta.x, 420f), rect.sizeDelta.y);
-        TMPro.TextMeshProUGUI label = copy.GetComponentInChildren<TMPro.TextMeshProUGUI>();
-        label.enableWordWrapping = false;
-        label.text = FrameLimit.Label;
+        TMPro.TextMeshProUGUI text = copy.GetComponentInChildren<TMPro.TextMeshProUGUI>();
+        text.enableWordWrapping = false;
+        text.text = label();
+        refresh.Add(() => text.text = label());
         Button button = copy.GetComponent<Button>();
         // scene listeners can't be removed, so replace
         button.onClick = new Button.ButtonClickedEvent();
         button.onClick.AddListener(() =>
         {
-            FrameLimit.Next();
-            label.text = FrameLimit.Label;
+            next();
+            // a mode change can change the resolution too
+            foreach (System.Action update in refresh)
+            {
+                update();
+            }
         });
     }
 

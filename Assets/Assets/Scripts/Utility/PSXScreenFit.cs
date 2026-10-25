@@ -11,9 +11,18 @@ public class PSXScreenFit : MonoBehaviour
     private Camera screenCamera;
     private Transform quad;
     private RenderTexture picture;
-    private int pictureHeight;
     private float quadHeight;
     private float shownAspect;
+
+    // bumped when the render height setting changes
+    private static int settingsVersion;
+    private int shownVersion = -1;
+    private int shownHeight;
+
+    public static void Refresh()
+    {
+        settingsVersion++;
+    }
 
     private const float widestView = 21f / 9f;
     private Camera narrowedCamera;
@@ -85,10 +94,6 @@ public class PSXScreenFit : MonoBehaviour
                 picture = camera.targetTexture;
             }
         }
-        if (picture != null)
-        {
-            pictureHeight = picture.height;
-        }
     }
 
     void OnEnable()
@@ -132,14 +137,17 @@ public class PSXScreenFit : MonoBehaviour
             return;
         }
         float windowAspect = (float)Screen.width / Screen.height;
-        if (Mathf.Approximately(windowAspect, shownAspect))
+        if (Mathf.Approximately(windowAspect, shownAspect) && shownVersion == settingsVersion && shownHeight == Screen.height)
         {
             return;
         }
         shownAspect = windowAspect;
+        shownVersion = settingsVersion;
+        shownHeight = Screen.height;
 
         // never more pixels than the window, very wide windows had a grey strip
-        int height = Mathf.Clamp(Screen.height, 1, pictureHeight);
+        int renderHeight = DisplaySettings.RenderHeight;
+        int height = Mathf.Clamp(Screen.height, 1, (renderHeight > 0) ? renderHeight : Screen.height);
         int width = Mathf.Max(1, Mathf.RoundToInt(height * windowAspect));
         if (picture.width != width || picture.height != height)
         {
