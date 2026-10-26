@@ -88,7 +88,7 @@ public class CoopSession : MonoBehaviour
 	private const float lanHeadStart = 1f;
 
 	// bump on protocol changes
-	private const string connectionKey = "GLTPS1-coop-19";
+	private const string connectionKey = "GLTPS1-coop-20";
 
 	private const int gameplayScene = 1;
 
