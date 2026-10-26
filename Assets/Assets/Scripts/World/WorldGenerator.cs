@@ -45,6 +45,9 @@ public class WorldGenerator : MonoBehaviour
 
 	public ulong Seed { get; private set; }
 
+	// a piece spawned, or was switched on or off. world space, NavMeshAreaBaker rebuilds if it's in its box
+	public static event Action<Bounds> PieceChanged;
+
 	public WorldLayout Layout { get; private set; }
 
 	public uint LayoutHash { get; private set; }
@@ -141,6 +144,7 @@ public class WorldGenerator : MonoBehaviour
 			if (toggle.Key != null && toggle.Key.activeSelf != toggle.Value)
 			{
 				toggle.Key.SetActive(toggle.Value);
+				RaisePieceChanged(toggle.Key);
 				if (toggle.Value)
 				{
 					KanazawaInstanceManager.RemoveLeftovers(toggle.Key);
@@ -356,6 +360,7 @@ public class WorldGenerator : MonoBehaviour
 		Transform transform = component.portPrefab[port];
 		UnityEngine.Object.Instantiate(node.Barriers[port], transform.position, transform.rotation).transform.SetParent(transform);
 		component.numBlockedPorts++;
+		PieceChanged?.Invoke(new Bounds(transform.position, Vector3.one * barrierReach));
 	}
 
 	private GameObject Spawn(GameObject prefab, Pose layoutPose, string name)
@@ -363,7 +368,53 @@ public class WorldGenerator : MonoBehaviour
 		GameObject obj = UnityEngine.Object.Instantiate(prefab, layoutPose.position - Offset(), layoutPose.rotation);
 		obj.name = name;
 		GraphicsTuning.Adopt(obj);
+		RaisePieceChanged(obj);
 		return obj;
+	}
+
+	private const float barrierReach = 20f;
+
+	private static void RaisePieceChanged(GameObject piece)
+	{
+		if (PieceChanged != null)
+		{
+			PieceChanged(PieceBounds(piece));
+		}
+	}
+
+	// from the footprint trigger boxes like GetBoxes, they're on the root so this works while it's switched off too
+	private static Bounds PieceBounds(GameObject piece)
+	{
+		Transform root = piece.transform;
+		Bounds bounds = new Bounds(root.position, Vector3.zero);
+		bool any = false;
+		foreach (BoxCollider box in piece.GetComponents<BoxCollider>())
+		{
+			if (!box.isTrigger)
+			{
+				continue;
+			}
+			Vector3 extents = box.size * 0.5f;
+			for (int i = 0; i < 8; i++)
+			{
+				Vector3 corner = box.center + new Vector3(((i & 1) == 0) ? (0f - extents.x) : extents.x, ((i & 2) == 0) ? (0f - extents.y) : extents.y, ((i & 4) == 0) ? (0f - extents.z) : extents.z);
+				Vector3 world = root.TransformPoint(corner);
+				if (any)
+				{
+					bounds.Encapsulate(world);
+				}
+				else
+				{
+					bounds = new Bounds(world, Vector3.zero);
+					any = true;
+				}
+			}
+		}
+		if (!any)
+		{
+			bounds.size = Vector3.one * 200f;
+		}
+		return bounds;
 	}
 
 	private void SeedItemSpawners(GameObject instance, ulong stream)
