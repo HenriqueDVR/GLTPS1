@@ -1,15 +1,18 @@
-// far tower: thin fog, hazy at the foot, goes dark into the ceiling at the top, faint streaks
+// far tower: the real one's colour, lit evenly since nothing else that far out has a shaded side.
+// thin fog, hazy at the foot, goes into the ceiling at the top, faint streaks
 Shader "Hidden/DistantSilhouette"
 {
 	Properties
 	{
-		_Tint ("Structure", Color) = (0.1, 0.115, 0.14, 1)
+		_Albedo ("The real tower's colour", Color) = (0.6, 0.61, 0.63, 1)
 		_FogColor ("Fog", Color) = (0.7, 0.72, 0.75, 1)
 		_Visibility ("How much shows through the fog", Range(0, 1)) = 0.5
 		_Base ("World height of the foot", Float) = 0
 		_Height ("Height", Float) = 570
 		_Streaks ("Streaks round it", Float) = 14
 		_Meet ("Where the ceiling meets it, up its height", Range(0, 1)) = 0.9
+		_From ("Nothing under this world height", Float) = -100000
+		_SunShare ("Sun on it, the same all round", Range(0, 1)) = 0.35
 		_Pull ("Real distance over drawn distance", Float) = 1
 		_CeilingTint ("Ceiling underside", Color) = (0.13, 0.15, 0.18, 1)
 		_CeilingDensity ("Ceiling fog density", Float) = 0.0003
@@ -32,13 +35,15 @@ Shader "Hidden/DistantSilhouette"
 			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
 			CBUFFER_START(UnityPerMaterial)
-			float4 _Tint;
+			float4 _Albedo;
 			float4 _FogColor;
 			float _Visibility;
 			float _Base;
 			float _Height;
 			float _Streaks;
 			float _Meet;
+			float _From;
+			float _SunShare;
 			float _Pull;
 			float4 _CeilingTint;
 			float _CeilingDensity;
@@ -80,13 +85,17 @@ Shader "Hidden/DistantSilhouette"
 				float up = saturate((input.world.y - _Base) / _Height);
 				// the ceiling hides the rest, and pulled in copies sit in front of it so it has to go here
 				clip(_Meet - up);
+				// up close only the bit over the real tower's top
+				clip(input.world.y - _From);
 				// haze at the foot
 				float haze = _Visibility * lerp(0.2, 0.85, smoothstep(0.03, 0.6, up));
-				float lit = 0.96 + 0.06 * saturate(dot(normalize(input.normal), GetMainLight().direction));
+				// sun and sky like the real lit material, the same all round, a tower with a dark side stood out
+				Light sun = GetMainLight();
+				float3 sky = (SampleSH(half3(0, 1, 0)) + SampleSH(half3(0, -1, 0))) * 0.5;
+				float3 lit = sun.color * _SunShare + sky;
 				float column = floor(input.around * _Streaks);
-				float streak = 1 - 0.12 * step(0.55, Hash(column)) * smoothstep(0.1, 0.5, frac(input.around * _Streaks));
-				float shadow = lerp(1, 0.75, smoothstep(0.65, 0.85, up));
-				float3 structure = _Tint.rgb * lit * streak * shadow;
+				float streak = 1 - 0.08 * step(0.55, Hash(column)) * smoothstep(0.1, 0.5, frac(input.around * _Streaks));
+				float3 structure = _Albedo.rgb * lit * streak;
 				float3 tower = lerp(_FogColor.rgb, structure, haze);
 				// the ceiling as it looks just there, same sums as its shader at the real distance. the top goes into it
 				float3 view = input.world - _WorldSpaceCameraPos;

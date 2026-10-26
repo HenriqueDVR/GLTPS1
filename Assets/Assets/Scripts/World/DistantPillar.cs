@@ -8,7 +8,10 @@ using UnityEngine.Rendering;
 public class DistantPillar : MonoBehaviour
 {
 	// tower parts in nodeCOLUMN
-	private static readonly string[] towerParts = { "Cylinder", "Thingys", "Elevator" };
+	private static readonly string[] towerParts = { "Cylinder", "Elevator" };
+
+	// ring round the column's lower part with panels on it. its wall never drew so the panels floated, off everywhere
+	private const string hiddenPart = "Thingys";
 
 	private const float swapDistance = 250f;
 
@@ -19,8 +22,17 @@ public class DistantPillar : MonoBehaviour
 	// past this copies get pulled in and shrunk, in order, so lined up towers keep in front of each other
 	private const float farthest = 5500f;
 
-	// share of the world's fog
-	private const float fogShare = 0.12f;
+	// ceiling's share of the world's fog and the most it ever shows. hazier than the towers so it reads soft and far
+	private const float ceilingFogShare = 0.1f;
+
+	private const float ceilingStrength = 0.55f;
+
+	// how much of the underside's panels and beams show
+	private const float ceilingDetail = 0.6f;
+
+	// the upper level sits this much higher than the column's own slabs. the real slabs go up with it and the
+	// towers are drawn taller to meet it
+	private const float ceilingLift = 80f;
 
 	// towers get less still, they should read from a long way off
 	private const float towerFogShare = 0.06f;
@@ -77,13 +89,8 @@ public class DistantPillar : MonoBehaviour
 	// clouds thin out this far round the tower so it doesn't cut a line through them
 	private const float cloudClearing = 220f;
 
-	private static readonly Color structure = new Color(0.5f, 0.51f, 0.54f);
-
-	// the real tower's grey, what the copy looks like at the swap
-	private static readonly Color realGrey = new Color(0.6f, 0.61f, 0.63f);
-
-	// copy goes from the real grey to its far look by here
-	private const float darkBy = 900f;
+	// if the real tower's material can't be read
+	private static readonly Color fallbackAlbedo = new Color(0.6f, 0.61f, 0.63f);
 
 	private static DistantPillar instance;
 
@@ -137,6 +144,12 @@ public class DistantPillar : MonoBehaviour
 
 	// widest the column gets from its middle
 	private float girth;
+
+	// copies are drawn this much taller so they reach the lifted ceiling
+	private float stretch = 1f;
+
+	// the real tower's colour, lit the same way in the copy's shader
+	private Color albedo = fallbackAlbedo;
 
 	// underside of the piece's own bottom slab over its foot, nan if it has none
 	private float slab = float.NaN;
@@ -243,6 +256,7 @@ public class DistantPillar : MonoBehaviour
 		}
 		instance = this;
 		Shader shader = Resources.Load<Shader>("DistantSilhouette");
+		albedo = TowerAlbedo(pillar.Def.Prefab);
 		// every real pillar gets the same treatment, not just the one the map points at
 		List<Vector3> towers = new List<Vector3>();
 		foreach (WorldLayout.PlacedNode node in world.Pillars())
@@ -250,6 +264,7 @@ public class DistantPillar : MonoBehaviour
 			pillars.Add(Make(shader, node));
 			towers.Add(node.Pose.position - pillar.Pose.position);
 		}
+		stretch = Level() / BaseLevel();
 		// same holes every time for a seed
 		System.Random random = new System.Random((int)(world.Seed & 0x7fffffff));
 		ceilingMaterial = new Material(Resources.Load<Shader>("DistantCeiling"));
@@ -308,7 +323,65 @@ public class DistantPillar : MonoBehaviour
 			Node = node
 		};
 		distant.Copy = Copy(pillar.Def.Prefab, distant.Material).transform;
+		distant.Material.SetColor("_Albedo", albedo);
 		return distant;
+	}
+
+	// the tower's base colour times its texture's average, so the copy is the colour of the real one
+	private static Color TowerAlbedo(GameObject prefab)
+	{
+		foreach (MeshRenderer part in prefab.GetComponentsInChildren<MeshRenderer>(includeInactive: true))
+		{
+			if (part.name == towerParts[0] && part.sharedMaterial != null)
+			{
+				return Albedo(part.sharedMaterial);
+			}
+		}
+		return fallbackAlbedo;
+	}
+
+	// off as soon as a piece is made
+	public static void HideBrokenParts(GameObject piece)
+	{
+		foreach (MeshRenderer part in piece.GetComponentsInChildren<MeshRenderer>(includeInactive: true))
+		{
+			if (part.name == hiddenPart)
+			{
+				part.enabled = false;
+			}
+		}
+	}
+
+	// a material's base colour times its texture's average, in gamma like SetColor takes it
+	public static Color Albedo(Material material)
+	{
+		Color tint = material.HasProperty("_BaseColor") ? material.GetColor("_BaseColor") : material.color;
+		Texture texture = material.HasProperty("_BaseMap") ? material.GetTexture("_BaseMap") : material.mainTexture;
+		Color colour = tint * (texture != null ? Average(texture).gamma : Color.white);
+		colour.a = 1f;
+		return colour;
+	}
+
+	// read back through the gpu, textures aren't cpu readable. linear
+	private static Color Average(Texture texture)
+	{
+		int width = Mathf.Clamp(texture.width, 1, 256);
+		int height = Mathf.Clamp(texture.height, 1, 256);
+		RenderTexture target = RenderTexture.GetTemporary(width, height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear);
+		Graphics.Blit(texture, target);
+		RenderTexture previous = RenderTexture.active;
+		RenderTexture.active = target;
+		Texture2D pixels = new Texture2D(width, height, TextureFormat.RGBA32, mipChain: false, linear: true);
+		pixels.ReadPixels(new Rect(0, 0, width, height), 0, 0);
+		RenderTexture.active = previous;
+		RenderTexture.ReleaseTemporary(target);
+		Color sum = Color.black;
+		foreach (Color pixel in pixels.GetPixels())
+		{
+			sum += pixel;
+		}
+		Destroy(pixels);
+		return sum / (width * height);
 	}
 
 	private void OnDestroy()
@@ -380,6 +453,12 @@ public class DistantPillar : MonoBehaviour
 	// underside of the ceiling over the column's foot
 	private float Level()
 	{
+		return BaseLevel() + ceilingLift;
+	}
+
+	// where the column's own slabs put it, before the lift
+	private float BaseLevel()
+	{
 		return float.IsNaN(slab) ? height - ceilingSink : slab + slabGap;
 	}
 
@@ -403,16 +482,28 @@ public class DistantPillar : MonoBehaviour
 			if (distant.RealInstance != null)
 			{
 				float bottom = distant.RealInstance.transform.position.y;
+				List<Transform> slabs = new List<Transform>();
 				foreach (MeshRenderer part in distant.RealInstance.GetComponentsInChildren<MeshRenderer>(includeInactive: true))
 				{
+					if (part.name == hiddenPart)
+					{
+						part.enabled = false;
+						continue;
+					}
 					// from the mesh, a renderer's bounds are empty while the piece is still switched off
 					MeshFilter filter = part.GetComponent<MeshFilter>();
+					bool tower = System.Array.IndexOf(towerParts, part.name) >= 0;
 					bool tall = filter != null && filter.sharedMesh != null && Highest(filter.sharedMesh.bounds, part.transform) > bottom + tallUp;
-					if (System.Array.IndexOf(towerParts, part.name) >= 0 || tall)
+					if (tower || tall)
 					{
 						distant.RealParts.Add(part);
 					}
+					if (!tower && filter != null && filter.sharedMesh != null && Lowest(filter.sharedMesh.bounds, part.transform) > bottom + highUp)
+					{
+						slabs.Add(part.transform);
+					}
 				}
+				Lift(slabs);
 			}
 		}
 		foreach (MeshRenderer part in distant.RealParts)
@@ -422,6 +513,33 @@ public class DistantPillar : MonoBehaviour
 				part.enabled = show;
 			}
 		}
+	}
+
+	// the real piece's next level slabs go up with the ceiling, once. children of a lifted part already went with it
+	private static void Lift(List<Transform> slabs)
+	{
+		foreach (Transform slabPart in slabs)
+		{
+			bool carried = false;
+			for (Transform parent = slabPart.parent; parent != null && !carried; parent = parent.parent)
+			{
+				carried = slabs.Contains(parent);
+			}
+			if (!carried)
+			{
+				slabPart.position += Vector3.up * ceilingLift;
+			}
+		}
+	}
+
+	private static float Lowest(Bounds bounds, Transform part)
+	{
+		float lowest = float.MaxValue;
+		foreach (Vector3 corner in Corners(bounds))
+		{
+			lowest = Mathf.Min(lowest, part.TransformPoint(corner).y);
+		}
+		return lowest;
 	}
 
 	private static float Highest(Bounds bounds, Transform part)
@@ -1151,9 +1269,9 @@ public class DistantPillar : MonoBehaviour
 		ceilingMaterial.SetColor("_FogColor", fog);
 		sky.position = eye;
 		skyMaterial.SetColor("_FogColor", fog);
-		// thinner still or it blends into the column
-		ceilingMaterial.SetFloat("_Density", density * fogShare * 0.5f);
-		ceilingMaterial.SetFloat("_Strength", 0.7f);
+		ceilingMaterial.SetFloat("_Density", density * ceilingFogShare);
+		ceilingMaterial.SetFloat("_Strength", ceilingStrength);
+		ceilingMaterial.SetFloat("_Detail", ceilingDetail);
 		// here too, not only per camera, or it sits on the shader's default and fades out far too close
 		ceilingMaterial.SetFloat("_FarFade", farClip);
 		foreach (Material material in cloudMaterials)
@@ -1170,15 +1288,20 @@ public class DistantPillar : MonoBehaviour
 			// flat, so riding the elevator up never swaps the real one out from under her
 			float flat = new Vector2(real.x - eye.x, real.z - eye.z).magnitude;
 			bool near = distant.Node.Instance != null && distant.Node.Instance.activeInHierarchy && flat < swapDistance;
-			distant.Copy.gameObject.SetActive(!near);
+			// up close the real tower stops short of the lifted ceiling, the copy only fills in above it
+			float realTop = real.y + foot + height;
+			float ceilingY = real.y + foot + Level();
+			distant.Copy.gameObject.SetActive(!near || realTop < ceilingY);
+			distant.Material.SetFloat("_From", near ? realTop - 1f : -100000f);
 			// past the swap the real one is fogged near white, the copy stands in. not once she's up on the next level
 			ShowReal(distant, flat < swapDistance || eye.y > real.y + foot + Level() - slabGap);
 			float seems = distance;
 			float drawn = seems <= farthest ? seems : farthest + (drawDistance * 0.92f - farthest) * (1f - Mathf.Exp((farthest - seems) / 4000f));
 			float pull = drawn / Mathf.Max(distance, 1f);
 			float shrink = drawn / seems;
-			distant.Copy.SetPositionAndRotation(eye + (real - eye) * pull, turn);
-			distant.Copy.localScale = Vector3.one * shrink;
+			// taller from its foot, the foot stays where it was
+			distant.Copy.SetPositionAndRotation(eye + (real - eye) * pull + Vector3.up * foot * shrink * (1f - stretch), turn);
+			distant.Copy.localScale = new Vector3(shrink, shrink * stretch, shrink);
 			if (gaps.Count < cloudGaps)
 			{
 				gaps.Add(new Vector4(distant.Copy.position.x, distant.Copy.position.z, girth * shrink, (girth + cloudClearing) * shrink));
@@ -1188,17 +1311,16 @@ public class DistantPillar : MonoBehaviour
 			float worldFog = Mathf.Exp(-density * seems);
 			float visibility = Mathf.Lerp(worldFog, thin, Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(swapDistance, 800f, seems)));
 			distant.Material.SetColor("_FogColor", fog);
-			distant.Material.SetColor("_Tint", Color.Lerp(realGrey, structure, Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(swapDistance, darkBy, seems))));
 			distant.Material.SetFloat("_Visibility", visibility);
-			distant.Material.SetFloat("_Base", distant.Copy.position.y + foot * shrink);
-			distant.Material.SetFloat("_Height", height * shrink);
-			// cut off where the ceiling meets it, unless she's up above the ceiling. the top darkens into the ceiling's look there
-			distant.Material.SetFloat("_Meet", eye.y > centre.y ? 1f : Level() / height);
+			distant.Material.SetFloat("_Base", distant.Copy.position.y + foot * shrink * stretch);
+			distant.Material.SetFloat("_Height", height * shrink * stretch);
+			// cut off where the ceiling meets it, unless she's up above the ceiling. the top goes into the ceiling's look there
+			distant.Material.SetFloat("_Meet", eye.y > centre.y ? 1f : Level() / (height * stretch));
 			distant.Material.SetFloat("_Pull", seems / Mathf.Max(drawn, 1f));
 			distant.Material.SetColor("_CeilingTint", ceilingMaterial.GetColor("_Tint"));
-			distant.Material.SetFloat("_CeilingDensity", density * fogShare * 0.5f);
+			distant.Material.SetFloat("_CeilingDensity", density * ceilingFogShare);
 			distant.Material.SetFloat("_CeilingFade", farClip);
-			distant.Material.SetFloat("_CeilingStrength", 0.7f);
+			distant.Material.SetFloat("_CeilingStrength", ceilingStrength);
 		}
 		int used = gaps.Count;
 		while (gaps.Count < cloudGaps)

@@ -12,6 +12,7 @@ Shader "Hidden/DistantCeiling"
 		_Facade ("Buildings on the deck", Color) = (0.5, 0.52, 0.55, 1)
 		_DetailNear ("Underside detail full until", Float) = 650
 		_DetailFar ("Underside detail gone by", Float) = 1000
+		_Detail ("How much the panels and beams show", Range(0, 1)) = 1
 	}
 	SubShader
 	{
@@ -35,6 +36,7 @@ Shader "Hidden/DistantCeiling"
 			float _Strength;
 			float _DetailNear;
 			float _DetailFar;
+			float _Detail;
 			CBUFFER_END
 
 			struct Attributes
@@ -96,14 +98,15 @@ Shader "Hidden/DistantCeiling"
 				// cells divide the tile so its seams don't show
 				float patches = Hash(floor(p / 70)) * 0.25 + Hash(floor(p / 28)) * 0.1;
 				// beams every 100 m, ribs between, panels with some sunk in, grain. only fairly near overhead
-				float near = 1 - smoothstep(_DetailNear, _DetailFar, distance);
+				float near = (1 - smoothstep(_DetailNear, _DetailFar, distance)) * _Detail;
 				float beams = Lines(p, 100, 8);
 				float ribs = Lines(p, 25, 3) * (1 - beams);
 				float panel = Hash(floor(p / 25) + 7.3);
 				float sunk = step(panel, 0.25) * (1 - beams) * (1 - ribs);
 				float grain = Hash(floor(p / 5) + 3.1) - 0.5;
 				float detail = beams * 0.5 + ribs * 0.2 + (panel - 0.5) * 0.2 - sunk * 0.45 + grain * 0.12;
-				float3 colour = _Tint.rgb * max(0.85 + patches + detail * near, 0.3);
+				// softer patches, same average brightness (they come to 0.175)
+				float3 colour = _Tint.rgb * max(0.85 + lerp(0.175, patches, _Detail) + detail * near, 0.3);
 				// storeys between the slabs, dark with columns
 				float columns = step(abs(frac((p.x + p.y) / 20) - 0.5) * 20, 2.5);
 				colour = lerp(colour, _Tint.rgb * lerp(0.5, 0.95, columns), input.marks.y);

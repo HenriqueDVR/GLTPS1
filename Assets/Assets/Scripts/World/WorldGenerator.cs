@@ -367,6 +367,7 @@ public class WorldGenerator : MonoBehaviour
 	{
 		GameObject obj = UnityEngine.Object.Instantiate(prefab, layoutPose.position - Offset(), layoutPose.rotation);
 		obj.name = name;
+		DistantPillar.HideBrokenParts(obj);
 		GraphicsTuning.Adopt(obj);
 		RaisePieceChanged(obj);
 		return obj;
