@@ -14,6 +14,17 @@ public class PlaylistPlayer : MonoBehaviour
 
     private bool ended;
 
+    // the window losing focus pauses the audio, isPlaying goes false for a bit after coming back.
+    // only a song that got this close to its end counts as finished
+    private const float endTolerance = 1.5f;
+
+    // stopped this many frames without being near the end, play on from where it was
+    private const int resumeAfterFrames = 30;
+
+    private float lastTime;
+
+    private int stoppedFrames;
+
     public int CurrentTrack => currentTrackIndex;
 
     public float Position => audioSource.time;
@@ -34,6 +45,8 @@ public class PlaylistPlayer : MonoBehaviour
         audioSource.clip = playlist[trackIndex];
         audioSource.Play();
         audioSource.time = time;
+        lastTime = time;
+        stoppedFrames = 0;
         CoopMusic.SendCurrent();
     }
 
@@ -85,12 +98,28 @@ public class PlaylistPlayer : MonoBehaviour
 
     void Update()
     {
-        // Check if the current track has finished playing
-        if (!ended && !audioSource.isPlaying)
+        if (ended)
         {
-            // Move to the next track in the playlist
-            // Play the next track
+            return;
+        }
+        if (audioSource.isPlaying)
+        {
+            lastTime = audioSource.time;
+            stoppedFrames = 0;
+            return;
+        }
+        // single player doesn't run in the background, alt-tabbing paused it, not the song ending
+        if (!Application.isFocused)
+        {
+            return;
+        }
+        if (lastTime >= audioSource.clip.length - endTolerance)
+        {
             PlayTrack((currentTrackIndex + 1) % playlist.Length);
+        }
+        else if (++stoppedFrames > resumeAfterFrames)
+        {
+            PlayTrack(currentTrackIndex, lastTime);
         }
     }
 }
