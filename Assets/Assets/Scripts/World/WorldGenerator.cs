@@ -28,8 +28,8 @@ public class WorldGenerator : MonoBehaviour
 	private float nextProximityCheck;
 
 	// pieces this far from every player get switched off, and come back once someone is
-	// showMargin nearer. spawning reaches NodeData.spawnThreshold (400m), well inside this
-	public static float HideDistance = 700f;
+	// showMargin nearer. as far as spawning reaches (NodeData.spawnThreshold, 1400m) so they come in deep in the fog, no popping
+	public static float HideDistance = 1400f;
 
 	private const float showMargin = 100f;
 
