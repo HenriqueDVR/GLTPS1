@@ -1,4 +1,4 @@
-// far tower: thin fog, hazy at the foot and the top, faint streaks
+// far tower: thin fog, hazy at the foot, goes dark into the ceiling at the top, faint streaks
 Shader "Hidden/DistantSilhouette"
 {
 	Properties
@@ -9,10 +9,17 @@ Shader "Hidden/DistantSilhouette"
 		_Base ("World height of the foot", Float) = 0
 		_Height ("Height", Float) = 570
 		_Streaks ("Streaks round it", Float) = 14
+		_Meet ("Where the ceiling meets it, up its height", Range(0, 1)) = 0.9
+		_Pull ("Real distance over drawn distance", Float) = 1
+		_CeilingTint ("Ceiling underside", Color) = (0.13, 0.15, 0.18, 1)
+		_CeilingDensity ("Ceiling fog density", Float) = 0.0003
+		_CeilingFade ("Ceiling far clip", Float) = 7000
+		_CeilingStrength ("Most the ceiling ever shows", Range(0, 1)) = 0.7
 	}
 	SubShader
 	{
-		Tags { "RenderType" = "Opaque" "Queue" = "Geometry" "RenderPipeline" = "UniversalPipeline" }
+		// after the clouds
+		Tags { "RenderType" = "Opaque" "Queue" = "Geometry+2" "RenderPipeline" = "UniversalPipeline" }
 		Pass
 		{
 			Tags { "LightMode" = "UniversalForward" }
@@ -31,6 +38,12 @@ Shader "Hidden/DistantSilhouette"
 			float _Base;
 			float _Height;
 			float _Streaks;
+			float _Meet;
+			float _Pull;
+			float4 _CeilingTint;
+			float _CeilingDensity;
+			float _CeilingFade;
+			float _CeilingStrength;
 			CBUFFER_END
 
 			struct Attributes
@@ -65,14 +78,24 @@ Shader "Hidden/DistantSilhouette"
 			half4 frag(Varyings input) : SV_Target
 			{
 				float up = saturate((input.world.y - _Base) / _Height);
-				// haze at the foot and up into the ceiling
-				float haze = _Visibility * lerp(0.2, 0.85, smoothstep(0.03, 0.6, up)) * lerp(1, 0.12, smoothstep(0.76, 0.97, up));
+				// the ceiling hides the rest, and pulled in copies sit in front of it so it has to go here
+				clip(_Meet - up);
+				// haze at the foot
+				float haze = _Visibility * lerp(0.2, 0.85, smoothstep(0.03, 0.6, up));
 				float lit = 0.96 + 0.06 * saturate(dot(normalize(input.normal), GetMainLight().direction));
 				float column = floor(input.around * _Streaks);
 				float streak = 1 - 0.12 * step(0.55, Hash(column)) * smoothstep(0.1, 0.5, frac(input.around * _Streaks));
 				float shadow = lerp(1, 0.75, smoothstep(0.65, 0.85, up));
 				float3 structure = _Tint.rgb * lit * streak * shadow;
-				return half4(lerp(_FogColor.rgb, structure, haze), 1);
+				float3 tower = lerp(_FogColor.rgb, structure, haze);
+				// the ceiling as it looks just there, same sums as its shader at the real distance. the top goes into it
+				float3 view = input.world - _WorldSpaceCameraPos;
+				float seen = length(view);
+				float reach = seen * _Pull;
+				float rise = view.y / max(seen, 1);
+				float shows = exp(-_CeilingDensity * reach) * smoothstep(0.04, 0.4, rise) * (1 - smoothstep(_CeilingFade * 0.8, _CeilingFade * 0.97, reach)) * _CeilingStrength;
+				float3 ceiling = lerp(_FogColor.rgb, _CeilingTint.rgb, shows);
+				return half4(lerp(tower, ceiling, smoothstep(_Meet - 0.15, _Meet, up)), 1);
 			}
 			ENDHLSL
 		}
