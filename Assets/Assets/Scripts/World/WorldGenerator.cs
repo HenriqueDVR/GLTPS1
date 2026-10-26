@@ -440,6 +440,20 @@ public class WorldGenerator : MonoBehaviour
 		return pillar;
 	}
 
+	// every pillar in the layout, spawned or not
+	public List<WorldLayout.PlacedNode> Pillars()
+	{
+		List<WorldLayout.PlacedNode> pillars = new List<WorldLayout.PlacedNode>();
+		foreach (WorldLayout.PlacedNode node in Layout.Nodes)
+		{
+			if (node.Def.Prefab == nodeData.pillarEdge)
+			{
+				pillars.Add(node);
+			}
+		}
+		return pillars;
+	}
+
 	public Vector3 ToWorld(Vector3 layout)
 	{
 		return layout - Offset();
