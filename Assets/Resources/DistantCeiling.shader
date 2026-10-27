@@ -39,6 +39,9 @@ Shader "Hidden/DistantCeiling"
 			float _Detail;
 			CBUFFER_END
 
+			// noclip debug, F3: flat red, no fades
+			float _DebugFlat;
+
 			struct Attributes
 			{
 				float4 position : POSITION;
@@ -117,6 +120,10 @@ Shader "Hidden/DistantCeiling"
 				{
 					float windows = step(frac(input.local.y / 7), 0.35) * step(frac(across / 6), 0.55);
 					colour = lerp(_Facade.rgb, _Tint.rgb * 0.6, windows);
+				}
+				if (_DebugFlat > 0.5)
+				{
+					return half4(lerp(float3(0.6, 0.05, 0.05), float3(1, 0.6, 0.6), input.marks.x), 1);
 				}
 				return half4(lerp(_FogColor.rgb, colour, visibility * _Strength), 1);
 			}
