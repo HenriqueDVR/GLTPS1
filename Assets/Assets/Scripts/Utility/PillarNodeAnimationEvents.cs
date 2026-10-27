@@ -57,11 +57,25 @@ public class PillarNodeAnimationEvents : MonoBehaviour
         changeCameraRadiusScript.SetHeight(freelookHeight[0], freelookHeight[1], freelookHeight[2]);
     }
 
+    // animating at the physics rate while the camera follows every frame was the jitter.
+    // the girls and the ket are parented to the elevator so they go smoothly with it
+    private void SmoothRide()
+    {
+        Animator animator = GetComponent<Animator>();
+        if (animator != null)
+        {
+            animator.updateMode = AnimatorUpdateMode.Normal;
+        }
+    }
+
     public void PauseGameState()
     {
 #if DUMP_WORLDGEN
         Debug.Log("CoopTour ending event PauseGameState");
 #endif
+        SmoothRide();
+        // the camera leaves the mouse and pulls back over the city
+        EndingCinematic.Begin(transform);
         // ending has its own song, fade the radio
         PlaylistPlayer playlistPlayer = FindObjectOfType<PlaylistPlayer>();
         if (playlistPlayer != null)

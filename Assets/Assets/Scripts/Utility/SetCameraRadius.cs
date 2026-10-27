@@ -12,7 +12,9 @@ public class SetCameraRadius : MonoBehaviour
 
     [SerializeField] private float smoothRadiusSpeed = 0.6f;
     private float defaultSmoothRadiusSpeed;
-    private float smoothRadiusVelocity = 0f;
+    // one each, sharing a single velocity between all six made the zoom shake
+    private readonly float[] radiusVelocity = new float[3];
+    private readonly float[] heightVelocity = new float[3];
     void Start()
     {
         defaultRadius[0] = freelookCamera.m_Orbits[0].m_Radius;
@@ -30,13 +32,11 @@ public class SetCameraRadius : MonoBehaviour
     }
     void Update()
     {
-        freelookCamera.m_Orbits[0].m_Radius = Mathf.SmoothDamp(freelookCamera.m_Orbits[0].m_Radius, radius[0], ref smoothRadiusVelocity, smoothRadiusSpeed);
-        freelookCamera.m_Orbits[1].m_Radius = Mathf.SmoothDamp(freelookCamera.m_Orbits[1].m_Radius, radius[1], ref smoothRadiusVelocity, smoothRadiusSpeed);
-        freelookCamera.m_Orbits[2].m_Radius = Mathf.SmoothDamp(freelookCamera.m_Orbits[2].m_Radius, radius[2], ref smoothRadiusVelocity, smoothRadiusSpeed);
-
-        freelookCamera.m_Orbits[0].m_Height = Mathf.SmoothDamp(freelookCamera.m_Orbits[0].m_Height, height[0], ref smoothRadiusVelocity, smoothRadiusSpeed);
-        freelookCamera.m_Orbits[1].m_Height = Mathf.SmoothDamp(freelookCamera.m_Orbits[1].m_Height, height[1], ref smoothRadiusVelocity, smoothRadiusSpeed);
-        freelookCamera.m_Orbits[2].m_Height = Mathf.SmoothDamp(freelookCamera.m_Orbits[2].m_Height, height[2], ref smoothRadiusVelocity, smoothRadiusSpeed);
+        for (int i = 0; i < 3; i++)
+        {
+            freelookCamera.m_Orbits[i].m_Radius = Mathf.SmoothDamp(freelookCamera.m_Orbits[i].m_Radius, radius[i], ref radiusVelocity[i], smoothRadiusSpeed);
+            freelookCamera.m_Orbits[i].m_Height = Mathf.SmoothDamp(freelookCamera.m_Orbits[i].m_Height, height[i], ref heightVelocity[i], smoothRadiusSpeed);
+        }
     }
 
     public void SetDefaultRadius()
