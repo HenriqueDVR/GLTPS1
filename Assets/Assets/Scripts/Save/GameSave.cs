@@ -83,8 +83,6 @@ public static class GameSave
 
 	private const string difficultyKey = "difficultySetting";
 
-	private const int gameplayScene = 1;
-
 	// -1 = no slot yet
 	public static int CurrentSlot = -1;
 
@@ -170,13 +168,13 @@ public static class GameSave
 		CoopPipes.SetRestore(pipes);
 		CoopGirlState.HostKept = (CoopSession.Active && CoopSession.Instance.IsHost) ? ToState(data.yuuri) : null;
 		Debug.Log("Save: loading slot " + (slot + 1));
-		SceneManager.LoadScene(gameplayScene);
+		SceneManager.LoadScene(Scenes.Game);
 	}
 
 	// null if we can save
 	public static string WhyNotSave()
 	{
-		if (SceneManager.GetActiveScene().buildIndex != gameplayScene || CurrentSlot < 0)
+		if (!Scenes.InGame || CurrentSlot < 0)
 		{
 			return "Nothing to save.";
 		}
@@ -297,7 +295,7 @@ public static class GameSave
 			savedAt = DateTime.Now.ToString("d MMM HH:mm"),
 			playSeconds = playSecondsBefore + Time.timeSinceLevelLoad,
 			coop = coop,
-			seed = UnityEngine.Object.FindObjectOfType<WorldGenerator>().Seed.ToString(),
+			seed = GameSession.Get<WorldGenerator>().Seed.ToString(),
 			difficulty = PlayerPrefs.GetString(difficultyKey, ""),
 			chito = FromState(CoopGirlState.Capture(chito, chito.position + offset))
 		};
@@ -536,7 +534,7 @@ public static class GameSave
 
 		private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
 		{
-			if (scene.buildIndex != gameplayScene)
+			if (scene.buildIndex != Scenes.Game)
 			{
 				return;
 			}
@@ -562,7 +560,7 @@ public static class GameSave
 			// -savein S
 			string[] args = Environment.GetCommandLineArgs();
 			int at = Array.IndexOf(args, "-savein");
-			if (!debugSaved && at >= 0 && at < args.Length - 1 && float.TryParse(args[at + 1], out float seconds) && SceneManager.GetActiveScene().buildIndex == gameplayScene && Time.timeSinceLevelLoad > seconds)
+			if (!debugSaved && at >= 0 && at < args.Length - 1 && float.TryParse(args[at + 1], out float seconds) && Scenes.InGame && Time.timeSinceLevelLoad > seconds)
 			{
 				debugSaved = true;
 				Debug.Log("Save: debug save, " + (WhyNotSave() ?? "ok") + ", saved " + SaveNow());
@@ -571,13 +569,13 @@ public static class GameSave
 				Debug.Log("Save: saved with Chito at " + (c.position + Offset()).ToString("F1") + ", Yuuri at " + (y.position + Offset()).ToString("F1"));
 			}
 			// -openpause
-			if (!debugPaused && Array.IndexOf(args, "-openpause") >= 0 && SceneManager.GetActiveScene().buildIndex == gameplayScene && Time.timeSinceLevelLoad > 12f)
+			if (!debugPaused && Array.IndexOf(args, "-openpause") >= 0 && Scenes.InGame && Time.timeSinceLevelLoad > 12f)
 			{
 				debugPaused = true;
 				UnityEngine.Object.FindObjectOfType<UIManager>().OpenMainMenu();
 			}
 #endif
-			if (Time.unscaledTime >= nextAutosave && SceneManager.GetActiveScene().buildIndex == gameplayScene)
+			if (Time.unscaledTime >= nextAutosave && Scenes.InGame)
 			{
 				nextAutosave = Time.unscaledTime + autosaveInterval;
 				// no popup for autosave, too often

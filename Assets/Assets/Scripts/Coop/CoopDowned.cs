@@ -105,7 +105,7 @@ public class CoopDowned : MonoBehaviour
 			else if (Time.unscaledTime >= gameOverAt)
 			{
 				gameOverAt = float.MaxValue;
-				SceneManager.LoadScene(0);
+				SceneManager.LoadScene(Scenes.Title);
 			}
 		}
 	}

@@ -90,10 +90,6 @@ public class CoopSession : MonoBehaviour
 	// bump on protocol changes
 	private const string connectionKey = "GLTPS1-coop-20";
 
-	private const int gameplayScene = 1;
-
-	private const int titleScene = 0;
-
 	private const string difficultyKey = "difficultySetting";
 
 	private const float eosJoinTimeout = 30f;
@@ -276,7 +272,7 @@ public class CoopSession : MonoBehaviour
 		{
 			if (Active && CoopPlayers.Instance != null)
 			{
-				return SceneManager.GetActiveScene().buildIndex == gameplayScene;
+				return Scenes.InGame;
 			}
 			return false;
 		}
@@ -644,7 +640,7 @@ public class CoopSession : MonoBehaviour
 	// friend dropped mid game: stay in the world and keep knocking
 	private bool StartReconnect(string reason)
 	{
-		if (IsHost || lastInvite == null || SceneManager.GetActiveScene().buildIndex != gameplayScene)
+		if (IsHost || lastInvite == null || !Scenes.InGame)
 		{
 			return false;
 		}
@@ -677,9 +673,9 @@ public class CoopSession : MonoBehaviour
 			reconnectUntil = -1f;
 			Leave();
 			Status = "Lost the host and couldn't reconnect.";
-			if (SceneManager.GetActiveScene().buildIndex == gameplayScene)
+			if (Scenes.InGame)
 			{
-				SceneManager.LoadScene(titleScene);
+				SceneManager.LoadScene(Scenes.Title);
 			}
 		}
 		else if (pendingConnections.Count == 0 && eosTarget == null && Time.unscaledTime >= nextRetry)
@@ -862,12 +858,12 @@ public class CoopSession : MonoBehaviour
 		if (IsHost)
 		{
 			Status = "Your friend joined.";
-			if (SceneManager.GetActiveScene().buildIndex == gameplayScene && hostSeed != 0L)
+			if (Scenes.InGame && hostSeed != 0L)
 			{
 				SendStart();
 				PartnerJoined?.Invoke();
 			}
-			else if (SceneManager.GetActiveScene().buildIndex == titleScene)
+			else if (SceneManager.GetActiveScene().buildIndex == Scenes.Title)
 			{
 				// they may be reconnecting from inside the old world
 				writer.Reset();
@@ -919,9 +915,9 @@ public class CoopSession : MonoBehaviour
 		}
 		Status = "Disconnected from the host (" + reason + ").";
 		Leave();
-		if (SceneManager.GetActiveScene().buildIndex == gameplayScene)
+		if (Scenes.InGame)
 		{
-			SceneManager.LoadScene(titleScene);
+			SceneManager.LoadScene(Scenes.Title);
 		}
 	}
 
@@ -1211,7 +1207,7 @@ public class CoopSession : MonoBehaviour
 				ulong @ulong = reader.GetULong();
 				string @string = reader.GetString();
 				int levelRun = reader.GetInt();
-				bool resume = reconnected && joinedSeed == @ulong && joinedLevelRun == levelRun && SceneManager.GetActiveScene().buildIndex == gameplayScene;
+				bool resume = reconnected && joinedSeed == @ulong && joinedLevelRun == levelRun && Scenes.InGame;
 				reconnected = false;
 				skipRejoin = resume;
 				if (resume)
@@ -1238,7 +1234,7 @@ public class CoopSession : MonoBehaviour
 				CoopWeather.ResetLevel();
 				CoopMusic.ResetLevel();
 				Status = "Loading the host's world...";
-				SceneManager.LoadScene(gameplayScene);
+				SceneManager.LoadScene(Scenes.Game);
 			}
 			break;
 		case MessageType.Ready:
@@ -1254,10 +1250,10 @@ public class CoopSession : MonoBehaviour
 			this.PlayerStateReceived?.Invoke(reader);
 			break;
 		case MessageType.Menu:
-			if (!IsHost && SceneManager.GetActiveScene().buildIndex == gameplayScene)
+			if (!IsHost && Scenes.InGame)
 			{
 				Status = "The host went back to the title screen.";
-				SceneManager.LoadScene(titleScene);
+				SceneManager.LoadScene(Scenes.Title);
 			}
 			break;
 		case MessageType.TakeItem:
@@ -1341,7 +1337,7 @@ public class CoopSession : MonoBehaviour
 			CoopKettenkrad.Instance?.OnPlaced(reader);
 			break;
 		case MessageType.RestartLevel:
-			if (IsHost && SceneManager.GetActiveScene().buildIndex == gameplayScene)
+			if (IsHost && Scenes.InGame)
 			{
 				RestartLevel();
 			}
@@ -1442,7 +1438,7 @@ public class CoopSession : MonoBehaviour
 		if (IsHost)
 		{
 			CoopGirlState.HostKept = null;
-			SceneManager.LoadScene(gameplayScene);
+			SceneManager.LoadScene(Scenes.Game);
 			return;
 		}
 		writer.Reset();
@@ -1528,18 +1524,18 @@ public class CoopSession : MonoBehaviour
 	private void OnSceneLoaded(Scene scene, LoadSceneMode loadMode)
 	{
 		// they quit to the title while we were still trying
-		if (scene.buildIndex == titleScene && Reconnecting)
+		if (scene.buildIndex == Scenes.Title && Reconnecting)
 		{
 			Leave();
 			Status = "Stopped reconnecting.";
 		}
-		if (scene.buildIndex == titleScene)
+		if (scene.buildIndex == Scenes.Title)
 		{
 			CoopGirlState.HostKept = null;
 			CoopGirlState.ClearPending();
 			CoopPipes.SetRestore(null);
 		}
-		if (scene.buildIndex == titleScene && IsHost)
+		if (scene.buildIndex == Scenes.Title && IsHost)
 		{
 			hostSeed = 0uL;
 			if (Connected)
@@ -1550,7 +1546,7 @@ public class CoopSession : MonoBehaviour
 				Status = "Your friend is connected. Start the game when you're ready.";
 			}
 		}
-		else if (scene.buildIndex == titleScene && Mode == SessionMode.Joining && Connected)
+		else if (scene.buildIndex == Scenes.Title && Mode == SessionMode.Joining && Connected)
 		{
 			Status = "Connected. Waiting for the host to start the game...";
 		}

@@ -5,7 +5,6 @@ using UnityEngine.InputSystem;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
-using UnityEngine.EventSystems;
 
 public class UIManager : MonoBehaviour
 {
@@ -283,7 +282,7 @@ public class UIManager : MonoBehaviour
     public void QuitToTitleMenu()
     {
         GameSave.SaveIfPossible();
-        SceneManager.LoadScene(0);
+        SceneManager.LoadScene(Scenes.Title);
     }
 
     public void QuitApplication()

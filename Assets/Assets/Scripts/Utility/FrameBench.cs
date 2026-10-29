@@ -236,7 +236,7 @@ public class FrameBench : MonoBehaviour
 		GameObject chito = null;
 		while (world == null || chito == null)
 		{
-			world = FindObjectOfType<WorldGenerator>();
+			world = GameSession.Get<WorldGenerator>();
 			chito = GameObject.Find("ChitoParent");
 			yield return null;
 		}

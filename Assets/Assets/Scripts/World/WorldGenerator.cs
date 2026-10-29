@@ -51,7 +51,6 @@ public class WorldGenerator : MonoBehaviour
 	private void Awake()
 	{
 		Active = true;
-		KanazawaInstanceManager.ResetLevel();
 		nodeData = GetComponent<NodeData>();
 		floatingOrigin = UnityEngine.Object.FindObjectOfType<FloatingOrigin>();
 		Seed = ChooseSeed();
@@ -76,27 +75,6 @@ public class WorldGenerator : MonoBehaviour
 		base.gameObject.AddComponent<DistantPillar>();
 		SeedItemSpawners(node.gameObject, 0uL);
 		node.MarkPlaced();
-		if (CoopSession.Active)
-		{
-			if (CoopSession.Instance.IsHost || CoopSession.Instance.Connected)
-			{
-				base.gameObject.AddComponent<CoopPlayers>();
-				base.gameObject.AddComponent<CoopSupplies>();
-				base.gameObject.AddComponent<CoopKettenkrad>();
-				base.gameObject.AddComponent<CoopBarrel>();
-				base.gameObject.AddComponent<CoopDowned>();
-				base.gameObject.AddComponent<CoopKanazawa>();
-#if DUMP_WORLDGEN
-				base.gameObject.AddComponent<CoopDebugTour>();
-#endif
-			}
-			CoopSession.Instance.OnWorldGenerated(this);
-		}
-		else
-		{
-			CoopItem.ResetLevel();
-		}
-		CoopItem.TrackScenePickups();
 	}
 
 	private void OnDestroy()

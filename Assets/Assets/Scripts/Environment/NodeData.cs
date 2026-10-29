@@ -47,7 +47,7 @@ public class NodeData : MonoBehaviour
             return;
         }
 #endif
-        gameObject.AddComponent<WorldGenerator>();
+        GameSession.Begin(gameObject);
     }
 
     void Start()

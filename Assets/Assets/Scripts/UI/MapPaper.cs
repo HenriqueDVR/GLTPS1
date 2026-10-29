@@ -300,7 +300,7 @@ public class MapPaper : MonoBehaviour
 		{
 			nextRoute = Time.unscaledTime + 0.5f;
 			route.Clear();
-			WorldGenerator generator = WorldGenerator.Active ? FindObjectOfType<WorldGenerator>() : null;
+			WorldGenerator generator = WorldGenerator.Active ? GameSession.Get<WorldGenerator>() : null;
 			if (generator != null && generator.Layout != null)
 			{
 				route.AddRange(generator.RouteToPillar(owner.transform.position));

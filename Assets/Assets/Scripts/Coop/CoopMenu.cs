@@ -8,8 +8,6 @@ using UnityEngine.UI;
 // coop page, made from copies of the menu buttons. invite goes through the clipboard
 public class CoopMenu : MonoBehaviour
 {
-	private const int titleScene = 0;
-
 	private const float buttonTop = -111f;
 
 	private const float buttonSpacing = 100f;
@@ -266,7 +264,7 @@ public class CoopMenu : MonoBehaviour
 
 	private void OnGUI()
 	{
-		if (SceneManager.GetActiveScene().buildIndex == titleScene || session.Mode == CoopSession.SessionMode.Off)
+		if (SceneManager.GetActiveScene().buildIndex == Scenes.Title || session.Mode == CoopSession.SessionMode.Off)
 		{
 			return;
 		}

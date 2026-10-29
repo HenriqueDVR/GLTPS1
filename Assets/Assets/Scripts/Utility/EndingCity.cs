@@ -49,8 +49,7 @@ public static class EndingCity
 
 	private static void Filler(Transform parent, Transform column, Color albedo, Material material)
 	{
-		GameObject data = GameObject.FindWithTag("NodeData");
-		WorldGenerator world = data != null ? data.GetComponent<WorldGenerator>() : null;
+		WorldGenerator world = GameSession.Get<WorldGenerator>();
 		if (world == null || world.Layout == null)
 		{
 			return;

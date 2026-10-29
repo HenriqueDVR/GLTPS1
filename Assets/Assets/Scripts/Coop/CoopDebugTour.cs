@@ -66,7 +66,7 @@ public class CoopDebugTour : MonoBehaviour
 
 	private IEnumerator TravelToPillar()
 	{
-		WorldGenerator worldGenerator = Object.FindObjectOfType<WorldGenerator>();
+		WorldGenerator worldGenerator = GameSession.Get<WorldGenerator>();
 		NodeData component = worldGenerator.GetComponent<NodeData>();
 		WorldLayout.PlacedNode placedNode = null;
 		foreach (WorldLayout.PlacedNode node in worldGenerator.Layout.Nodes)
@@ -191,7 +191,7 @@ public class CoopDebugTour : MonoBehaviour
 
 	private static List<WorldLayout.PlacedNode> RouteToPillar()
 	{
-		WorldGenerator worldGenerator = Object.FindObjectOfType<WorldGenerator>();
+		WorldGenerator worldGenerator = GameSession.Get<WorldGenerator>();
 		NodeData nodeData = worldGenerator.GetComponent<NodeData>();
 		WorldLayout.PlacedNode pillar = null;
 		foreach (WorldLayout.PlacedNode node in worldGenerator.Layout.Nodes)

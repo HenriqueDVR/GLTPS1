@@ -149,7 +149,7 @@ public class CharacterDeath : MonoBehaviour
     IEnumerator DelayReloadScene()
     {
         yield return new WaitForSeconds(6);
-        SceneManager.LoadScene(0);
+        SceneManager.LoadScene(Scenes.Title);
     }
 }
 
