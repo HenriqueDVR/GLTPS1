@@ -6,7 +6,6 @@ using Cinemachine;
 using UnityEngine.Animations;
 using TMPro;
 using UnityEngine.UI;
-using Unity.VisualScripting;
 public class PlayerGunController : MonoBehaviour
 {
     [SerializeField] private PlayerInputInitialize playerInputScript;

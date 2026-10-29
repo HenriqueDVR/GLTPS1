@@ -209,7 +209,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 6938123611326194624}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: OpenDifficultyMenu
         m_Mode: 1
         m_Arguments:
@@ -276,7 +276,7 @@ MonoBehaviour:
       m_PersistentCalls:
         m_Calls:
         - m_Target: {fileID: 6938123611326194624}
-          m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+          m_TargetAssemblyTypeName: UIManager, GLTPS.Game
           m_MethodName: PlayButtonHoverSFX
           m_Mode: 1
           m_Arguments:
@@ -292,7 +292,7 @@ MonoBehaviour:
       m_PersistentCalls:
         m_Calls:
         - m_Target: {fileID: 6938123611326194624}
-          m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+          m_TargetAssemblyTypeName: UIManager, GLTPS.Game
           m_MethodName: PlayButtonDownSFX
           m_Mode: 1
           m_Arguments:
@@ -626,7 +626,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 1650125216}
-        m_TargetAssemblyTypeName: SetDifficultySetting, Assembly-CSharp
+        m_TargetAssemblyTypeName: SetDifficultySetting, GLTPS.Game
         m_MethodName: SetHardDifficulty
         m_Mode: 1
         m_Arguments:
@@ -693,7 +693,7 @@ MonoBehaviour:
       m_PersistentCalls:
         m_Calls:
         - m_Target: {fileID: 6938123611326194624}
-          m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+          m_TargetAssemblyTypeName: UIManager, GLTPS.Game
           m_MethodName: PlayButtonHoverSFX
           m_Mode: 1
           m_Arguments:
@@ -709,7 +709,7 @@ MonoBehaviour:
       m_PersistentCalls:
         m_Calls:
         - m_Target: {fileID: 6938123611326194624}
-          m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+          m_TargetAssemblyTypeName: UIManager, GLTPS.Game
           m_MethodName: PlayButtonDownSFX
           m_Mode: 1
           m_Arguments:
@@ -1276,7 +1276,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 1650125216}
-        m_TargetAssemblyTypeName: SetDifficultySetting, Assembly-CSharp
+        m_TargetAssemblyTypeName: SetDifficultySetting, GLTPS.Game
         m_MethodName: SetEasyDifficulty
         m_Mode: 1
         m_Arguments:
@@ -1343,7 +1343,7 @@ MonoBehaviour:
       m_PersistentCalls:
         m_Calls:
         - m_Target: {fileID: 6938123611326194624}
-          m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+          m_TargetAssemblyTypeName: UIManager, GLTPS.Game
           m_MethodName: PlayButtonHoverSFX
           m_Mode: 1
           m_Arguments:
@@ -1359,7 +1359,7 @@ MonoBehaviour:
       m_PersistentCalls:
         m_Calls:
         - m_Target: {fileID: 6938123611326194624}
-          m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+          m_TargetAssemblyTypeName: UIManager, GLTPS.Game
           m_MethodName: PlayButtonDownSFX
           m_Mode: 1
           m_Arguments:
@@ -2113,7 +2113,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 1650125216}
-        m_TargetAssemblyTypeName: SetDifficultySetting, Assembly-CSharp
+        m_TargetAssemblyTypeName: SetDifficultySetting, GLTPS.Game
         m_MethodName: SetMediumDifficulty
         m_Mode: 1
         m_Arguments:
@@ -2180,7 +2180,7 @@ MonoBehaviour:
       m_PersistentCalls:
         m_Calls:
         - m_Target: {fileID: 6938123611326194624}
-          m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+          m_TargetAssemblyTypeName: UIManager, GLTPS.Game
           m_MethodName: PlayButtonHoverSFX
           m_Mode: 1
           m_Arguments:
@@ -2196,7 +2196,7 @@ MonoBehaviour:
       m_PersistentCalls:
         m_Calls:
         - m_Target: {fileID: 6938123611326194624}
-          m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+          m_TargetAssemblyTypeName: UIManager, GLTPS.Game
           m_MethodName: PlayButtonDownSFX
           m_Mode: 1
           m_Arguments:
@@ -2925,7 +2925,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 6938123611326194624}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: OpenSettingsMenu
         m_Mode: 1
         m_Arguments:
@@ -3042,7 +3042,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 1192070691943854796}
-        m_TargetAssemblyTypeName: UISettings, Assembly-CSharp
+        m_TargetAssemblyTypeName: UISettings, GLTPS.Game
         m_MethodName: SaveSetting
         m_Mode: 1
         m_Arguments:
@@ -3054,7 +3054,7 @@ MonoBehaviour:
           m_BoolArgument: 0
         m_CallState: 2
       - m_Target: {fileID: 6938123611326194624}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: CloseSettingsMenu
         m_Mode: 1
         m_Arguments:
@@ -4772,7 +4772,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 6938123611326194624}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: QuitApplication
         m_Mode: 1
         m_Arguments:
@@ -4801,7 +4801,7 @@ MonoBehaviour:
       m_PersistentCalls:
         m_Calls:
         - m_Target: {fileID: 6938123611326194624}
-          m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+          m_TargetAssemblyTypeName: UIManager, GLTPS.Game
           m_MethodName: PlayButtonHoverSFX
           m_Mode: 1
           m_Arguments:
@@ -4966,7 +4966,7 @@ MonoBehaviour:
       m_PersistentCalls:
         m_Calls:
         - m_Target: {fileID: 6938123611326194624}
-          m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+          m_TargetAssemblyTypeName: UIManager, GLTPS.Game
           m_MethodName: PlayButtonHoverSFX
           m_Mode: 1
           m_Arguments:
@@ -4982,7 +4982,7 @@ MonoBehaviour:
       m_PersistentCalls:
         m_Calls:
         - m_Target: {fileID: 6938123611326194624}
-          m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+          m_TargetAssemblyTypeName: UIManager, GLTPS.Game
           m_MethodName: PlayButtonDownSFX
           m_Mode: 1
           m_Arguments:
@@ -5373,7 +5373,7 @@ MonoBehaviour:
       m_PersistentCalls:
         m_Calls:
         - m_Target: {fileID: 6938123611326194624}
-          m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+          m_TargetAssemblyTypeName: UIManager, GLTPS.Game
           m_MethodName: PlayButtonHoverSFX
           m_Mode: 1
           m_Arguments:
@@ -5389,7 +5389,7 @@ MonoBehaviour:
       m_PersistentCalls:
         m_Calls:
         - m_Target: {fileID: 6938123611326194624}
-          m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+          m_TargetAssemblyTypeName: UIManager, GLTPS.Game
           m_MethodName: PlayButtonDownSFX
           m_Mode: 1
           m_Arguments:

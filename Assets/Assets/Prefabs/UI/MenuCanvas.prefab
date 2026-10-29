@@ -119,7 +119,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -249,7 +249,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -515,7 +515,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -645,7 +645,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -775,7 +775,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -905,7 +905,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -1035,7 +1035,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -1165,7 +1165,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -1295,7 +1295,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -1664,7 +1664,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -1794,7 +1794,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -1924,7 +1924,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -2054,7 +2054,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -2184,7 +2184,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -2497,7 +2497,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -2627,7 +2627,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -2757,7 +2757,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -2887,7 +2887,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -3017,7 +3017,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -3147,7 +3147,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -3277,7 +3277,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -3407,7 +3407,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -3541,7 +3541,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: NextPhotoPanel
         m_Mode: 1
         m_Arguments:
@@ -4013,7 +4013,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -4143,7 +4143,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -4502,7 +4502,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -4669,7 +4669,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -4799,7 +4799,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -4929,7 +4929,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -5059,7 +5059,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -5189,7 +5189,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -5319,7 +5319,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -5449,7 +5449,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -5579,7 +5579,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -5789,7 +5789,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ClosePhotoMenu
         m_Mode: 1
         m_Arguments:
@@ -6092,7 +6092,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -6222,7 +6222,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: HideImage
         m_Mode: 1
         m_Arguments:
@@ -6525,7 +6525,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -6655,7 +6655,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -7014,7 +7014,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -7144,7 +7144,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -7274,7 +7274,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -7616,7 +7616,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -8105,7 +8105,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -8235,7 +8235,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -8501,7 +8501,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -8631,7 +8631,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -8837,7 +8837,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -9105,7 +9105,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -9272,7 +9272,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -9482,7 +9482,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: CloseMainMenu
         m_Mode: 1
         m_Arguments:
@@ -9809,7 +9809,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -9943,7 +9943,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: QuitApplication
         m_Mode: 1
         m_Arguments:
@@ -10209,7 +10209,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -10343,7 +10343,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: OpenPhotoMenu
         m_Mode: 1
         m_Arguments:
@@ -10609,7 +10609,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -10739,7 +10739,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -10869,7 +10869,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -11075,7 +11075,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -11448,7 +11448,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -11582,7 +11582,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: OpenSettingsMenu
         m_Mode: 1
         m_Arguments:
@@ -11712,7 +11712,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -11842,7 +11842,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -12079,7 +12079,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -12209,7 +12209,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -12479,7 +12479,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: PreviousPhotoPanel
         m_Mode: 1
         m_Arguments:
@@ -12821,7 +12821,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -12951,7 +12951,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -13085,7 +13085,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 1255832040381536955}
-        m_TargetAssemblyTypeName: UISettings, Assembly-CSharp
+        m_TargetAssemblyTypeName: UISettings, GLTPS.Game
         m_MethodName: SaveSetting
         m_Mode: 1
         m_Arguments:
@@ -13097,7 +13097,7 @@ MonoBehaviour:
           m_BoolArgument: 0
         m_CallState: 2
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: CloseSettingsMenu
         m_Mode: 1
         m_Arguments:
@@ -13227,7 +13227,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -13357,7 +13357,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -13623,7 +13623,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
@@ -13753,7 +13753,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 7039024813818530743}
-        m_TargetAssemblyTypeName: UIManager, Assembly-CSharp
+        m_TargetAssemblyTypeName: UIManager, GLTPS.Game
         m_MethodName: ShowImage
         m_Mode: 1
         m_Arguments:
