@@ -11,6 +11,10 @@ public class WorldGenerator : MonoBehaviour
 	// 0 = random. -seed on the command line
 	public static ulong RequestedSeed;
 
+	// 1 = this legacy graph, 2 = open world tiles (TileStreamer). -gen2 on the command line.
+	// stays 1 by default until v2 has content, and isn't saved or sent yet (WP-WORLD-4/5)
+	public static int GenVersion { get; private set; } = 1;
+
 	private const int maxNodes = 300;
 
 	private const float proximityCheckInterval = 0.5f;
@@ -44,7 +48,11 @@ public class WorldGenerator : MonoBehaviour
 	// a piece spawned, or was switched on or off. world space, NavMeshAreaBaker rebuilds if it's in its box
 	public static event Action<Bounds> PieceChanged;
 
+	// null in v2
 	public WorldLayout Layout { get; private set; }
+
+	// v2 only, layer 0 for now
+	public LayerPlan Plan { get; private set; }
 
 	public uint LayoutHash { get; private set; }
 
@@ -63,6 +71,21 @@ public class WorldGenerator : MonoBehaviour
 			return;
 		}
 		Pose rootPose = new Pose(node.transform.position + Offset(), node.transform.rotation);
+		GenVersion = ChooseGenVersion();
+		if (GenVersion == 2)
+		{
+			// the start node stays as the starting room, layer 0's origin is where it stands
+			Plan = new LayerPlan(Seed, 0, new XZ(rootPose.position.x, rootPose.position.z), null);
+			ulong planHash = Plan.PlanHash(Plan.Origin, 1);
+			LayoutHash = (uint)(planHash ^ (planHash >> 32));
+			Debug.Log("WorldGenerator: gen2 seed=" + Seed + " origin=" + Plan.Origin + " planhash=" + planHash.ToString("x16"));
+#if DUMP_WORLDGEN
+			base.gameObject.AddComponent<WorldGenOverheadView>();
+#endif
+			SeedItemSpawners(node.gameObject, 0uL);
+			node.MarkPlaced();
+			return;
+		}
 		Layout = BuildLayout(node, nodeData, rootPose, Seed);
 		string text = Layout.Describe();
 		LayoutHash = WorldLayout.Hash(text);
@@ -84,6 +107,10 @@ public class WorldGenerator : MonoBehaviour
 
 	private void Update()
 	{
+		if (Layout == null)
+		{
+			return;
+		}
 		if (!builtAround)
 		{
 			builtAround = true;
@@ -531,6 +558,11 @@ public class WorldGenerator : MonoBehaviour
 		WorldLayout.NodeDef root = defs.GetNodeDef(start.gameObject);
 		WorldLayout.NodeDef pillar = ((data.pillarEdge != null) ? defs.GetNodeDef(data.pillarEdge) : null);
 		return WorldLayout.Generate(root, rootPose, seed, pillar, data.pillarSpawnChance, data.countThreshold, maxNodes);
+	}
+
+	private static int ChooseGenVersion()
+	{
+		return (Array.IndexOf(Environment.GetCommandLineArgs(), "-gen2") >= 0) ? 2 : 1;
 	}
 
 	public static Node FindStartNode()

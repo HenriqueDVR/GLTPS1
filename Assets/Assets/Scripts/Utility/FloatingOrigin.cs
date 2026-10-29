@@ -31,6 +31,19 @@ public class FloatingOrigin : MonoBehaviour
     // world pos + TotalOffset = pos before any shifting
     public Vector3 TotalOffset { get; private set; }
 
+    // after everything moved, with the amount it moved by (world positions went down by this)
+    public static event System.Action<Vector3> Shifted;
+
+    // world gen v2 turns it on, following the camera so it's whoever is playing here
+    public void UseFor(Transform reference)
+    {
+        if (reference != null)
+            ReferenceObject = reference;
+        Threshold = 1000f;
+        Use2DDistance = true;
+        enabled = true;
+    }
+
     void LateUpdate()
     {
         if (ReferenceObject == null)
@@ -54,6 +67,36 @@ public class FloatingOrigin : MonoBehaviour
 
             if (UpdateLineRenderers)
                 MoveLineRenderers(referencePosition);
+
+            // character controllers and rigidbodies only see transform moves after a sync
+            Physics.SyncTransforms();
+            Shifted?.Invoke(referencePosition);
+            WarpAgents();
+            WarpCameras(referencePosition);
+        }
+    }
+
+    // agents keep their own position and would walk back, the navmesh under them moved in Shifted
+    private void WarpAgents()
+    {
+        foreach (UnityEngine.AI.NavMeshAgent agent in FindObjectsOfType<UnityEngine.AI.NavMeshAgent>())
+        {
+            if (agent.enabled)
+                agent.Warp(agent.transform.position);
+        }
+    }
+
+    // otherwise the camera damping sees the jump and swings across
+    private static void WarpCameras(Vector3 offset)
+    {
+        Cinemachine.CinemachineCore core = Cinemachine.CinemachineCore.Instance;
+        for (int i = 0; i < core.VirtualCameraCount; i++)
+        {
+            Cinemachine.CinemachineVirtualCameraBase vcam = core.GetVirtualCamera(i);
+            if (vcam.Follow != null)
+                vcam.OnTargetObjectWarped(vcam.Follow, -offset);
+            else if (vcam.LookAt != null)
+                vcam.OnTargetObjectWarped(vcam.LookAt, -offset);
         }
     }
 

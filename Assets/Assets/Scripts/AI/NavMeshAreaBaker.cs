@@ -27,6 +27,9 @@ public class NavMeshAreaBaker : MonoBehaviour
 
 	private NavMeshDataInstance instance;
 
+	// where instance was added, the transform moves on ahead of it while a build runs
+	private Vector3 instancePosition;
+
 	private NavMeshData pending;
 
 	private AsyncOperation building;
@@ -62,6 +65,7 @@ public class NavMeshAreaBaker : MonoBehaviour
 		data = NavMeshBuilder.BuildNavMeshData(surface.GetBuildSettings(), CollectSources(), LocalBounds(), transform.position, transform.rotation);
 		bakedBounds = WorldBounds();
 		instance = NavMesh.AddNavMeshData(data, transform.position, transform.rotation);
+		instancePosition = transform.position;
 		lastStart = Time.time;
 		lastPosition = transform.position;
 	}
@@ -69,11 +73,13 @@ public class NavMeshAreaBaker : MonoBehaviour
 	private void OnEnable()
 	{
 		WorldGenerator.PieceChanged += OnPieceChanged;
+		FloatingOrigin.Shifted += OnOriginShifted;
 	}
 
 	private void OnDisable()
 	{
 		WorldGenerator.PieceChanged -= OnPieceChanged;
+		FloatingOrigin.Shifted -= OnOriginShifted;
 		NavMeshBakeScheduler.Forget(this);
 	}
 
@@ -143,11 +149,23 @@ public class NavMeshAreaBaker : MonoBehaviour
 		// position it was built at, in case the floating origin moved everything meanwhile
 		NavMeshDataInstance old = instance;
 		instance = NavMesh.AddNavMeshData(pending, transform.position, transform.rotation);
+		instancePosition = transform.position;
 		old.Remove();
 		Destroy(data);
 		data = pending;
 		pending = null;
 		bakedBounds = pendingBounds;
+	}
+
+	// the navmesh moves with everything else straight away, so the agents have one under them until the rebuild
+	private void OnOriginShifted(Vector3 offset)
+	{
+		instancePosition -= offset;
+		NavMeshDataInstance old = instance;
+		instance = NavMesh.AddNavMeshData(data, instancePosition, transform.rotation);
+		old.Remove();
+		bakedBounds.center -= offset;
+		pendingBounds.center -= offset;
 	}
 
 	private void OnPieceChanged(Bounds bounds)

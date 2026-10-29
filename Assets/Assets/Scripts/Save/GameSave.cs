@@ -178,6 +178,11 @@ public static class GameSave
 		{
 			return "Nothing to save.";
 		}
+		// saves don't store the generator yet, it would load as the old world (WP-WORLD-5)
+		if (WorldGenerator.GenVersion == 2)
+		{
+			return "Saving isn't ready in the new world yet.";
+		}
 		if (CoopSession.Active && !CoopSession.Instance.IsHost)
 		{
 			return "Only the host saves in co-op.";

@@ -47,11 +47,26 @@ public class GameSession : MonoBehaviour
 	private void Awake()
 	{
 		Current = this;
+		// scene object, wired here once so nothing else has to look for it
+		FloatingOrigin floatingOrigin = FindObjectOfType<FloatingOrigin>();
+		if (floatingOrigin != null)
+		{
+			Register(floatingOrigin);
+		}
 		KanazawaInstanceManager.ResetLevel();
 		WorldGenerator world = Add<WorldGenerator>();
 		if (!WorldGenerator.Active)
 		{
 			return;
+		}
+		if (WorldGenerator.GenVersion == 2)
+		{
+			Add<TileStreamer>().Init(world.Plan, floatingOrigin);
+			// an endless world needs it, v1 never goes far enough
+			if (floatingOrigin != null)
+			{
+				floatingOrigin.UseFor(Camera.main != null ? Camera.main.transform : null);
+			}
 		}
 		if (CoopSession.Active)
 		{
