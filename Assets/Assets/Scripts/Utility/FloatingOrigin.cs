@@ -57,6 +57,7 @@ public class FloatingOrigin : MonoBehaviour
         if (referencePosition.magnitude > Threshold)
         {
             TotalOffset += referencePosition;
+            PauseInterpolation();
             MoveRootTransforms(referencePosition);
 
             if (UpdateParticles)
@@ -86,13 +87,42 @@ public class FloatingOrigin : MonoBehaviour
         }
     }
 
-    // otherwise the camera damping sees the jump and swings across
+    // an interpolated rigidbody (the ket) would draw a frame between the old and new place and the camera follows it.
+    // off for the shift, back on after the next physics step
+    private readonly System.Collections.Generic.Dictionary<Rigidbody, RigidbodyInterpolation> paused = new System.Collections.Generic.Dictionary<Rigidbody, RigidbodyInterpolation>();
+
+    private void PauseInterpolation()
+    {
+        foreach (Rigidbody body in FindObjectsOfType<Rigidbody>())
+        {
+            if (body.interpolation != RigidbodyInterpolation.None && !paused.ContainsKey(body))
+            {
+                paused.Add(body, body.interpolation);
+                body.interpolation = RigidbodyInterpolation.None;
+            }
+        }
+    }
+
+    void FixedUpdate()
+    {
+        foreach (System.Collections.Generic.KeyValuePair<Rigidbody, RigidbodyInterpolation> body in paused)
+        {
+            if (body.Key != null)
+                body.Key.interpolation = body.Value;
+        }
+        paused.Clear();
+    }
+
+    // otherwise the camera damping sees the jump and swings across.
+    // only top level cameras, a freelook passes it on to its rigs itself
     private static void WarpCameras(Vector3 offset)
     {
         Cinemachine.CinemachineCore core = Cinemachine.CinemachineCore.Instance;
         for (int i = 0; i < core.VirtualCameraCount; i++)
         {
             Cinemachine.CinemachineVirtualCameraBase vcam = core.GetVirtualCamera(i);
+            if (vcam.ParentCamera != null)
+                continue;
             if (vcam.Follow != null)
                 vcam.OnTargetObjectWarped(vcam.Follow, -offset);
             else if (vcam.LookAt != null)
