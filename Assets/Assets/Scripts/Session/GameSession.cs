@@ -89,10 +89,12 @@ public class GameSession : MonoBehaviour
 			CoopItem.ResetLevel();
 		}
 		CoopItem.TrackScenePickups();
+		StartCoroutine(SaveScene.Register());
 	}
 
 	private void OnDestroy()
 	{
+		SaveScene.Unregister();
 		services.Clear();
 		if (Current == this)
 		{

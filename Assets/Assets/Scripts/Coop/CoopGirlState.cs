@@ -1,6 +1,4 @@
 using System.Collections;
-using LiteNetLib;
-using LiteNetLib.Utils;
 using UnityEngine;
 
 // a girl's position, stats and ammo. host keeps yuuri's so a rejoin carries on
@@ -67,11 +65,9 @@ public class CoopGirlState
 		}
 	}
 
-	public void Write(NetDataWriter writer)
+	public void Write(StateWriter writer)
 	{
-		writer.Put(Position.x);
-		writer.Put(Position.y);
-		writer.Put(Position.z);
+		writer.Put(Position);
 		writer.Put(Yaw);
 		writer.Put(Hunger);
 		writer.Put(Thirst);
@@ -81,11 +77,11 @@ public class CoopGirlState
 		writer.Put(Spare);
 	}
 
-	public static CoopGirlState Read(NetDataReader reader)
+	public static CoopGirlState Read(StateReader reader)
 	{
 		return new CoopGirlState
 		{
-			Position = new Vector3(reader.GetFloat(), reader.GetFloat(), reader.GetFloat()),
+			Position = reader.GetVector3(),
 			Yaw = reader.GetFloat(),
 			Hunger = reader.GetFloat(),
 			Thirst = reader.GetFloat(),
@@ -96,37 +92,50 @@ public class CoopGirlState
 		};
 	}
 
-	public static void SendRejoin(NetDataWriter writer, bool hasVehicle, Vector3 vehicleLayoutPosition, Quaternion vehicleRotation)
+	// join snapshot only: the yuuri the host kept, and where the ket is. the friend is put back there
+	public class RejoinSection : IStateful
 	{
-		if (HostKept == null)
-		{
-			return;
-		}
-		writer.Reset();
-		writer.Put((byte)CoopSession.MessageType.Rejoin);
-		HostKept.Write(writer);
-		writer.Put(hasVehicle);
-		if (hasVehicle)
-		{
-			writer.Put(vehicleLayoutPosition.x);
-			writer.Put(vehicleLayoutPosition.y);
-			writer.Put(vehicleLayoutPosition.z);
-			writer.Put(vehicleRotation.x);
-			writer.Put(vehicleRotation.y);
-			writer.Put(vehicleRotation.z);
-			writer.Put(vehicleRotation.w);
-		}
-		CoopSession.Instance.Send(writer, DeliveryMethod.ReliableOrdered);
-	}
+		public const string SectionKey = "rejoin";
 
-	public static void OnRejoin(NetDataReader reader)
-	{
-		pending = Read(reader);
-		pendingHasVehicle = reader.GetBool();
-		if (pendingHasVehicle)
+		public string Key => SectionKey;
+
+		public int Version => 1;
+
+		public static bool HasState => HostKept != null;
+
+		public void Write(StateWriter writer)
 		{
-			pendingVehiclePosition = new Vector3(reader.GetFloat(), reader.GetFloat(), reader.GetFloat());
-			pendingVehicleRotation = new Quaternion(reader.GetFloat(), reader.GetFloat(), reader.GetFloat(), reader.GetFloat());
+			// a fresh game has no yuuri kept yet
+			writer.Put(HostKept != null);
+			if (HostKept == null)
+			{
+				return;
+			}
+			HostKept.Write(writer);
+			CoopPlayers players = CoopPlayers.Instance;
+			CoopKettenkrad vehicle = CoopKettenkrad.Instance;
+			bool hasVehicle = players != null && vehicle != null && vehicle.Ready;
+			writer.Put(hasVehicle);
+			if (hasVehicle)
+			{
+				writer.Put(players.ToLayout(vehicle.VehiclePosition));
+				writer.Put(vehicle.VehicleRotation);
+			}
+		}
+
+		public void Read(StateReader reader, int version)
+		{
+			if (!reader.GetBool())
+			{
+				return;
+			}
+			pending = CoopGirlState.Read(reader);
+			pendingHasVehicle = reader.GetBool();
+			if (pendingHasVehicle)
+			{
+				pendingVehiclePosition = reader.GetVector3();
+				pendingVehicleRotation = reader.GetQuaternion();
+			}
 		}
 	}
 

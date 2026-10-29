@@ -1,13 +1,9 @@
 using System.Collections.Generic;
-using LiteNetLib;
-using LiteNetLib.Utils;
 using UnityEngine;
 
 // water left in shot pipes. a rejoin or a loaded save rebuilds them full
 public static class CoopPipes
 {
-	private static readonly NetDataWriter writer = new NetDataWriter();
-
 	private static Dictionary<ulong, float> restore = new Dictionary<ulong, float>();
 
 	private static ulong Key(Transform pipe)
@@ -46,37 +42,53 @@ public static class CoopPipes
 		restore = levels ?? new Dictionary<ulong, float>();
 	}
 
-	public static void Send()
+	// in the save and in the join snapshot
+	public class State : IStateful
 	{
-		Dictionary<ulong, float> levels = Levels();
-		writer.Reset();
-		writer.Put((byte)CoopSession.MessageType.Pipes);
-		writer.Put(levels.Count);
-		foreach (KeyValuePair<ulong, float> pipe in levels)
-		{
-			writer.Put(pipe.Key);
-			writer.Put(pipe.Value);
-		}
-		CoopSession.Instance.Send(writer, DeliveryMethod.ReliableOrdered);
-	}
+		public const string SectionKey = "pipes";
 
-	public static void OnLevels(NetDataReader reader)
-	{
-		Dictionary<ulong, float> levels = new Dictionary<ulong, float>();
-		int count = reader.GetInt();
-		for (int i = 0; i < count; i++)
+		public string Key => SectionKey;
+
+		public int Version => 1;
+
+		public static void WriteData(StateWriter writer, Dictionary<ulong, float> levels)
 		{
-			ulong key = reader.GetULong();
-			levels[key] = reader.GetFloat();
+			writer.Put(levels.Count);
+			foreach (KeyValuePair<ulong, float> pipe in levels)
+			{
+				writer.Put(pipe.Key);
+				writer.Put(pipe.Value);
+			}
 		}
-		restore = levels;
-		foreach (PipeWaterLevel pipe in Object.FindObjectsOfType<PipeWaterLevel>(includeInactive: true))
+
+		public static Dictionary<ulong, float> ReadData(StateReader reader)
 		{
-			Restore(pipe);
+			Dictionary<ulong, float> levels = new Dictionary<ulong, float>();
+			int count = reader.GetInt();
+			for (int i = 0; i < count; i++)
+			{
+				ulong key = reader.GetULong();
+				levels[key] = reader.GetFloat();
+			}
+			return levels;
 		}
+
+		public void Write(StateWriter writer)
+		{
+			WriteData(writer, Levels());
+		}
+
+		public void Read(StateReader reader, int version)
+		{
+			restore = ReadData(reader);
+			foreach (PipeWaterLevel pipe in Object.FindObjectsOfType<PipeWaterLevel>(includeInactive: true))
+			{
+				Restore(pipe);
+			}
 #if DUMP_WORLDGEN
-		Debug.Log("CoopDebug pipes from the host: " + count);
+			Debug.Log("CoopDebug pipes restored: " + restore.Count);
 #endif
+		}
 	}
 
 #if DUMP_WORLDGEN

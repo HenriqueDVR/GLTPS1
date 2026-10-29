@@ -34,11 +34,8 @@ public class CoopSession : MonoBehaviour
 		TakeItem = 5,
 		// item gone (+ did the friend get it)
 		ItemTaken = 6,
-		// all taken items
-		TakenItems = 7,
 		// food/water/stats
 		Supplies = 8,
-		Weather = 9,
 		CampfirePlaced = 10,
 		CampfireOut = 11,
 		// friend's ket fell out of the world, restart
@@ -52,17 +49,17 @@ public class CoopSession : MonoBehaviour
 		Ammo = 19,
 		// yuuri's ammo for the HUD
 		AmmoState = 20,
-		// rejoin: yuuri + ket
-		Rejoin = 21,
 		KanazawaPoses = 22,
-		// pipe levels
-		Pipes = 23,
 		Music = 24,
 		MusicNext = 25,
 		// numbered wrapper so stale unreliable ones get dropped (EOS has no sequenced)
 		Sequenced = 26,
 		// driver got off, where the ket ended up
 		KetPlaced = 27,
+		// host->friend state sections after Start (StateRegistry, StateUse.Join)
+		Snapshot = 29,
+		// [kind][netId][payload] for systems on NetRegistry
+		Entity = 30,
 		// EOS only (no handshake there)
 		Hello = 100,
 		Welcome = 101,
@@ -88,7 +85,7 @@ public class CoopSession : MonoBehaviour
 	private const float lanHeadStart = 1f;
 
 	// bump on protocol changes
-	private const string connectionKey = "GLTPS1-coop-20";
+	private const string connectionKey = "GLTPS1-coop-21";
 
 	private const string difficultyKey = "difficultySetting";
 
@@ -1225,6 +1222,7 @@ public class CoopSession : MonoBehaviour
 				joinedLevelRun = levelRun;
 				GameSave.RestoreTaken = null;
 				CoopPipes.SetRestore(null);
+				StateRegistry.ClearPending();
 				if (!string.IsNullOrEmpty(@string))
 				{
 					PlayerPrefs.SetString(difficultyKey, @string);
@@ -1270,11 +1268,8 @@ public class CoopSession : MonoBehaviour
 				CoopItem.OnTaken(ulong2, reader.GetBool());
 			}
 			break;
-		case MessageType.Weather:
-			if (!IsHost)
-			{
-				CoopWeather.OnMessage(reader);
-			}
+		case MessageType.Entity:
+			NetRegistry.Dispatch(reader);
 			break;
 		case MessageType.Music:
 			if (!IsHost)
@@ -1313,15 +1308,16 @@ public class CoopSession : MonoBehaviour
 		case MessageType.AmmoState:
 			CoopShots.OnAmmoState(reader);
 			break;
-		case MessageType.Rejoin:
-			// after a resume our own spot is newer than the host's copy
-			if (skipRejoin)
+		case MessageType.Snapshot:
+			if (!IsHost)
 			{
-				skipRejoin = false;
-			}
-			else if (!IsHost)
-			{
-				CoopGirlState.OnRejoin(reader);
+				List<StateSection> sections = StateRegistry.Unpack(reader.GetBytesWithLength());
+				// after a resume our own spot is newer than the host's copy
+				if (skipRejoin && sections.RemoveAll(s => s.Key == CoopGirlState.RejoinSection.SectionKey) > 0)
+				{
+					skipRejoin = false;
+				}
+				StateRegistry.SetPending(sections);
 			}
 			break;
 		case MessageType.KanazawaPoses:
@@ -1350,18 +1346,6 @@ public class CoopSession : MonoBehaviour
 			break;
 		case MessageType.Supplies:
 			this.SuppliesReceived?.Invoke(reader);
-			break;
-		case MessageType.Pipes:
-			if (!IsHost)
-			{
-				CoopPipes.OnLevels(reader);
-			}
-			break;
-		case MessageType.TakenItems:
-			if (!IsHost)
-			{
-				CoopItem.OnTakenList(reader);
-			}
 			break;
 		}
 	}
@@ -1399,31 +1383,32 @@ public class CoopSession : MonoBehaviour
 		writer.Put(PlayerPrefs.GetString(difficultyKey, ""));
 		writer.Put(hostLevelRun);
 		Send(writer, DeliveryMethod.ReliableOrdered);
-		CoopItem.SendTakenList();
-		CoopPipes.Send();
+		List<StateSection> sections = StateRegistry.Capture(StateUse.Join);
+		if (!CoopGirlState.RejoinSection.HasState)
+		{
+			sections.RemoveAll(s => s.Key == CoopGirlState.RejoinSection.SectionKey);
+		}
+		SendSnapshot(sections);
 		CoopKanazawa.SendUnlocks();
-		CoopPlayers players = CoopPlayers.Instance;
-		CoopKettenkrad vehicle = CoopKettenkrad.Instance;
-		if (players != null && vehicle != null && vehicle.Ready)
-		{
-			CoopGirlState.SendRejoin(writer, true, players.ToLayout(vehicle.VehiclePosition), vehicle.VehicleRotation);
-		}
-		else
-		{
-			CoopGirlState.SendRejoin(writer, false, Vector3.zero, Quaternion.identity);
-		}
 		Status = "Playing together.";
 	}
 
 	public void ResendRejoin()
 	{
 		CoopKanazawa.SendUnlocks();
-		CoopPlayers players = CoopPlayers.Instance;
 		CoopKettenkrad vehicle = CoopKettenkrad.Instance;
-		if (players != null && vehicle != null && vehicle.Ready)
+		if (CoopPlayers.Instance != null && vehicle != null && vehicle.Ready && CoopGirlState.RejoinSection.HasState)
 		{
-			CoopGirlState.SendRejoin(writer, true, players.ToLayout(vehicle.VehiclePosition), vehicle.VehicleRotation);
+			SendSnapshot(StateRegistry.Capture(CoopGirlState.RejoinSection.SectionKey));
 		}
+	}
+
+	private void SendSnapshot(List<StateSection> sections)
+	{
+		writer.Reset();
+		writer.Put((byte)MessageType.Snapshot);
+		writer.PutBytesWithLength(StateRegistry.Pack(sections));
+		Send(writer, DeliveryMethod.ReliableOrdered);
 	}
 
 	public void SendPlayerState(NetDataWriter state)
@@ -1534,6 +1519,7 @@ public class CoopSession : MonoBehaviour
 			CoopGirlState.HostKept = null;
 			CoopGirlState.ClearPending();
 			CoopPipes.SetRestore(null);
+			StateRegistry.ClearPending();
 		}
 		if (scene.buildIndex == Scenes.Title && IsHost)
 		{

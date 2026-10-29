@@ -9,34 +9,12 @@ using UnityEngine.SceneManagement;
 // in coop the host saves both girls. game over keeps the save
 public static class GameSave
 {
-	[Serializable]
-	public class SavedGirl
-	{
-		public float x;
-
-		public float y;
-
-		public float z;
-
-		public float yaw;
-
-		public float hunger;
-
-		public float thirst;
-
-		public float temperature;
-
-		public bool hasGun;
-
-		public int magazine;
-
-		public int spare;
-	}
-
+	// v1 saves were one flat object, v2 is this header plus a section per system (StateRegistry)
 	[Serializable]
 	public class SaveData
 	{
-		public int version = 1;
+		// 0 or 1 = the old flat format
+		public int version;
 
 		public string savedAt;
 
@@ -48,6 +26,24 @@ public static class GameSave
 
 		public string difficulty;
 
+		public List<SavedSection> sections = new List<SavedSection>();
+	}
+
+	[Serializable]
+	public class SavedSection
+	{
+		public string key;
+
+		public int version;
+
+		// base64
+		public string data;
+	}
+
+	// what version 1 wrote, only read to import
+	[Serializable]
+	public class SaveDataV1
+	{
 		public SavedGirl chito;
 
 		public SavedGirl yuuri;
@@ -77,6 +73,17 @@ public static class GameSave
 		public List<float> pipeLevels = new List<float>();
 	}
 
+	public const int CurrentVersion = 2;
+
+	// sections that live for the whole run. the world's own register with the scene (SaveScene)
+	[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+	private static void RegisterSections()
+	{
+		StateRegistry.Register(new CoopItem.State(), StateUse.Both);
+		StateRegistry.Register(new CoopPipes.State(), StateUse.Both);
+		StateRegistry.Register(new CoopGirlState.RejoinSection(), StateUse.Join);
+	}
+
 	public const int SlotCount = 3;
 
 	private const string lastSlotKey = "lastSaveSlot";
@@ -87,8 +94,6 @@ public static class GameSave
 	public static int CurrentSlot = -1;
 
 	public static HashSet<ulong> RestoreTaken;
-
-	private static SaveData pending;
 
 	private static float playSecondsBefore;
 
@@ -106,13 +111,91 @@ public static class GameSave
 		try
 		{
 			string path = SlotPath(slot);
-			return File.Exists(path) ? JsonUtility.FromJson<SaveData>(File.ReadAllText(path)) : null;
+			return File.Exists(path) ? Parse(File.ReadAllText(path)) : null;
 		}
 		catch (Exception e)
 		{
 			Debug.LogWarning("Save: couldn't read slot " + (slot + 1) + ": " + e.Message);
 			return null;
 		}
+	}
+
+	// v1 files are turned into sections here, so nothing past this point knows about them
+	public static SaveData Parse(string json)
+	{
+		SaveData data = JsonUtility.FromJson<SaveData>(json);
+		if (data == null)
+		{
+			return null;
+		}
+		if (data.version > CurrentVersion)
+		{
+			Debug.LogWarning("Save: from a newer version (" + data.version + "), not read");
+			return null;
+		}
+		if (data.version < 2)
+		{
+			data.sections = ImportV1(JsonUtility.FromJson<SaveDataV1>(json));
+			data.version = CurrentVersion;
+		}
+		return data;
+	}
+
+	public static List<SavedSection> ImportV1(SaveDataV1 old)
+	{
+		List<SavedSection> sections = new List<SavedSection>();
+		StateWriter writer = new StateWriter();
+		GirlsSection.WriteData(writer, old.chito ?? new SavedGirl(), old.yuuri ?? new SavedGirl());
+		sections.Add(Section(GirlsSection.SectionKey, 1, writer));
+		writer = new StateWriter();
+		new SuppliesSection { Food = old.food, Water = old.water, Fuel = old.fuel, HasMap = old.hasMap, HasCamera = old.hasCamera }.WriteData(writer);
+		sections.Add(Section(SuppliesSection.SectionKey, 1, writer));
+		writer = new StateWriter();
+		KetSection ket = new KetSection { BarrelMounted = old.barrelMounted, HasLooseBarrel = old.hasLooseBarrel && old.barrel != null && old.barrel.Length >= 3 };
+		if (old.vehicle != null && old.vehicle.Length >= 7)
+		{
+			ket.HasVehicle = true;
+			ket.VehiclePosition = new Vector3(old.vehicle[0], old.vehicle[1], old.vehicle[2]);
+			ket.VehicleRotation = new Quaternion(old.vehicle[3], old.vehicle[4], old.vehicle[5], old.vehicle[6]);
+		}
+		if (ket.HasLooseBarrel)
+		{
+			ket.Barrel = new Vector3(old.barrel[0], old.barrel[1], old.barrel[2]);
+		}
+		ket.WriteData(writer);
+		sections.Add(Section(KetSection.SectionKey, 1, writer));
+		List<ulong> taken = new List<ulong>();
+		foreach (string item in old.takenItems ?? new List<string>())
+		{
+			taken.Add(ulong.Parse(item));
+		}
+		writer = new StateWriter();
+		CoopItem.State.WriteData(writer, taken);
+		sections.Add(Section(CoopItem.State.SectionKey, 1, writer));
+		Dictionary<ulong, float> pipes = new Dictionary<ulong, float>();
+		for (int i = 0; old.pipeKeys != null && old.pipeLevels != null && i < old.pipeKeys.Count && i < old.pipeLevels.Count; i++)
+		{
+			pipes[ulong.Parse(old.pipeKeys[i])] = old.pipeLevels[i];
+		}
+		writer = new StateWriter();
+		CoopPipes.State.WriteData(writer, pipes);
+		sections.Add(Section(CoopPipes.State.SectionKey, 1, writer));
+		return sections;
+	}
+
+	private static SavedSection Section(string key, int version, StateWriter writer)
+	{
+		return new SavedSection { key = key, version = version, data = Convert.ToBase64String(writer.ToArray()) };
+	}
+
+	public static List<StateSection> ToStateSections(List<SavedSection> saved)
+	{
+		List<StateSection> sections = new List<StateSection>();
+		foreach (SavedSection section in saved ?? new List<SavedSection>())
+		{
+			sections.Add(new StateSection { Key = section.key, Version = section.version, Data = Convert.FromBase64String(section.data ?? "") });
+		}
+		return sections;
 	}
 
 	public static string Describe(int slot)
@@ -131,7 +214,7 @@ public static class GameSave
 	{
 		Runner.EnsureExists();
 		CurrentSlot = slot;
-		pending = null;
+		StateRegistry.ClearPending();
 		RestoreTaken = null;
 		CoopPipes.SetRestore(null);
 		playSecondsBefore = 0f;
@@ -151,22 +234,23 @@ public static class GameSave
 		}
 		Runner.EnsureExists();
 		CurrentSlot = slot;
-		pending = data;
 		playSecondsBefore = data.playSeconds;
 		PlayerPrefs.SetString(difficultyKey, data.difficulty);
 		WorldGenerator.RequestedSeed = ulong.Parse(data.seed);
 		RestoreTaken = new HashSet<ulong>();
-		foreach (string item in data.takenItems)
+		CoopPipes.SetRestore(null);
+		List<StateSection> sections = ToStateSections(data.sections);
+		// the host sends yuuri to the friend as soon as the world is generated, before the girls section is read
+		CoopGirlState.HostKept = null;
+		StateSection girls = sections.Find(s => s.Key == GirlsSection.SectionKey);
+		if (girls != null && CoopSession.Active && CoopSession.Instance.IsHost)
 		{
-			RestoreTaken.Add(ulong.Parse(item));
+			GirlsSection.ReadData(new StateReader(girls.Data), out SavedGirl _, out SavedGirl yuuri);
+			CoopGirlState.HostKept = yuuri.ToState();
 		}
-		Dictionary<ulong, float> pipes = new Dictionary<ulong, float>();
-		for (int i = 0; data.pipeKeys != null && data.pipeLevels != null && i < data.pipeKeys.Count && i < data.pipeLevels.Count; i++)
-		{
-			pipes[ulong.Parse(data.pipeKeys[i])] = data.pipeLevels[i];
-		}
-		CoopPipes.SetRestore(pipes);
-		CoopGirlState.HostKept = (CoopSession.Active && CoopSession.Instance.IsHost) ? ToState(data.yuuri) : null;
+		// items and pipes are read now, the rest once the world is up
+		StateRegistry.ClearPending();
+		StateRegistry.SetPending(sections);
 		Debug.Log("Save: loading slot " + (slot + 1));
 		SceneManager.LoadScene(Scenes.Game);
 	}
@@ -188,11 +272,16 @@ public static class GameSave
 			return "Only the host saves in co-op.";
 		}
 		GameObject manager = GameObject.FindWithTag("CharacterManager");
-		Transform chito = Girl("ChitoParent");
-		Transform yuuri = Girl("YuuriParent");
+		Transform chito = SaveScene.Girl("ChitoParent");
+		Transform yuuri = SaveScene.Girl("YuuriParent");
 		if (manager == null || chito == null || yuuri == null)
 		{
 			return "Can't save during the ending.";
+		}
+		// the world's sections register a few frames in, and a loaded save is still going back in till then
+		if (!StateRegistry.IsRegistered(GirlsSection.SectionKey))
+		{
+			return "Can't save yet.";
 		}
 		foreach (GameObject elevator in GameObject.FindGameObjectsWithTag("Elevator"))
 		{
@@ -239,274 +328,28 @@ public static class GameSave
 		}
 	}
 
-	private static Transform Girl(string name)
-	{
-		GameObject girl = GameObject.Find(name);
-		return (girl != null) ? girl.transform : null;
-	}
-
 	private static bool OutOfSomething(Transform girl)
 	{
 		CharacterItemInteraction items = girl.GetComponentInChildren<CharacterItemInteraction>();
 		return items.hungerLevel <= 0f || items.thirstLevel <= 0f || items.temperatureLevel <= 0f;
 	}
 
-	private static Vector3 Offset()
-	{
-		FloatingOrigin origin = UnityEngine.Object.FindObjectOfType<FloatingOrigin>();
-		return (origin != null) ? origin.TotalOffset : Vector3.zero;
-	}
-
-	private static SavedGirl FromState(CoopGirlState state)
-	{
-		return new SavedGirl
-		{
-			x = state.Position.x,
-			y = state.Position.y,
-			z = state.Position.z,
-			yaw = state.Yaw,
-			hunger = state.Hunger,
-			thirst = state.Thirst,
-			temperature = state.Temperature,
-			hasGun = state.HasGun,
-			magazine = state.Magazine,
-			spare = state.Spare
-		};
-	}
-
-	private static CoopGirlState ToState(SavedGirl girl)
-	{
-		return new CoopGirlState
-		{
-			Position = new Vector3(girl.x, girl.y, girl.z),
-			Yaw = girl.yaw,
-			Hunger = girl.hunger,
-			Thirst = girl.thirst,
-			Temperature = girl.temperature,
-			HasGun = girl.hasGun,
-			Magazine = girl.magazine,
-			Spare = girl.spare
-		};
-	}
-
 	private static SaveData Capture()
 	{
-		Vector3 offset = Offset();
-		Transform chito = Girl("ChitoParent");
-		Transform yuuri = Girl("YuuriParent");
-		bool coop = CoopSession.InGame;
 		SaveData data = new SaveData
 		{
+			version = CurrentVersion,
 			savedAt = DateTime.Now.ToString("d MMM HH:mm"),
 			playSeconds = playSecondsBefore + Time.timeSinceLevelLoad,
-			coop = coop,
+			coop = CoopSession.InGame,
 			seed = GameSession.Get<WorldGenerator>().Seed.ToString(),
-			difficulty = PlayerPrefs.GetString(difficultyKey, ""),
-			chito = FromState(CoopGirlState.Capture(chito, chito.position + offset))
+			difficulty = PlayerPrefs.GetString(difficultyKey, "")
 		};
-		// friend away: use the yuuri the host kept, not the frozen one
-		if (coop && !CoopSession.Instance.Connected && CoopGirlState.HostKept != null)
+		foreach (StateSection section in StateRegistry.Capture(StateUse.Save))
 		{
-			data.yuuri = FromState(CoopGirlState.HostKept);
-		}
-		else
-		{
-			data.yuuri = FromState(CoopGirlState.Capture(yuuri, yuuri.position + offset));
-		}
-		CharacterStatus status = UnityEngine.Object.FindObjectOfType<CharacterStatus>();
-		data.food = status.index;
-		data.water = status.waterLevel;
-		data.fuel = UnityEngine.Object.FindObjectOfType<VehicleFuelManager>().currentFuel;
-		data.hasMap = chito.GetComponent<PlayerMapController>().enabled || yuuri.GetComponent<PlayerMapController>().enabled;
-		data.hasCamera = chito.GetComponent<PlayerCameraController>().enabled || yuuri.GetComponent<PlayerCameraController>().enabled;
-		Transform vehicle = UnityEngine.Object.FindObjectOfType<VehicleMovement>().transform;
-		// on the ket: load her standing next to it
-		StandBeside(data.chito, vehicle, offset);
-		StandBeside(data.yuuri, vehicle, offset);
-		Vector3 vehiclePosition = vehicle.position + offset;
-		Quaternion vehicleRotation = vehicle.rotation;
-		data.vehicle = new float[7] { vehiclePosition.x, vehiclePosition.y, vehiclePosition.z, vehicleRotation.x, vehicleRotation.y, vehicleRotation.z, vehicleRotation.w };
-		GameObject dropArea = GameObject.FindWithTag("BarrelDropArea");
-		data.barrelMounted = dropArea != null && dropArea.GetComponent<SkinnedMeshRenderer>().enabled;
-		GameObject barrel = GameObject.FindWithTag("Barrel");
-		if (barrel != null && !data.barrelMounted)
-		{
-			Vector3 barrelPosition = barrel.transform.position + offset;
-			data.hasLooseBarrel = true;
-			data.barrel = new float[3] { barrelPosition.x, barrelPosition.y, barrelPosition.z };
-		}
-		foreach (ulong item in CoopItem.TakenIds)
-		{
-			data.takenItems.Add(item.ToString());
-		}
-		foreach (KeyValuePair<ulong, float> pipe in CoopPipes.Levels())
-		{
-			data.pipeKeys.Add(pipe.Key.ToString());
-			data.pipeLevels.Add(pipe.Value);
+			data.sections.Add(new SavedSection { key = section.Key, version = section.Version, data = Convert.ToBase64String(section.Data) });
 		}
 		return data;
-	}
-
-	private static void StandBeside(SavedGirl girl, Transform vehicle, Vector3 offset)
-	{
-		Vector3 position = new Vector3(girl.x, girl.y, girl.z) - offset;
-		Vector3 flat = position - vehicle.position;
-		flat.y = 0f;
-		if (flat.magnitude > 2f)
-		{
-			return;
-		}
-		Vector3 beside = vehicle.position + vehicle.right * 2.5f + offset;
-		girl.x = beside.x;
-		girl.y = beside.y;
-		girl.z = beside.z;
-	}
-
-	private static IEnumerator Apply(SaveData data)
-	{
-		while (Girl("ChitoParent") == null || UnityEngine.Object.FindObjectOfType<CharacterStatus>() == null || UnityEngine.Object.FindObjectOfType<VehicleMovement>() == null)
-		{
-			yield return null;
-		}
-		// let the Start()s run first
-		yield return null;
-		yield return null;
-		Transform chito = Girl("ChitoParent");
-		Transform yuuri = Girl("YuuriParent");
-		CoopPlayers players = CoopPlayers.Instance;
-		ToState(data.chito).ApplyStats(chito);
-		ToState(data.yuuri).ApplyStats(yuuri);
-		CharacterStatus status = UnityEngine.Object.FindObjectOfType<CharacterStatus>();
-		chito.GetComponentInChildren<CharacterItemInteraction>().SetFood(data.food);
-		status.waterLevel = data.water;
-		UnityEngine.Object.FindObjectOfType<VehicleFuelManager>().currentFuel = data.fuel;
-		if (data.hasMap)
-		{
-			chito.GetComponent<PlayerMapController>().enabled = true;
-		}
-		if (data.hasCamera)
-		{
-			chito.GetComponent<PlayerCameraController>().enabled = true;
-		}
-		PlaceVehicle(data);
-		PlaceBarrel(data, chito);
-		if (players != null && CoopSession.Instance.IsHost)
-		{
-			CoopGirlState.HostKept = ToState(data.yuuri);
-		}
-		// chito first, city builds around the player
-		yield return PlaceOnGround(chito, new Vector3(data.chito.x, data.chito.y, data.chito.z), data.chito.yaw);
-		if (players == null)
-		{
-			yield return PlaceOnGround(yuuri, new Vector3(data.yuuri.x, data.yuuri.y, data.yuuri.z), data.yuuri.yaw);
-		}
-		else if (players.Remote != null)
-		{
-			players.Remote.SetPositionAndRotation(FromLayout(new Vector3(data.yuuri.x, data.yuuri.y, data.yuuri.z)), Quaternion.Euler(0f, data.yuuri.yaw, 0f));
-		}
-		if (players != null && CoopSession.Instance.Connected)
-		{
-			// friend got the world before ket/map were back, resend
-			CoopSession.Instance.ResendRejoin();
-		}
-		Debug.Log("Save: loaded");
-#if DUMP_WORLDGEN
-		yield return new WaitForSeconds(3f);
-		Debug.Log("Save: after loading, Chito at " + (chito.position + Offset()).ToString("F1") + " (saved " + new Vector3(data.chito.x, data.chito.y, data.chito.z).ToString("F1") + "), Yuuri at " + (yuuri.position + Offset()).ToString("F1") + " (saved " + new Vector3(data.yuuri.x, data.yuuri.y, data.yuuri.z).ToString("F1") + "), food " + status.index + " water " + status.waterLevel.ToString("F1") + ", taken " + RestoreTaken.Count + ", Kettenkrad at " + (UnityEngine.Object.FindObjectOfType<VehicleMovement>().transform.position + Offset()).ToString("F1") + " (saved " + ((data.vehicle != null) ? new Vector3(data.vehicle[0], data.vehicle[1], data.vehicle[2]).ToString("F1") : "none") + ")");
-#endif
-	}
-
-	private static Vector3 FromLayout(Vector3 layout)
-	{
-		return layout - Offset();
-	}
-
-	private static void PlaceVehicle(SaveData data)
-	{
-		if (data.vehicle == null || data.vehicle.Length < 7)
-		{
-			return;
-		}
-		Vector3 position = FromLayout(new Vector3(data.vehicle[0], data.vehicle[1], data.vehicle[2]));
-		Quaternion rotation = new Quaternion(data.vehicle[3], data.vehicle[4], data.vehicle[5], data.vehicle[6]);
-		if (CoopKettenkrad.Instance != null)
-		{
-			CoopKettenkrad.Instance.Place(position, rotation);
-			return;
-		}
-		VehicleMovement vehicle = UnityEngine.Object.FindObjectOfType<VehicleMovement>();
-		Rigidbody body = vehicle.GetComponent<Rigidbody>();
-		body.position = position;
-		body.rotation = rotation;
-		vehicle.transform.SetPositionAndRotation(position, rotation);
-		body.velocity = Vector3.zero;
-	}
-
-	private static void PlaceBarrel(SaveData data, Transform chito)
-	{
-		GameObject dropArea = GameObject.FindWithTag("BarrelDropArea");
-		if (dropArea != null)
-		{
-			dropArea.GetComponent<SkinnedMeshRenderer>().enabled = data.barrelMounted;
-		}
-		GameObject barrel = GameObject.FindWithTag("Barrel");
-		if (!data.hasLooseBarrel || data.barrel == null)
-		{
-			if (barrel != null)
-			{
-				UnityEngine.Object.Destroy(barrel);
-			}
-			return;
-		}
-		CharacterBarrelInteraction carrier = chito.GetComponent<CharacterBarrelInteraction>();
-		if (barrel == null)
-		{
-			barrel = carrier.SpawnBarrel();
-		}
-		barrel.GetComponent<VehicleBarrel>().characterBarrelInteractionScript = carrier;
-		barrel.transform.position = FromLayout(new Vector3(data.barrel[0], data.barrel[1], data.barrel[2]));
-	}
-
-	// city might not be built yet, hold her up until there's ground
-	private static IEnumerator PlaceOnGround(Transform girl, Vector3 layout, float yaw)
-	{
-		CharacterController controller = girl.GetComponent<CharacterController>();
-		UnityEngine.AI.NavMeshAgent agent = girl.GetComponent<UnityEngine.AI.NavMeshAgent>();
-		bool controllerWasOn = controller != null && controller.enabled;
-		bool agentWasOn = agent != null && agent.enabled;
-		if (controller != null)
-		{
-			controller.enabled = false;
-		}
-		if (agent != null)
-		{
-			agent.enabled = false;
-		}
-		girl.rotation = Quaternion.Euler(0f, yaw, 0f);
-		float giveUpAt = Time.unscaledTime + 15f;
-		while (true)
-		{
-			Vector3 target = FromLayout(layout);
-			girl.position = target + Vector3.up * 0.5f;
-			if (Physics.Raycast(target + Vector3.up * 2f, Vector3.down, out var hit, 6f, -1, QueryTriggerInteraction.Ignore))
-			{
-				girl.position = hit.point + Vector3.up * 0.1f;
-				break;
-			}
-			if (Time.unscaledTime > giveUpAt)
-			{
-				break;
-			}
-			yield return null;
-		}
-		if (controller != null)
-		{
-			controller.enabled = controllerWasOn;
-		}
-		if (agent != null)
-		{
-			agent.enabled = agentWasOn;
-		}
 	}
 
 	public class Runner : MonoBehaviour
@@ -545,12 +388,6 @@ public static class GameSave
 			}
 			nextAutosave = Time.unscaledTime + autosaveInterval;
 			GameSaveMenu.BuildPauseButton();
-			if (pending != null)
-			{
-				SaveData data = pending;
-				pending = null;
-				StartCoroutine(Apply(data));
-			}
 		}
 
 #if DUMP_WORLDGEN
@@ -569,9 +406,9 @@ public static class GameSave
 			{
 				debugSaved = true;
 				Debug.Log("Save: debug save, " + (WhyNotSave() ?? "ok") + ", saved " + SaveNow());
-				Transform c = Girl("ChitoParent");
-				Transform y = Girl("YuuriParent");
-				Debug.Log("Save: saved with Chito at " + (c.position + Offset()).ToString("F1") + ", Yuuri at " + (y.position + Offset()).ToString("F1"));
+				Transform c = SaveScene.Girl("ChitoParent");
+				Transform y = SaveScene.Girl("YuuriParent");
+				Debug.Log("Save: saved with Chito at " + (c.position + SaveScene.Offset()).ToString("F1") + ", Yuuri at " + (y.position + SaveScene.Offset()).ToString("F1"));
 			}
 			// -openpause
 			if (!debugPaused && Array.IndexOf(args, "-openpause") >= 0 && Scenes.InGame && Time.timeSinceLevelLoad > 12f)

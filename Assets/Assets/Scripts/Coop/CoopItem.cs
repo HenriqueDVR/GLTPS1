@@ -146,27 +146,54 @@ public class CoopItem : MonoBehaviour
 		}
 	}
 
-	public static void OnTakenList(NetDataReader reader)
+	// taken item ids, in the save and in the join snapshot
+	public class State : IStateful
 	{
-		int @int = reader.GetInt();
-		for (int i = 0; i < @int; i++)
-		{
-			ulong @ulong = reader.GetULong();
-			taken.Add(@ulong);
-			Remove(@ulong);
-		}
-	}
+		public const string SectionKey = "items";
 
-	public static void SendTakenList()
-	{
-		writer.Reset();
-		writer.Put((byte)CoopSession.MessageType.TakenItems);
-		writer.Put(taken.Count);
-		foreach (ulong item in taken)
+		public string Key => SectionKey;
+
+		public int Version => 1;
+
+		public static void WriteData(StateWriter writer, ICollection<ulong> ids)
 		{
-			writer.Put(item);
+			writer.Put(ids.Count);
+			foreach (ulong id in ids)
+			{
+				writer.Put(id);
+			}
 		}
-		CoopSession.Instance.Send(writer, DeliveryMethod.ReliableOrdered);
+
+		public static List<ulong> ReadData(StateReader reader)
+		{
+			List<ulong> ids = new List<ulong>();
+			int count = reader.GetInt();
+			for (int i = 0; i < count; i++)
+			{
+				ids.Add(reader.GetULong());
+			}
+			return ids;
+		}
+
+		public void Write(StateWriter writer)
+		{
+			WriteData(writer, taken);
+		}
+
+		// before the world is built (a save loading, the friend joining) or into a running one (the friend resuming)
+		public void Read(StateReader reader, int version)
+		{
+			List<ulong> ids = ReadData(reader);
+			GameSave.RestoreTaken = new HashSet<ulong>(ids);
+			foreach (ulong id in ids)
+			{
+				taken.Add(id);
+				Remove(id);
+			}
+#if DUMP_WORLDGEN
+			Debug.Log("CoopDebug items taken: " + ids.Count);
+#endif
+		}
 	}
 
 	private static void SendTaken(ulong id, bool toFriend)

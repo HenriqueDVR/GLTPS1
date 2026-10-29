@@ -5,8 +5,6 @@ using UnityEngine;
 // host rolls weather, friend just plays it (rain/cold matter so both need the same)
 public static class CoopWeather
 {
-	private static readonly NetDataWriter writer = new NetDataWriter();
-
 	private static WeatherManager follower;
 
 	private static bool hasState;
@@ -25,6 +23,12 @@ public static class CoopWeather
 			}
 			return false;
 		}
+	}
+
+	[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+	private static void Init()
+	{
+		NetRegistry.Register(NetRegistry.Kind.Weather, OnMessage);
 	}
 
 	public static void ResetLevel()
@@ -62,15 +66,19 @@ public static class CoopWeather
 		{
 			return;
 		}
-		writer.Reset();
-		writer.Put((byte)CoopSession.MessageType.Weather);
-		writer.Put((byte)index);
-		writer.Put(on);
-		CoopSession.Instance.Send(writer, DeliveryMethod.ReliableOrdered);
+		NetRegistry.Send(NetRegistry.Kind.Weather, NetRegistry.SessionId, delegate(NetDataWriter writer)
+		{
+			writer.Put((byte)index);
+			writer.Put(on);
+		}, DeliveryMethod.ReliableOrdered);
 	}
 
-	public static void OnMessage(NetDataReader reader)
+	private static void OnMessage(ulong netId, NetDataReader reader)
 	{
+		if (!FollowsHost)
+		{
+			return;
+		}
 		index = reader.GetByte();
 		on = reader.GetBool();
 		hasState = true;
