@@ -272,8 +272,8 @@ public static class GameSave
 			return "Only the host saves in co-op.";
 		}
 		GameObject manager = GameObject.FindWithTag("CharacterManager");
-		Transform chito = SaveScene.Girl("ChitoParent");
-		Transform yuuri = SaveScene.Girl("YuuriParent");
+		Transform chito = SaveScene.Chito;
+		Transform yuuri = SaveScene.Yuuri;
 		if (manager == null || chito == null || yuuri == null)
 		{
 			return "Can't save during the ending.";
@@ -406,8 +406,8 @@ public static class GameSave
 			{
 				debugSaved = true;
 				Debug.Log("Save: debug save, " + (WhyNotSave() ?? "ok") + ", saved " + SaveNow());
-				Transform c = SaveScene.Girl("ChitoParent");
-				Transform y = SaveScene.Girl("YuuriParent");
+				Transform c = SaveScene.Chito;
+				Transform y = SaveScene.Yuuri;
 				Debug.Log("Save: saved with Chito at " + (c.position + SaveScene.Offset()).ToString("F1") + ", Yuuri at " + (y.position + SaveScene.Offset()).ToString("F1"));
 			}
 			// -openpause

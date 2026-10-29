@@ -192,21 +192,11 @@ public class CoopPlayers : MonoBehaviour
 	private IEnumerator Start()
 	{
 		yield return null;
-		Transform transform = GameObject.Find("ChitoParent").transform;
-		Transform transform2 = GameObject.Find("YuuriParent").transform;
-		if (session.IsHost)
-		{
-			Local = transform;
-			Remote = transform2;
-		}
-		else
-		{
-			transform.GetComponent<CharacterPossession>().PossessCharacter(isDead: false);
-			Local = transform2;
-			Remote = transform;
-		}
-		Local.GetComponent<CharacterPossession>().enabled = false;
-		MakePuppet(Remote);
+		// host plays chito, the friend yuuri
+		Girl local = session.IsHost ? Girls.Chito : Girls.Yuuri;
+		Girls.SetupCoop(local);
+		Local = local.transform;
+		Remote = Girls.Other(local).transform;
 		AddWaterCatcher(Remote, Local);
 		localAnimator = Local.GetComponentInChildren<Animator>();
 		remoteAnimator = Remote.GetComponentInChildren<Animator>();
@@ -223,35 +213,6 @@ public class CoopPlayers : MonoBehaviour
 		if (floatingOrigin != null)
 		{
 			floatingOrigin.ReferenceObject = Local;
-		}
-	}
-
-	private static void MakePuppet(Transform girl)
-	{
-		Behaviour[] array = new Behaviour[9]
-		{
-			girl.GetComponent<NavMeshAgentFollowPlayer>(),
-			girl.GetComponent<NavMeshAgentVehicleInteraction>(),
-			girl.GetComponent<NavMeshAgentCommand>(),
-			girl.GetComponent<SetPositionConstraintElevator>(),
-			girl.GetComponent<NavMeshAgent>(),
-			girl.GetComponent<NavMeshObstacle>(),
-			girl.GetComponent<PlayerMovement>(),
-			girl.GetComponent<CharacterPossession>(),
-			// idle branch would holster the rifle every frame
-			girl.GetComponentInChildren<PlayerGunMovement>()
-		};
-		foreach (Behaviour behaviour in array)
-		{
-			if (behaviour != null)
-			{
-				behaviour.enabled = false;
-			}
-		}
-		CharacterController component = girl.GetComponent<CharacterController>();
-		if (component != null)
-		{
-			component.enabled = false;
 		}
 	}
 

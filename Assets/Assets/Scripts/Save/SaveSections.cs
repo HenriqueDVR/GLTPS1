@@ -115,8 +115,8 @@ public class GirlsSection : IStateful
 	public void Write(StateWriter writer)
 	{
 		Vector3 offset = SaveScene.Offset();
-		Transform chito = SaveScene.Girl("ChitoParent");
-		Transform yuuri = SaveScene.Girl("YuuriParent");
+		Transform chito = SaveScene.Chito;
+		Transform yuuri = SaveScene.Yuuri;
 		SavedGirl savedChito = SavedGirl.From(CoopGirlState.Capture(chito, chito.position + offset));
 		SavedGirl savedYuuri;
 		// friend away: use the yuuri the host kept, not the frozen one
@@ -180,8 +180,8 @@ public class SuppliesSection : IStateful
 
 	public void Write(StateWriter writer)
 	{
-		Transform chito = SaveScene.Girl("ChitoParent");
-		Transform yuuri = SaveScene.Girl("YuuriParent");
+		Transform chito = SaveScene.Chito;
+		Transform yuuri = SaveScene.Yuuri;
 		CharacterStatus status = UnityEngine.Object.FindObjectOfType<CharacterStatus>();
 		Food = status.index;
 		Water = status.waterLevel;
@@ -194,7 +194,7 @@ public class SuppliesSection : IStateful
 	public void Read(StateReader reader, int version)
 	{
 		ReadData(reader);
-		Transform chito = SaveScene.Girl("ChitoParent");
+		Transform chito = SaveScene.Chito;
 		chito.GetComponentInChildren<CharacterItemInteraction>().SetFood(Food);
 		UnityEngine.Object.FindObjectOfType<CharacterStatus>().waterLevel = Water;
 		UnityEngine.Object.FindObjectOfType<VehicleFuelManager>().currentFuel = Fuel;
@@ -271,18 +271,16 @@ public class KetSection : IStateful
 		{
 			SaveScene.PlaceVehicle(SaveScene.FromLayout(VehiclePosition), VehicleRotation);
 		}
-		SaveScene.PlaceBarrel(BarrelMounted, HasLooseBarrel, SaveScene.FromLayout(Barrel), SaveScene.Girl("ChitoParent"));
+		SaveScene.PlaceBarrel(BarrelMounted, HasLooseBarrel, SaveScene.FromLayout(Barrel), SaveScene.Chito);
 	}
 }
 
 // scene helpers for the sections above
 public static class SaveScene
 {
-	public static Transform Girl(string name)
-	{
-		GameObject girl = GameObject.Find(name);
-		return (girl != null) ? girl.transform : null;
-	}
+	public static Transform Chito => (Girls.Chito != null) ? Girls.Chito.transform : null;
+
+	public static Transform Yuuri => (Girls.Yuuri != null) ? Girls.Yuuri.transform : null;
 
 	public static Vector3 Offset()
 	{
@@ -297,7 +295,7 @@ public static class SaveScene
 
 	public static bool Ready()
 	{
-		return Girl("ChitoParent") != null && UnityEngine.Object.FindObjectOfType<CharacterStatus>() != null && UnityEngine.Object.FindObjectOfType<VehicleMovement>() != null;
+		return Chito != null && UnityEngine.Object.FindObjectOfType<CharacterStatus>() != null && UnityEngine.Object.FindObjectOfType<VehicleMovement>() != null;
 	}
 
 	public static void StandBeside(SavedGirl girl, Transform vehicle, Vector3 offset)
@@ -357,8 +355,8 @@ public static class SaveScene
 
 	public static IEnumerator PutGirlsBack(SavedGirl savedChito, SavedGirl savedYuuri)
 	{
-		Transform chito = Girl("ChitoParent");
-		Transform yuuri = Girl("YuuriParent");
+		Transform chito = Chito;
+		Transform yuuri = Yuuri;
 		CoopPlayers players = CoopPlayers.Instance;
 		savedChito.ToState().ApplyStats(chito);
 		savedYuuri.ToState().ApplyStats(yuuri);

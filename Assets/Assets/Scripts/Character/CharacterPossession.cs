@@ -22,18 +22,19 @@ public class CharacterPossession : MonoBehaviour
 
     [SerializeField] private NodeData nodeDataScript;
 
-    private float footstepVolume;
-
-    private ConstraintSource source;
-
     // downed player watches their partner
     public GameObject FollowTarget => CMFollowTarget;
     public GameObject LookAtTarget => CMLookAtTarget;
     public Vector3 FollowTargetOffset => CMFollowTargetOffsetPos;
     public Vector3 LookAtTargetOffset => CMLookAtTargetOffsetPos;
 
-
-
+    // CameraRig moves these to whoever is played
+    public PositionConstraint OutOfBoundsBox => outOfBoundsBox;
+    public PositionConstraint Skybox => skybox;
+    public PositionConstraint WeatherParticles => weatherParticleSystem;
+    public PositionConstraint MapCamera => mapCamera;
+    public NodeData NodeData => nodeDataScript;
+    public GameObject Partner => playerToPossess;
 
     void OnEnable()
     {
@@ -55,88 +56,10 @@ public class CharacterPossession : MonoBehaviour
         }
     }
 
+    // hand control to the other girl. isDead: this one stays down instead of going to the AI
     public void PossessCharacter(bool isDead)
     {
-        nodeDataScript.player = playerToPossess;
-
-        //switch the position contraints
-        source.sourceTransform = playerToPossess.transform;
-        source.weight = 1;
-
-        outOfBoundsBox.SetSource(0, source);
-        outOfBoundsBox.constraintActive = true;
-
-        skybox.SetSource(0, source);
-        skybox.constraintActive = true;
-
-        weatherParticleSystem.SetSource(0, source);
-        weatherParticleSystem.constraintActive = true;
-
-        mapCamera.SetSource(0, source);
-        mapCamera.constraintActive = true;
-
-        //change camera follow and look at target
-        CMFollowTarget.transform.parent = playerToPossess.transform;
-        CMLookAtTarget.transform.parent = playerToPossess.transform;
-        CMFollowTarget.transform.localPosition = CMFollowTargetOffsetPos;
-        CMLookAtTarget.transform.localPosition = CMLookAtTargetOffsetPos;
-        CMFollowTarget.transform.rotation = playerToPossess.transform.rotation;
-        CMLookAtTarget.transform.rotation = playerToPossess.transform.rotation;
-
-        //switch player scripts
-        if (isDead)
-        {
-            GetComponentInChildren<CapsuleCollider>().enabled = false;
-            GetComponentInChildren<PlayerMovement>().enabled = false;
-            GetComponentInChildren<CharacterPossession>().enabled = false;
-            GetComponentInChildren<CharacterItemInteraction>().enabled = false;
-            GetComponentInChildren<CharacterBarrelInteraction>().enabled = false;
-            GetComponentInChildren<CharacterFuelInteraction>().enabled = false;
-            GetComponentInChildren<CharacterVehicleInteraction>().enabled = false;
-            GetComponentInChildren<NavMeshObstacle>().enabled = false;
-            GetComponentInChildren<CharacterStatusScreenEffect>().enabled = false;
-            GetComponentInChildren<NPCInteraction>().enabled = false;
-            GetComponentInChildren<NavMeshAgentCommand>().enabled = false;
-            GetComponentInChildren<CharacterElevatorInteraction>().enabled = false;
-        }
-        else
-        {
-            GetComponentInChildren<PlayerMovement>().enabled = false;
-            GetComponentInChildren<CharacterPossession>().enabled = false;
-            GetComponentInChildren<CharacterItemInteraction>().enabled = false;
-            GetComponentInChildren<CharacterBarrelInteraction>().enabled = false;
-            GetComponentInChildren<CharacterFuelInteraction>().enabled = false;
-            GetComponentInChildren<CharacterVehicleInteraction>().enabled = false;
-            GetComponentInChildren<NavMeshObstacle>().enabled = false;
-            GetComponentInChildren<NavMeshAgent>().enabled = true;
-            GetComponentInChildren<NavMeshAgentVehicleInteraction>().enabled = true;
-            GetComponentInChildren<NavMeshAgentFollowPlayer>().enabled = true;
-            GetComponentInChildren<CharacterStatusScreenEffect>().enabled = false;
-            GetComponentInChildren<NPCInteraction>().enabled = false;
-            footstepVolume = GetComponentInChildren<AudioSource>().volume;
-            GetComponentInChildren<AudioSource>().volume = playerToPossess.GetComponentInChildren<AudioSource>().volume;
-            GetComponentInChildren<NavMeshAgentCommand>().enabled = false;
-            GetComponentInChildren<CharacterElevatorInteraction>().enabled = false;
-            // enable position constraint to elevator
-            GetComponentInChildren<SetPositionConstraintElevator>().enabled = true;
-        }
-
-        //switch player-to-possess player scripts
-        playerToPossess.GetComponentInChildren<PlayerMovement>().enabled = true;
-        playerToPossess.GetComponentInChildren<CharacterPossession>().enabled = true;
-        playerToPossess.GetComponentInChildren<CharacterItemInteraction>().enabled = true;
-        playerToPossess.GetComponentInChildren<CharacterBarrelInteraction>().enabled = true;
-        playerToPossess.GetComponentInChildren<CharacterFuelInteraction>().enabled = true;
-        playerToPossess.GetComponentInChildren<CharacterVehicleInteraction>().enabled = true;
-        playerToPossess.GetComponentInChildren<NavMeshAgent>().enabled = false;
-        playerToPossess.GetComponentInChildren<NavMeshObstacle>().enabled = true;
-        playerToPossess.GetComponentInChildren<NavMeshAgentVehicleInteraction>().enabled = false;
-        playerToPossess.GetComponentInChildren<NavMeshAgentFollowPlayer>().enabled = false;
-        playerToPossess.GetComponentInChildren<CharacterStatusScreenEffect>().enabled = true;
-        playerToPossess.GetComponentInChildren<NPCInteraction>().enabled = true;
-        playerToPossess.GetComponentInChildren<AudioSource>().volume = footstepVolume;
-        playerToPossess.GetComponentInChildren<NavMeshAgentCommand>().enabled = true;
-        playerToPossess.GetComponentInChildren<CharacterElevatorInteraction>().enabled = true;
-        playerToPossess.GetComponentInChildren<SetPositionConstraintElevator>().enabled = false;
+        Girl self = GetComponent<Girl>();
+        Girls.SwitchTo(Girls.Other(self), isDead);
     }
 }

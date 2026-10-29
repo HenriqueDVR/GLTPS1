@@ -178,13 +178,11 @@ public class CoopDowned : MonoBehaviour
 
 	private static void FollowWithCamera(Transform girl)
 	{
-		CharacterPossession component = CoopPlayers.Instance.Local.GetComponent<CharacterPossession>();
-		component.FollowTarget.transform.SetParent(girl);
-		component.LookAtTarget.transform.SetParent(girl);
-		component.FollowTarget.transform.localPosition = component.FollowTargetOffset;
-		component.LookAtTarget.transform.localPosition = component.LookAtTargetOffset;
-		component.FollowTarget.transform.rotation = girl.rotation;
-		component.LookAtTarget.transform.rotation = girl.rotation;
+		CameraRig rig = GameSession.Get<CameraRig>();
+		if (rig != null)
+		{
+			rig.Watch(girl);
+		}
 	}
 
 	private List<Need> Needs(CharacterItemInteraction girl)

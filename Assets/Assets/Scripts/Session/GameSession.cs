@@ -54,6 +54,8 @@ public class GameSession : MonoBehaviour
 			Register(floatingOrigin);
 		}
 		KanazawaInstanceManager.ResetLevel();
+		Girls.Begin();
+		Add<CameraRig>();
 		WorldGenerator world = Add<WorldGenerator>();
 		if (!WorldGenerator.Active)
 		{
@@ -95,6 +97,7 @@ public class GameSession : MonoBehaviour
 	private void OnDestroy()
 	{
 		SaveScene.Unregister();
+		Girls.End();
 		services.Clear();
 		if (Current == this)
 		{
