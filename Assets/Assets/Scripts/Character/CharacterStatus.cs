@@ -10,11 +10,6 @@ public class CharacterStatus : MonoBehaviour
     public float waterLevel = 200;
     public int maxIndex = 10;
 
-    [SerializeField] private PlayerInputInitialize yuuriPlayerInput;
-    [SerializeField] private PlayerInputInitialize chitoPlayerInput;
-    [SerializeField] private CharacterItemInteraction yuuriItemInteraction;
-    [SerializeField] private CharacterItemInteraction chitoItemInteraction;
-
     [SerializeField] private float slowDepletionRate = 0.5f;
     // was multiplying by deltaTime twice. tuned so 60fps matches how it was
     private const float referenceFrameRate = 60f;
@@ -71,23 +66,28 @@ public class CharacterStatus : MonoBehaviour
 
     void Update()
     {
+        if (Girls.Chito == null || Girls.Yuuri == null)
+        {
+            return;
+        }
+        CharacterItemInteraction chitoItems = Girls.Chito.Items;
+        CharacterItemInteraction yuuriItems = Girls.Yuuri.Items;
         UpdateRectTransformSizeY(waterBar, waterBarRectTransformInitialLength, waterLevel, maxWaterLevel);
 
-        UpdateImageFillAmount(chitoHungerBar, chitoHungerBarInitialFillAmount, chitoItemInteraction.hungerLevel, maxHungerValue);
-        UpdateImageFillAmount(chitoThirstBar, chitoThirstBarInitialFillAmount, chitoItemInteraction.thirstLevel, maxThirstValue);
-        UpdateImageFillAmount(chitoTemperatureBar, chitoTemperatureBarInitialFillAmount, chitoItemInteraction.temperatureLevel, maxTemperatureValue);
+        UpdateImageFillAmount(chitoHungerBar, chitoHungerBarInitialFillAmount, chitoItems.hungerLevel, maxHungerValue);
+        UpdateImageFillAmount(chitoThirstBar, chitoThirstBarInitialFillAmount, chitoItems.thirstLevel, maxThirstValue);
+        UpdateImageFillAmount(chitoTemperatureBar, chitoTemperatureBarInitialFillAmount, chitoItems.temperatureLevel, maxTemperatureValue);
 
-        UpdateImageFillAmount(yuuriHungerBar, yuuriHungerBarInitialFillAmount, yuuriItemInteraction.hungerLevel, maxHungerValue);
-        UpdateImageFillAmount(yuuriThirstBar, yuuriThirstBarInitialFillAmount, yuuriItemInteraction.thirstLevel, maxThirstValue);
-        UpdateImageFillAmount(yuuriTemperatureBar, yuuriTemperatureBarInitialFillAmount, yuuriItemInteraction.temperatureLevel, maxTemperatureValue);
+        UpdateImageFillAmount(yuuriHungerBar, yuuriHungerBarInitialFillAmount, yuuriItems.hungerLevel, maxHungerValue);
+        UpdateImageFillAmount(yuuriThirstBar, yuuriThirstBarInitialFillAmount, yuuriItems.thirstLevel, maxThirstValue);
+        UpdateImageFillAmount(yuuriTemperatureBar, yuuriTemperatureBarInitialFillAmount, yuuriItems.temperatureLevel, maxTemperatureValue);
 
 
         float scaledHungerRate;
         float scaledThirstRate;
-        float scaledTemperatureLossRate;
 
         // set the scaled hunger and thirst rate
-        if (chitoPlayerInput.actions.Vehicle.enabled || yuuriPlayerInput.actions.Vehicle.enabled)
+        if (Girls.Chito.Input.actions.Vehicle.enabled || Girls.Yuuri.Input.actions.Vehicle.enabled)
         {
             scaledHungerRate = hungerRate * slowDepletionRate / referenceFrameRate;
             scaledThirstRate = thirstRate * slowDepletionRate / referenceFrameRate;
@@ -101,45 +101,27 @@ public class CharacterStatus : MonoBehaviour
 
         // set the water refill rate when exposed to rain
         // friend gets water from the host
-        if (weatherManagerScript.index == 1 && (!chitoItemInteraction.isUnderCeiling || !yuuriItemInteraction.isUnderCeiling) && (!CoopSession.InGame || CoopSession.Instance.IsHost))
+        if (weatherManagerScript.index == 1 && (!chitoItems.isUnderCeiling || !yuuriItems.isUnderCeiling) && (!CoopSession.InGame || CoopSession.Instance.IsHost))
         {
             waterLevel += waterSlowRefillRate * Time.deltaTime;
         }
 
-        // set the scaled temperature loss rate when exposed to certain weather events
-        if (!chitoItemInteraction.isUnderCeiling)
+        foreach (Girl girl in Girls.All)
         {
-            scaledTemperatureLossRate = temperatureLossRate[weatherManagerScript.index] / referenceFrameRate;
+            Drain(girl.Items, scaledHungerRate, scaledThirstRate);
         }
-        else
-        {
-            scaledTemperatureLossRate = temperatureLossRate[0] / referenceFrameRate;
-        }   
-        
-        // apply scaled values
-        chitoItemInteraction.hungerLevel = Mathf.Clamp(chitoItemInteraction.hungerLevel, 0, maxHungerValue);
-        chitoItemInteraction.hungerLevel -= scaledHungerRate * Time.deltaTime;
-        chitoItemInteraction.thirstLevel = Mathf.Clamp(chitoItemInteraction.thirstLevel, 0, maxThirstValue);
-        chitoItemInteraction.thirstLevel -= scaledThirstRate * Time.deltaTime;
-        chitoItemInteraction.temperatureLevel = Mathf.Clamp(chitoItemInteraction.temperatureLevel, 0, maxTemperatureValue);
-        chitoItemInteraction.temperatureLevel -= scaledTemperatureLossRate * Time.deltaTime;
+    }
 
-        if (!yuuriItemInteraction.isUnderCeiling)
-        {
-            scaledTemperatureLossRate = temperatureLossRate[weatherManagerScript.index] / referenceFrameRate;
-        }
-        else
-        {
-            scaledTemperatureLossRate = temperatureLossRate[0] / referenceFrameRate;
-        }
-
-        yuuriItemInteraction.hungerLevel = Mathf.Clamp(yuuriItemInteraction.hungerLevel, 0, maxHungerValue);
-        yuuriItemInteraction.hungerLevel -= scaledHungerRate * Time.deltaTime;
-        yuuriItemInteraction.thirstLevel = Mathf.Clamp(yuuriItemInteraction.thirstLevel, 0, maxThirstValue);
-        yuuriItemInteraction.thirstLevel -= scaledThirstRate * Time.deltaTime;
-        yuuriItemInteraction.temperatureLevel = Mathf.Clamp(yuuriItemInteraction.temperatureLevel, 0, maxTemperatureValue);
-        yuuriItemInteraction.temperatureLevel -= scaledTemperatureLossRate * Time.deltaTime;
-
+    private void Drain(CharacterItemInteraction items, float scaledHungerRate, float scaledThirstRate)
+    {
+        // colder out in the weather
+        float scaledTemperatureLossRate = temperatureLossRate[items.isUnderCeiling ? 0 : weatherManagerScript.index] / referenceFrameRate;
+        items.hungerLevel = Mathf.Clamp(items.hungerLevel, 0, maxHungerValue);
+        items.hungerLevel -= scaledHungerRate * Time.deltaTime;
+        items.thirstLevel = Mathf.Clamp(items.thirstLevel, 0, maxThirstValue);
+        items.thirstLevel -= scaledThirstRate * Time.deltaTime;
+        items.temperatureLevel = Mathf.Clamp(items.temperatureLevel, 0, maxTemperatureValue);
+        items.temperatureLevel -= scaledTemperatureLossRate * Time.deltaTime;
     }
 
     private void UpdateRectTransformSizeY(RectTransform rectTransform, float initalLength, float currentLength, float maxLength)

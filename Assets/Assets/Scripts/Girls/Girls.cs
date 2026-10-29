@@ -13,6 +13,9 @@ public static class Girls
 
 	public static event Action<Girl> LocalChanged;
 
+	// both, chito first. empty outside the gameplay scene
+	public static Girl[] All { get; private set; } = new Girl[0];
+
 	public static Girl Get(GirlId id)
 	{
 		return (id == GirlId.Chito) ? Chito : Yuuri;
@@ -29,6 +32,7 @@ public static class Girls
 		Chito = Add("ChitoParent", GirlId.Chito, GirlControl.Player);
 		Yuuri = Add("YuuriParent", GirlId.Yuuri, GirlControl.AI);
 		Local = Chito;
+		All = (Chito != null && Yuuri != null) ? new Girl[2] { Chito, Yuuri } : new Girl[0];
 	}
 
 	public static void End()
@@ -36,6 +40,7 @@ public static class Girls
 		Chito = null;
 		Yuuri = null;
 		Local = null;
+		All = new Girl[0];
 	}
 
 	private static Girl Add(string name, GirlId id, GirlControl control)

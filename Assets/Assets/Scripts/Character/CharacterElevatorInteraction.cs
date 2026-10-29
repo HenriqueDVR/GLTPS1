@@ -12,8 +12,6 @@ public class CharacterElevatorInteraction : MonoBehaviour
 
     [SerializeField] private bool inElevatorInteractArea;
     [SerializeField] private Animator elevatorAnim;
-    [SerializeField] private GameObject chito;
-    [SerializeField] private GameObject yuuri;
     private bool flag;
     void OnEnable()
     {
@@ -48,8 +46,10 @@ public class CharacterElevatorInteraction : MonoBehaviour
             elevatorAnim.SetBool("isGateOpen", false);
 
             //disable navmesh agent follow
-            chito.GetComponent<NavMeshAgentFollowPlayer>().follow = false;
-            yuuri.GetComponent<NavMeshAgentFollowPlayer>().follow = false;
+            foreach (Girl girl in Girls.All)
+            {
+                girl.Follow.follow = false;
+            }
 
             //disable interaction input when closing gate
             selfPlayerInputScript.actions.Player.Interact.Disable();

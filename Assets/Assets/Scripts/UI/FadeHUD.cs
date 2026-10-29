@@ -6,9 +6,6 @@ using TMPro;
 using UnityEngine.InputSystem;
 public class FadeHUD : MonoBehaviour
 {
-    [SerializeField] private PlayerInputInitialize chitoPlayerInput;
-    [SerializeField] private PlayerInputInitialize yuuriPlayerInput;
-    [SerializeField] private PlayerMovement yuuriPlayerMovementScript;
     [SerializeField] private PlayerGunController playerGunControllerScript;
     [SerializeField] private TextMeshProUGUI ammoCountText;
     [SerializeField] private RawImage[] fuelUIRawImage;
@@ -19,11 +16,7 @@ public class FadeHUD : MonoBehaviour
 
     [SerializeField] private CharacterStatus characterStatusScript;
     public VehicleBarrel vehicleBarrelScript;
-    [SerializeField] private NPCInteraction chitoNPCInteractionScript;
-    [SerializeField] private NPCInteraction yuuriNPCInteractionScript;
     [SerializeField] private PlayerCameraController playerCameraControllerScript;
-    [SerializeField] private CharacterItemInteraction chitoCharacterItemInteractionScript;
-    [SerializeField] private CharacterItemInteraction yuuriCharacterItemInteractionScript;
 
     [SerializeField] private float duration = 1f;
     private float elapsed1 = 0f;
@@ -46,23 +39,30 @@ public class FadeHUD : MonoBehaviour
         compassUIalpha = compassUIRawImage[0].color.a;
 
 
+        if (Girls.Chito == null || Girls.Yuuri == null)
+        {
+            return;
+        }
+        Girl chito = Girls.Chito;
+        Girl yuuri = Girls.Yuuri;
+
         //lerp HUD for dialogue interaction
-        if (chitoNPCInteractionScript.triggerDialogue ||
-            yuuriNPCInteractionScript.triggerDialogue ||
+        if (chito.Npc.triggerDialogue ||
+            yuuri.Npc.triggerDialogue ||
             playerCameraControllerScript.equipCamera)
         {
             LerpAlpha(0, 0, 0, 0, ref elapsed4);
             elapsed3 = 0f;
         }
         //lerp HUD for ADS
-        else if (yuuriPlayerMovementScript.ADS)
+        else if (yuuri.Movement.ADS)
         {
             LerpAlpha(0.4f, 0, 0, 0.4f, ref elapsed1);
             elapsed3 = 0f;
         }
         //lerp HUD for fuel when in vehicle
-        else if (chitoPlayerInput.actions.Vehicle.enabled ||
-                 yuuriPlayerInput.actions.Vehicle.enabled)
+        else if (chito.Input.actions.Vehicle.enabled ||
+                 yuuri.Input.actions.Vehicle.enabled)
         {
             LerpAlpha(0, 0.4f, 0, 0.4f, ref elapsed2);
             elapsed3 = 0f;
@@ -83,7 +83,7 @@ public class FadeHUD : MonoBehaviour
                 elapsed2 = 0f;
             }
         }
-        else if (chitoCharacterItemInteractionScript.isInCampfireArea || yuuriCharacterItemInteractionScript.isInCampfireArea)
+        else if (chito.Items.isInCampfireArea || yuuri.Items.isInCampfireArea)
         {
             LerpAlpha(0, 0.4f, 0.4f, 0.4f, ref elapsed2);
             elapsed3 = 0f;

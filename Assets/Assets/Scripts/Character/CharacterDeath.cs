@@ -1,79 +1,38 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.AI;
 using UnityEngine.SceneManagement;
 
 public class CharacterDeath : MonoBehaviour
 {
-
-    [SerializeField] private CharacterItemInteraction yuuriItemInteractionScript;
-    [SerializeField] private NavMeshAgent yuuriNavMeshAgent;
-    [SerializeField] private Animator yuuriAnim;
-    [SerializeField] private PlayerInputInitialize yuuriInputScript;
-    [SerializeField] private CharacterPossession yuuriPosessionScript;
-    [SerializeField] private CharacterBarrelInteraction yuuriBarrelInteractionScript;
-    [SerializeField] private NavMeshAgentVehicleInteraction yuuriNavMeshAgentVehicleInteractionScript;
-
-
-
-    [SerializeField] private CharacterItemInteraction chitoItemInteractionScript;
-    [SerializeField] private NavMeshAgent chitoNavMeshAgent;
-    [SerializeField] private Animator chitoAnim;
-    [SerializeField] private PlayerInputInitialize chitoInputScript;
-    [SerializeField] private CharacterPossession chitoPosessionScript;
-    [SerializeField] private CharacterBarrelInteraction chitoBarrelInteractionScript;
-    [SerializeField] private NavMeshAgentVehicleInteraction chitoNavMeshAgentVehicleInteractionScript;
-
-
     public bool isChitoDead;
     public bool isYuuriDead;
 
-    private bool isYuuriPossessable = true;
-    private bool isChitoPossessable = true;
+    // the 4s handover to the other girl, started once
+    private bool chitoHandover;
+    private bool yuuriHandover;
 
     private bool gameOver;
     void LateUpdate()
     {
         // coop uses CoopDowned instead, this would swap girls
-        if (CoopSession.InGame)
+        if (CoopSession.InGame || Girls.Chito == null || Girls.Yuuri == null)
         {
             return;
         }
 
-        isChitoDead = IsDead(chitoItemInteractionScript,
-                             chitoAnim,
-                             chitoInputScript,
-                             chitoNavMeshAgent,
-                             chitoBarrelInteractionScript,
-                             chitoNavMeshAgentVehicleInteractionScript,
-                             isChitoDead);
-
-        isYuuriDead = IsDead(yuuriItemInteractionScript,
-                             yuuriAnim,
-                             yuuriInputScript,
-                             yuuriNavMeshAgent,
-                             yuuriBarrelInteractionScript,
-                             yuuriNavMeshAgentVehicleInteractionScript,
-                             isYuuriDead);
+        isChitoDead = IsDead(Girls.Chito, isChitoDead);
+        isYuuriDead = IsDead(Girls.Yuuri, isYuuriDead);
 
         //check yuuri death sequence
         if (isYuuriDead)
         {
-            DeathSequence(yuuriPosessionScript,
-                          chitoPosessionScript,
-                          yuuriNavMeshAgent,
-                          isChitoDead,
-                          isYuuriPossessable);
+            DeathSequence(Girls.Yuuri, isChitoDead, ref yuuriHandover);
         }
         //check chito death sequence
         if (isChitoDead)
         {
-            DeathSequence(chitoPosessionScript,
-                          yuuriPosessionScript,
-                          chitoNavMeshAgent,
-                          isYuuriDead,
-                          isChitoPossessable);
+            DeathSequence(Girls.Chito, isYuuriDead, ref chitoHandover);
         }
 
         if (isYuuriDead && isChitoDead && !gameOver)
@@ -82,68 +41,50 @@ public class CharacterDeath : MonoBehaviour
             gameOver = true;
         }
     }
-    bool IsDead(CharacterItemInteraction characterItemInteractionScript,
-                Animator characterAnim,
-                PlayerInputInitialize characterInputScript,
-                NavMeshAgent characterNavMeshAgent,
-                CharacterBarrelInteraction deadCharacterBarrelInteractionScript,
-                NavMeshAgentVehicleInteraction deadNavMeshAgentVehicleInteraction,
-                bool isDead)
+
+    bool IsDead(Girl girl, bool isDead)
     {
-        if ((characterItemInteractionScript.thirstLevel <= 0 ||
-            characterItemInteractionScript.hungerLevel <= 0) ||
-            characterItemInteractionScript.temperatureLevel <= 0 &&
-            !characterAnim.GetCurrentAnimatorStateInfo(1).IsTag("Ket"))
+        CharacterItemInteraction items = girl.Items;
+        if ((items.thirstLevel <= 0 ||
+            items.hungerLevel <= 0) ||
+            items.temperatureLevel <= 0 &&
+            !girl.Animator.GetCurrentAnimatorStateInfo(1).IsTag("Ket"))
         {
             //check if navmesg agent is enable and that the navmesh agent has exited the vehicle
-            if (characterNavMeshAgent.enabled)
+            if (girl.Agent.enabled)
             {
-                characterNavMeshAgent.enabled = false;
-                deadNavMeshAgentVehicleInteraction.enabled = false;
+                girl.Agent.enabled = false;
+                girl.AgentVehicle.enabled = false;
             }
 
             //check if player is holding barrel
-            if (characterAnim.GetCurrentAnimatorStateInfo(2).IsTag("Carry"))
+            if (girl.Animator.GetCurrentAnimatorStateInfo(2).IsTag("Carry"))
             {
-                deadCharacterBarrelInteractionScript.DropBarrel();
+                girl.Barrel.DropBarrel();
             }
-            characterInputScript.actions.Player.Disable();
-            characterAnim.SetTrigger("die");
+            girl.Input.actions.Player.Disable();
+            girl.Animator.SetTrigger("die");
             isDead = true;
         }
         return isDead;
     }
 
-    void DeathSequence(CharacterPossession deadCharacterPosessionScript,
-                       CharacterPossession aliveCharacterPosessionScript,
-                       NavMeshAgent characterNavMeshAgent,
-                       bool otherIsDead,
-                       bool isPossessable)
+    void DeathSequence(Girl dead, bool otherIsDead, ref bool handover)
     {
-        //disable possession mechanic
-        if (isPossessable)
+        // no more switching
+        Girls.Other(dead).Possession.enabled = false;
+        //check if player is controlling dead character
+        if (dead.Possession.enabled && !otherIsDead && !handover)
         {
-            //check if player is controlling dead character
-            if (deadCharacterPosessionScript.enabled)
-            {
-                aliveCharacterPosessionScript.enabled = false;
-                if (!otherIsDead)
-                {
-                    StartCoroutine(DelayCharacterPosession(deadCharacterPosessionScript, characterNavMeshAgent));
-                }
-            }
-            else //player is controlling alive character
-            {
-                aliveCharacterPosessionScript.enabled = false;
-            }
-            isPossessable = false;
+            handover = true;
+            StartCoroutine(DelayCharacterPosession(dead));
         }
     }
 
-    IEnumerator DelayCharacterPosession(CharacterPossession deadCharacterPosessionScript, NavMeshAgent characterNavMeshAgent)
+    IEnumerator DelayCharacterPosession(Girl dead)
     {
         yield return new WaitForSeconds(4);
-        deadCharacterPosessionScript.PossessCharacter(true);
+        dead.Possession.PossessCharacter(true);
     }
 
     IEnumerator DelayReloadScene()

@@ -7,7 +7,6 @@ public class NPCInteraction : MonoBehaviour
 {
     [SerializeField] private PlayerInputInitialize playerInputScript;
     private GameObject kanazawa;
-    [SerializeField] private GameObject chito;
     [SerializeField] private GameObject node;
     private bool isInteractable;
     public bool triggerDialogue;
@@ -59,8 +58,8 @@ public class NPCInteraction : MonoBehaviour
             kanazawa = other.gameObject;
             kanazawa.GetComponent<DialogueManager>().NPCInteractionScript = this;
             // coop: map goes to whoever talked to him
-            kanazawa.GetComponent<UnlockDialogueItem>().dialogueItems[0].reference[0] = CoopKanazawa.Recipient(chito);
-            kanazawa.GetComponent<UnlockDialogueItem>().dialogueItems[1].reference[0] = CoopKanazawa.Recipient(chito);
+            kanazawa.GetComponent<UnlockDialogueItem>().dialogueItems[0].reference[0] = CoopKanazawa.Recipient(Girls.Chito.gameObject);
+            kanazawa.GetComponent<UnlockDialogueItem>().dialogueItems[1].reference[0] = CoopKanazawa.Recipient(Girls.Chito.gameObject);
             node.GetComponent<KanazawaInstanceManager>().firstKanazawa = kanazawa;
             isInteractable = true;
         }

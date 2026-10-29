@@ -67,6 +67,18 @@ public class Girl : MonoBehaviour
 
 	public AudioSource Footsteps { get; private set; }
 
+	public PlayerMovement Movement => movement;
+
+	public CharacterBarrelInteraction Barrel => barrel;
+
+	public NavMeshAgent Agent => agent;
+
+	public NavMeshAgentVehicleInteraction AgentVehicle => agentVehicle;
+
+	public NavMeshAgentFollowPlayer Follow => follow;
+
+	public NPCInteraction Npc => npc;
+
 	public void Init(GirlId id, GirlControl control)
 	{
 		Id = id;

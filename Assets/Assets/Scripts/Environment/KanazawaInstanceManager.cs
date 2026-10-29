@@ -43,7 +43,7 @@ public class KanazawaInstanceManager : MonoBehaviour
     void Start()
     {
         nodeDataScript = GameObject.FindWithTag("NodeData").GetComponent<NodeData>();
-        playerMapControllerScript = GameObject.Find("ChitoParent").GetComponent<PlayerMapController>();
+        playerMapControllerScript = Girls.Chito.GetComponent<PlayerMapController>();
     }
 
     void Update()
