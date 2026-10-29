@@ -114,20 +114,30 @@ public class FloatingOrigin : MonoBehaviour
         Shifted?.Invoke(referencePosition);
         // not on the warm up, an agent that isn't on the navmesh yet would complain
         if (referencePosition != Vector3.zero)
-            WarpAgents();
+            WarpAgents(referencePosition);
         WarpCameras(referencePosition);
 #if DUMP_WORLDGEN
         Debug.Log("FloatingOrigin: shift by " + referencePosition + " took " + watch.Elapsed.TotalMilliseconds.ToString("F2") + "ms");
 #endif
     }
 
-    // agents keep their own position and would walk back, the navmesh under them moved in Shifted
-    private void WarpAgents()
+    // agents keep their own position and would walk back, the navmesh under them moved in Shifted.
+    // warp stops them dead, so they keep their velocity (the AI girl stopped and ran again at every shift)
+    private void WarpAgents(Vector3 offset)
     {
         foreach (UnityEngine.AI.NavMeshAgent agent in FindObjectsOfType<UnityEngine.AI.NavMeshAgent>())
         {
-            if (agent.enabled)
-                agent.Warp(agent.transform.position);
+            if (!agent.enabled)
+                continue;
+            Vector3 velocity = agent.velocity;
+            Vector3 destination = agent.destination - offset;
+            bool hadPath = agent.hasPath || agent.pathPending;
+            agent.Warp(agent.transform.position);
+            if (hadPath && agent.isOnNavMesh)
+            {
+                agent.SetDestination(destination);
+                agent.velocity = velocity;
+            }
         }
     }
 
