@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Collections.Generic;
 using System.Diagnostics;
 using UnityEngine;
@@ -91,7 +92,13 @@ public class TileStreamer : MonoBehaviour
 		material = (lit != null) ? new Material(lit) : floor;
 		block = new MaterialPropertyBlock();
 #if DUMP_WORLDGEN
-		run = System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-gen2run") >= 0;
+		string[] args = System.Environment.GetCommandLineArgs();
+		int at = System.Array.IndexOf(args, "-gen2run");
+		run = at >= 0;
+		if (run && at + 1 < args.Length && float.TryParse(args[at + 1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float speed))
+		{
+			runSpeed = speed;
+		}
 #endif
 		// everything in reach before the first frame, like the legacy BuildAround
 		Refresh();
@@ -122,12 +129,101 @@ public class TileStreamer : MonoBehaviour
 
 	private bool run;
 
-	private void LateUpdate()
+	// frames left to log the camera after a shift
+	private int probeFrames;
+
+	private Vector3 lastCamera;
+
+	private Vector3 lastChito;
+
+	private Quaternion lastRotation = Quaternion.identity;
+
+	private void OnEnable()
 	{
-		// -gen2run: both girls slide along +x at 60 m/s, for streaming and floating origin tests
+		FloatingOrigin.Shifted += OnShiftedProbe;
+		StartCoroutine(CameraProbe());
+	}
+
+	private void OnDisable()
+	{
+		FloatingOrigin.Shifted -= OnShiftedProbe;
+	}
+
+	private Quaternion lastLiveRotation = Quaternion.identity;
+
+	private static string Describe(Cinemachine.CinemachineVirtualCameraBase vcam)
+	{
+		string text = vcam.name + (Cinemachine.CinemachineCore.Instance.IsLive(vcam) ? " LIVE" : "") + " parent=" + (vcam.ParentCamera != null ? vcam.ParentCamera.Name : "-") + " follow=" + (vcam.Follow != null ? vcam.Follow.name : "-") + " lookat=" + (vcam.LookAt != null ? vcam.LookAt.name : "-");
+		if (vcam is Cinemachine.CinemachineVirtualCamera v)
+		{
+			text += " body=" + v.GetCinemachineComponent(Cinemachine.CinemachineCore.Stage.Body)?.GetType().Name + " aim=" + v.GetCinemachineComponent(Cinemachine.CinemachineCore.Stage.Aim)?.GetType().Name;
+		}
+		return text;
+	}
+
+	private void OnShiftedProbe(Vector3 offset)
+	{
+		Cinemachine.CinemachineCore core = Cinemachine.CinemachineCore.Instance;
+		for (int i = 0; i < core.VirtualCameraCount; i++)
+		{
+			UnityEngine.Debug.Log("ShiftProbe: vcam " + Describe(core.GetVirtualCamera(i)));
+		}
+		UnityEngine.Debug.Log("ShiftProbe: shift by " + offset + " frame " + Time.frameCount + ", the 30 frames before: avg " + (frameTimes.Count > 0 ? frameTimes.Average() : 0f).ToString("F1") + "ms max " + (frameTimes.Count > 0 ? frameTimes.Max() : 0f).ToString("F1") + "ms");
+		probeFrames = 6;
+	}
+
+	private readonly Queue<float> frameTimes = new Queue<float>();
+
+	// end of frame, after every LateUpdate: how far the camera and chito moved this frame in layout coords.
+	// a jerk shows up as a camera step that doesn't match chito's
+	private System.Collections.IEnumerator CameraProbe()
+	{
+		WaitForEndOfFrame end = new WaitForEndOfFrame();
+		while (true)
+		{
+			yield return end;
+			Camera camera = Camera.main;
+			if (camera == null || chito == null)
+			{
+				continue;
+			}
+			frameTimes.Enqueue(Time.unscaledDeltaTime * 1000f);
+			if (frameTimes.Count > 30)
+			{
+				frameTimes.Dequeue();
+			}
+			Vector3 cam = camera.transform.position + Offset();
+			Vector3 girl = chito.position + Offset();
+			float turn = Quaternion.Angle(lastRotation, camera.transform.rotation);
+			Cinemachine.CinemachineBrain brain = camera.GetComponent<Cinemachine.CinemachineBrain>();
+			Cinemachine.ICinemachineCamera live = (brain != null) ? brain.ActiveVirtualCamera : null;
+			Quaternion liveRotation = (live != null) ? live.State.FinalOrientation : Quaternion.identity;
+			if (probeFrames > 0)
+			{
+				probeFrames--;
+				UnityEngine.Debug.Log("ShiftProbe: frame " + Time.frameCount + " dt " + (Time.unscaledDeltaTime * 1000f).ToString("F1") + "ms camera step " + (cam - lastCamera).ToString("F3") + " chito step " + (girl - lastChito).ToString("F3") + " camera-chito " + (cam - girl).ToString("F2") + " turn " + turn.ToString("F2") + " live " + (live != null ? live.Name : "-") + " live turn " + Quaternion.Angle(lastLiveRotation, liveRotation).ToString("F2") + " camera vs live " + Quaternion.Angle(liveRotation, camera.transform.rotation).ToString("F2") + " brain " + (brain != null ? "on camera" : "elsewhere"));
+			}
+			// anything sudden outside the logged frames too
+			else if (lastCamera != Vector3.zero && (turn > 5f || ((cam - lastCamera) - (girl - lastChito)).magnitude > 2f))
+			{
+				UnityEngine.Debug.Log("ShiftProbe: camera jump at frame " + Time.frameCount + " turn " + turn.ToString("F2") + " off chito by " + ((cam - lastCamera) - (girl - lastChito)).ToString("F2"));
+			}
+			lastCamera = cam;
+			lastChito = girl;
+			lastRotation = camera.transform.rotation;
+			lastLiveRotation = liveRotation;
+		}
+	}
+
+	private float runSpeed = 20f;
+
+	// -gen2run [speed]: both girls slide along at speed m/s (20 default) on a slow curve, for streaming and floating origin tests
+	private void DebugRun()
+	{
 		if (run && chito != null)
 		{
-			Vector3 step = new Vector3(60f * Time.deltaTime, 0f, 0f);
+			float heading = Time.time * 15f * Mathf.Deg2Rad;
+			Vector3 step = new Vector3(Mathf.Cos(heading), 0f, Mathf.Sin(heading)) * (runSpeed * Time.deltaTime);
 			chito.position += step;
 			if (yuuri != null)
 			{
@@ -135,6 +231,10 @@ public class TileStreamer : MonoBehaviour
 			}
 			Physics.SyncTransforms();
 		}
+	}
+
+	private void LateUpdate()
+	{
 		if (Time.unscaledTime >= nextLog)
 		{
 			nextLog = Time.unscaledTime + 5f;
@@ -146,6 +246,9 @@ public class TileStreamer : MonoBehaviour
 
 	private void Update()
 	{
+#if DUMP_WORLDGEN
+		DebugRun();
+#endif
 		if (Time.time >= nextRefresh)
 		{
 			nextRefresh = Time.time + refreshInterval;

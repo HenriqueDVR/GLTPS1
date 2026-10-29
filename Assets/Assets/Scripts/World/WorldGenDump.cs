@@ -9,6 +9,18 @@ using UnityEngine;
 // debug: dumps worldgen prefab structure to a txt
 public static class WorldGenDump
 {
+	// headless test runs (-batchmode, or -mute for a windowed one) stay silent. pause rather than volume, the settings page sets the volume
+	[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+	private static void SilenceHeadless()
+	{
+		if (!Application.isBatchMode && System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-mute") < 0)
+		{
+			return;
+		}
+		AudioListener.pause = true;
+		UnityEngine.SceneManagement.SceneManager.sceneLoaded += (scene, mode) => AudioListener.pause = true;
+	}
+
 	private static readonly HashSet<GameObject> visited = new HashSet<GameObject>();
 
 	private static readonly Queue<GameObject> queue = new Queue<GameObject>();
