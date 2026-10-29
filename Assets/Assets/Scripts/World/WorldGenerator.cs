@@ -19,10 +19,6 @@ public class WorldGenerator : MonoBehaviour
 
 	private FloatingOrigin floatingOrigin;
 
-	private readonly Dictionary<GameObject, WorldLayout.NodeDef> nodeDefs = new Dictionary<GameObject, WorldLayout.NodeDef>();
-
-	private readonly Dictionary<GameObject, WorldLayout.EdgeDef> edgeDefs = new Dictionary<GameObject, WorldLayout.EdgeDef>();
-
 	private readonly Queue<Action> spawnQueue = new Queue<Action>();
 
 	private float nextProximityCheck;
@@ -67,10 +63,8 @@ public class WorldGenerator : MonoBehaviour
 			base.enabled = false;
 			return;
 		}
-		WorldLayout.NodeDef root = GetNodeDef(node.gameObject);
-		WorldLayout.NodeDef pillar = ((nodeData.pillarEdge != null) ? GetNodeDef(nodeData.pillarEdge) : null);
 		Pose rootPose = new Pose(node.transform.position + Offset(), node.transform.rotation);
-		Layout = WorldLayout.Generate(root, rootPose, Seed, pillar, nodeData.pillarSpawnChance, nodeData.countThreshold, maxNodes);
+		Layout = BuildLayout(node, nodeData, rootPose, Seed);
 		string text = Layout.Describe();
 		LayoutHash = WorldLayout.Hash(text);
 		Debug.Log("WorldGenerator: seed=" + Seed + " nodes=" + Layout.Nodes.Count + " edges=" + Layout.Edges.Count + " hash=" + LayoutHash.ToString("x8"));
@@ -552,7 +546,16 @@ public class WorldGenerator : MonoBehaviour
 		return (ulong)new System.Random().Next(1, int.MaxValue);
 	}
 
-	private static Node FindStartNode()
+	// layout only, nothing spawned. the golden hash tests use this too
+	public static WorldLayout BuildLayout(Node start, NodeData data, Pose rootPose, ulong seed)
+	{
+		LayoutDefs defs = new LayoutDefs();
+		WorldLayout.NodeDef root = defs.GetNodeDef(start.gameObject);
+		WorldLayout.NodeDef pillar = ((data.pillarEdge != null) ? defs.GetNodeDef(data.pillarEdge) : null);
+		return WorldLayout.Generate(root, rootPose, seed, pillar, data.pillarSpawnChance, data.countThreshold, maxNodes);
+	}
+
+	public static Node FindStartNode()
 	{
 		Node result = null;
 		Node[] array = UnityEngine.Object.FindObjectsOfType<Node>();
@@ -571,59 +574,67 @@ public class WorldGenerator : MonoBehaviour
 		return result;
 	}
 
-	private WorldLayout.NodeDef GetNodeDef(GameObject prefab)
+	// node/edge defs read off the pool prefabs, one per prefab
+	private sealed class LayoutDefs
 	{
-		if (nodeDefs.TryGetValue(prefab, out var value))
-		{
-			return value;
-		}
-		value = new WorldLayout.NodeDef
-		{
-			Prefab = prefab,
-			Boxes = GetBoxes(prefab)
-		};
-		nodeDefs.Add(prefab, value);
-		foreach (Transform item in prefab.GetComponent<Node>().portPrefab)
-		{
-			WorldLayout.PortDef portDef = new WorldLayout.PortDef
-			{
-				Local = LocalPose(prefab.transform, item)
-			};
-			GenerateEdge component = item.GetComponent<GenerateEdge>();
-			if (component != null)
-			{
-				foreach (GameObject edgePrefab in component.EdgePrefabs)
-				{
-					portDef.Edges.Add(GetEdgeDef(edgePrefab));
-				}
-				portDef.Barriers.AddRange(component.BarrierPrefabs);
-			}
-			value.Ports.Add(portDef);
-		}
-		return value;
-	}
+		private readonly Dictionary<GameObject, WorldLayout.NodeDef> nodeDefs = new Dictionary<GameObject, WorldLayout.NodeDef>();
 
-	private WorldLayout.EdgeDef GetEdgeDef(GameObject prefab)
-	{
-		if (edgeDefs.TryGetValue(prefab, out var value))
+		private readonly Dictionary<GameObject, WorldLayout.EdgeDef> edgeDefs = new Dictionary<GameObject, WorldLayout.EdgeDef>();
+
+		public WorldLayout.NodeDef GetNodeDef(GameObject prefab)
 		{
+			if (nodeDefs.TryGetValue(prefab, out var value))
+			{
+				return value;
+			}
+			value = new WorldLayout.NodeDef
+			{
+				Prefab = prefab,
+				Boxes = GetBoxes(prefab)
+			};
+			nodeDefs.Add(prefab, value);
+			foreach (Transform item in prefab.GetComponent<Node>().portPrefab)
+			{
+				WorldLayout.PortDef portDef = new WorldLayout.PortDef
+				{
+					Local = LocalPose(prefab.transform, item)
+				};
+				GenerateEdge component = item.GetComponent<GenerateEdge>();
+				if (component != null)
+				{
+					foreach (GameObject edgePrefab in component.EdgePrefabs)
+					{
+						portDef.Edges.Add(GetEdgeDef(edgePrefab));
+					}
+					portDef.Barriers.AddRange(component.BarrierPrefabs);
+				}
+				value.Ports.Add(portDef);
+			}
 			return value;
 		}
-		GenerateNode component = prefab.GetComponent<GenerateNode>();
-		value = new WorldLayout.EdgeDef
+
+		private WorldLayout.EdgeDef GetEdgeDef(GameObject prefab)
 		{
-			Prefab = prefab,
-			Entrance = LocalPose(prefab.transform, prefab.transform.GetChild(1)),
-			Exit = LocalPose(prefab.transform, component.edgeExit),
-			Boxes = GetBoxes(prefab)
-		};
-		edgeDefs.Add(prefab, value);
-		for (int i = 0; i < component.NodePrefabs.Count; i++)
-		{
-			value.Nodes.Add(GetNodeDef(component.NodePrefabs[i]));
-			value.Weights.Add((i < component.SpawnChance.Count) ? component.SpawnChance[i] : 1);
+			if (edgeDefs.TryGetValue(prefab, out var value))
+			{
+				return value;
+			}
+			GenerateNode component = prefab.GetComponent<GenerateNode>();
+			value = new WorldLayout.EdgeDef
+			{
+				Prefab = prefab,
+				Entrance = LocalPose(prefab.transform, prefab.transform.GetChild(1)),
+				Exit = LocalPose(prefab.transform, component.edgeExit),
+				Boxes = GetBoxes(prefab)
+			};
+			edgeDefs.Add(prefab, value);
+			for (int i = 0; i < component.NodePrefabs.Count; i++)
+			{
+				value.Nodes.Add(GetNodeDef(component.NodePrefabs[i]));
+				value.Weights.Add((i < component.SpawnChance.Count) ? component.SpawnChance[i] : 1);
+			}
+			return value;
 		}
-		return value;
 	}
 
 	private static List<WorldLayout.LocalBox> GetBoxes(GameObject prefab)
