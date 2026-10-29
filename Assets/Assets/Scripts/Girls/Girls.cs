@@ -55,6 +55,10 @@ public static class Girls
 		{
 			girl = root.AddComponent<Girl>();
 		}
+		if (root.GetComponent<InteractionPicker>() == null)
+		{
+			root.AddComponent<InteractionPicker>();
+		}
 		girl.Init(id, control);
 		return girl;
 	}

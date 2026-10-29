@@ -4,7 +4,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
 using TMPro;
-public class CharacterItemInteraction : MonoBehaviour
+public class CharacterItemInteraction : MonoBehaviour, IInteractionSource
 {
     public PlayerInputInitialize playerInputScript;
     private bool isFood;
@@ -48,7 +48,6 @@ public class CharacterItemInteraction : MonoBehaviour
 
     void OnEnable()
     {
-        playerInputScript.actions.Player.Interact.performed += Interact;
         playerInputScript.actions.Player.Eat.performed += Eat;
         playerInputScript.actions.Player.Drink.performed += Drink;
         playerInputScript.actions.Player.PlaceCampfire.performed += PlaceCampfire;
@@ -56,42 +55,67 @@ public class CharacterItemInteraction : MonoBehaviour
 
     void OnDisable()
     {
-        playerInputScript.actions.Player.Interact.performed -= Interact;
         playerInputScript.actions.Player.Eat.performed -= Eat;
         playerInputScript.actions.Player.Drink.performed -= Drink;
         playerInputScript.actions.Player.PlaceCampfire.performed -= PlaceCampfire;
     }
 
-    private void Interact(InputAction.CallbackContext context)
+    public void Collect(List<Interaction> into)
     {
-        if (context.performed && Time.timeScale == 1)
+        Collider item = other;
+        if (item == null)
         {
-            if (isFood && characterStatusScript.index < maxFoodCount && other.gameObject.CompareTag("Food"))
-            {
-                if (TakeItem())
-                {
-                    GiveFood();
-                }
-                isFood = false;
-            }
-            else if (isAmmo && other.gameObject.CompareTag("Ammo"))
-            {
-                if (TakeItem())
-                {
-                    GiveAmmo();
-                }
-                isAmmo = false;
-            }
-            else if (isCampfire && other.gameObject.CompareTag("CampfireInteractArea"))
-            {
-                if (other.gameObject.GetComponentInParent<CampfireFuelLevel>().currentFuelLevel > 0)
-                {
-                    other.gameObject.GetComponentInParent<CampfireFuelLevel>().currentFuelLevel = 0;
-                    CoopCampfire.Extinguished(other.gameObject.GetComponentInParent<CampfireFuelLevel>());
-                    _audioSource.PlayOneShot(_audioClip[1]);
-                    isCampfire = false;
-                }
-            }
+            return;
+        }
+        if (isFood && characterStatusScript.index < maxFoodCount && item.gameObject.CompareTag("Food"))
+        {
+            into.Add(new Interaction { Verb = Verb.Take, Press = Press.Tap, Target = item.transform, Priority = 1, Run = () => TakeFood(item), Source = "food" });
+        }
+        else if (isAmmo && item.gameObject.CompareTag("Ammo"))
+        {
+            into.Add(new Interaction { Verb = Verb.Take, Press = Press.Tap, Target = item.transform, Priority = 1, Run = () => TakeAmmo(item), Source = "ammo" });
+        }
+        else if (isCampfire && item.gameObject.CompareTag("CampfireInteractArea") && item.gameObject.GetComponentInParent<CampfireFuelLevel>().currentFuelLevel > 0)
+        {
+            into.Add(new Interaction { Verb = Verb.PutOut, Press = Press.Tap, Target = item.transform, Priority = 1, Run = () => PutOut(item), Source = "campfire" });
+        }
+    }
+
+    private void TakeFood(Collider item)
+    {
+        if (item == null || item != other)
+        {
+            return;
+        }
+        if (TakeItem())
+        {
+            GiveFood();
+        }
+        isFood = false;
+    }
+
+    private void TakeAmmo(Collider item)
+    {
+        if (item == null || item != other)
+        {
+            return;
+        }
+        if (TakeItem())
+        {
+            GiveAmmo();
+        }
+        isAmmo = false;
+    }
+
+    private void PutOut(Collider area)
+    {
+        CampfireFuelLevel campfire = area.gameObject.GetComponentInParent<CampfireFuelLevel>();
+        if (campfire.currentFuelLevel > 0)
+        {
+            campfire.currentFuelLevel = 0;
+            CoopCampfire.Extinguished(campfire);
+            _audioSource.PlayOneShot(_audioClip[1]);
+            isCampfire = false;
         }
     }
 

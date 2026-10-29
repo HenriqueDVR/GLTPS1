@@ -5,7 +5,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.AI;
 using UnityEngine.Animations;
 
-public class CharacterElevatorInteraction : MonoBehaviour
+public class CharacterElevatorInteraction : MonoBehaviour, IInteractionSource
 {
     [SerializeField] private PlayerInputInitialize selfPlayerInputScript;
     [SerializeField] private PlayerInputInitialize otherPlayerInputScript;
@@ -19,11 +19,9 @@ public class CharacterElevatorInteraction : MonoBehaviour
     private InputContextStack.Token otherClosing;
     void OnEnable()
     {
-        selfPlayerInputScript.actions.Player.Interact.performed += Interact;
     }
     void OnDisable()
     {
-        selfPlayerInputScript.actions.Player.Interact.performed -= Interact;
     }
 
     void Update()
@@ -43,9 +41,16 @@ public class CharacterElevatorInteraction : MonoBehaviour
             }
         }
     }
-    private void Interact(InputAction.CallbackContext context)
+    public void Collect(List<Interaction> into)
     {
-        if (context.performed && inElevatorInteractArea && elevatorAnim.GetBool("isGateOpen") && CoopElevator.ReadyToLeave(elevatorAnim))
+        if (inElevatorInteractArea && elevatorAnim != null && elevatorAnim.GetBool("isGateOpen") && CoopElevator.ReadyToLeave(elevatorAnim))
+        {
+            into.Add(new Interaction { Verb = Verb.Use, Press = Press.Tap, Target = elevatorAnim.transform, Priority = 1, Run = CloseGate, Source = "elevator gate" });
+        }
+    }
+
+    private void CloseGate()
+    {
         {
             CoopElevator.GateClosed();
             elevatorAnim.SetBool("CloseGate", true);

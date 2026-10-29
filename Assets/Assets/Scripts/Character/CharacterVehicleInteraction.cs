@@ -4,7 +4,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.AI;
 using Cinemachine;
-public class CharacterVehicleInteraction : MonoBehaviour
+public class CharacterVehicleInteraction : MonoBehaviour, IInteractionSource
 {
     [SerializeField] private float[] freelookRadius;
     [SerializeField] private PlayerInputInitialize playerInputScript;
@@ -56,7 +56,6 @@ public class CharacterVehicleInteraction : MonoBehaviour
     public bool changeCameraRadiusFlag2;
 
     private const float holdToEnterTime = 0.4f;
-    private float interactHeldTime = -1f;
     private bool exitStarted;
 
     // same as the animator blend so the slide and blend cancel out
@@ -74,7 +73,6 @@ public class CharacterVehicleInteraction : MonoBehaviour
         Physics.IgnoreLayerCollision(6, 7, false);
         Physics.IgnoreLayerCollision(6, 8, false);
 
-        playerInputScript.actions.Player.Interact.performed += Interact;
         playerInputScript.actions.Vehicle.Exit.performed += Exit;
         playerInputScript.actions.Vehicle.Light.performed += Light;
         playerInputScript.actions.Vehicle.NextSong.performed += NextSong;
@@ -82,7 +80,6 @@ public class CharacterVehicleInteraction : MonoBehaviour
 
     void OnDisable()
     {
-        playerInputScript.actions.Player.Interact.performed -= Interact;
         playerInputScript.actions.Vehicle.Exit.performed -= Exit;
         playerInputScript.actions.Vehicle.Light.performed -= Light;
         playerInputScript.actions.Vehicle.NextSong.performed -= NextSong;
@@ -134,8 +131,6 @@ public class CharacterVehicleInteraction : MonoBehaviour
                 StartCoroutine(DelayExit(ketBlendDuration));
             }
         }
-
-        UpdateInteractHold();
 
         //vehicle movement controls
         if (playerInputScript.actions.Vehicle.Drive.enabled)
@@ -246,12 +241,12 @@ public class CharacterVehicleInteraction : MonoBehaviour
         }
     }
 
-    public void Interact(InputAction.CallbackContext context)
+    // hold to get in (or on/off the back in coop). a tap near the ket is the barrel's
+    public void Collect(List<Interaction> into)
     {
-        // hold = get in, tap = barrel. decided in Update
-        if (context.performed && Time.timeScale == 1 && ClaimsInteract && GetComponent<CharacterBarrelInteraction>().DropFrame != Time.frameCount)
+        if (ClaimsInteract)
         {
-            interactHeldTime = 0f;
+            into.Add(new Interaction { Verb = Verb.Board, Press = Press.Hold, HoldTime = holdToEnterTime, Target = vehicleSeat, Priority = 1, Run = Enter, Source = "ket" });
         }
     }
 
@@ -265,33 +260,6 @@ public class CharacterVehicleInteraction : MonoBehaviour
                 return true;
             }
             return enterable && !anim.GetCurrentAnimatorStateInfo(1).IsTag("Ket") && !isCarrying;
-        }
-    }
-
-    private void UpdateInteractHold()
-    {
-        if (interactHeldTime < 0f)
-        {
-            return;
-        }
-        if (!playerInputScript.actions.Player.Interact.IsPressed())
-        {
-            interactHeldTime = -1f;
-            bool riding = CoopKettenkrad.Instance != null && CoopKettenkrad.Instance.LocalSeat != CoopKettenkrad.SeatState.Off;
-            if (!riding && Time.timeScale == 1)
-            {
-                GetComponent<CharacterBarrelInteraction>().PickUp();
-            }
-            return;
-        }
-        interactHeldTime += Time.deltaTime;
-        if (interactHeldTime >= holdToEnterTime)
-        {
-            interactHeldTime = -1f;
-            if (ClaimsInteract && Time.timeScale == 1)
-            {
-                Enter();
-            }
         }
     }
 

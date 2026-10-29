@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-public class NPCInteraction : MonoBehaviour
+public class NPCInteraction : MonoBehaviour, IInteractionSource
 {
     [SerializeField] private PlayerInputInitialize playerInputScript;
     private GameObject kanazawa;
@@ -12,23 +12,21 @@ public class NPCInteraction : MonoBehaviour
     public bool triggerDialogue;
     public Animator dialogueBoxAnim;
     public CharacterPossession characterPossessionScript;
-    void OnEnable()
+    public void Collect(List<Interaction> into)
     {
-        playerInputScript.actions.Player.Interact.performed += Interact;
-    }
-    void OnDisable()
-    {
-        playerInputScript.actions.Player.Interact.performed -= Interact;
-    }
-
-    private void Interact(InputAction.CallbackContext context)
-    {
-        if (context.performed && triggerDialogue)
+        // mid conversation the next line comes first, whatever else is around
+        if (triggerDialogue && kanazawa != null)
         {
-            kanazawa.GetComponent<DialogueManager>().NextLine();
+            into.Add(new Interaction { Verb = Verb.Talk, Press = Press.Tap, Priority = 6, Run = () => kanazawa.GetComponent<DialogueManager>().NextLine(), Source = "next line" });
         }
+        else if (isInteractable && kanazawa != null && dialogueBoxAnim.GetCurrentAnimatorStateInfo(0).IsTag("Close"))
+        {
+            into.Add(new Interaction { Verb = Verb.Talk, Press = Press.Tap, Target = kanazawa.transform, Priority = 1, Run = StartTalking, Source = "kanazawa" });
+        }
+    }
 
-        if (context.performed && isInteractable && !triggerDialogue && dialogueBoxAnim.GetCurrentAnimatorStateInfo(0).IsTag("Close"))
+    private void StartTalking()
+    {
         {
             // stop agent patrol
             kanazawa.GetComponent<NavMeshAgentPatrol>().patrol = false;

@@ -9,7 +9,7 @@ using UnityEngine.UI;
 
 // coop death: girl goes down instead and the partner revives her (hold interact).
 // costs a ration / water / a campfire depending on what ran out. both down = game over
-public class CoopDowned : MonoBehaviour
+public class CoopDowned : MonoBehaviour, IInteractionSource
 {
 	private enum Need
 	{
@@ -66,6 +66,37 @@ public class CoopDowned : MonoBehaviour
 	{
 		Instance = this;
 		session = CoopSession.Instance;
+		InteractionPicker.AddGlobal(this);
+	}
+
+	// last frame the picker had Interact held on the revive
+	private int reviveHeldFrame = -10;
+
+	// hold Interact on her, only when it can work (else it would steal the press from the food she needs)
+	public void Collect(List<Interaction> into)
+	{
+		CoopPlayers players = CoopPlayers.Instance;
+		if (players != null && players.Remote != null && CanRevive(players))
+		{
+			into.Add(new Interaction { Verb = Verb.Revive, Press = Press.Continuous, Target = players.Remote, Priority = 2, Run = () => reviveHeldFrame = Time.frameCount, Source = "revive" });
+		}
+	}
+
+	private bool CanRevive(CoopPlayers players)
+	{
+		if (!remoteDown || localDown || !CanReach(players))
+		{
+			return false;
+		}
+		Vector3 position = players.Remote.position;
+		foreach (Need need in Needs(Girl(players.Remote)))
+		{
+			if (!Has(need, position))
+			{
+				return false;
+			}
+		}
+		return true;
 	}
 
 	private void Start()
@@ -76,6 +107,7 @@ public class CoopDowned : MonoBehaviour
 
 	private void OnDestroy()
 	{
+		InteractionPicker.RemoveGlobal(this);
 		if (Instance == this)
 		{
 			Instance = null;
@@ -292,7 +324,7 @@ public class CoopDowned : MonoBehaviour
 		return Vector3.Distance(players.Local.position, players.Remote.position) < reviveReach;
 	}
 
-	private static bool InteractHeld(CoopPlayers players)
+	private bool InteractHeld(CoopPlayers players)
 	{
 #if DUMP_WORLDGEN
 		if (DebugHoldInteract)
@@ -300,12 +332,7 @@ public class CoopDowned : MonoBehaviour
 			return true;
 		}
 #endif
-		PlayerInputInitialize component = players.Local.GetComponent<PlayerInputInitialize>();
-		if (component.actions.Player.enabled)
-		{
-			return component.actions.Player.Interact.IsPressed();
-		}
-		return false;
+		return reviveHeldFrame >= Time.frameCount - 1;
 	}
 
 	private static void Send(CoopSession.MessageType type)

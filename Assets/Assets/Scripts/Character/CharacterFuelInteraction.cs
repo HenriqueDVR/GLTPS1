@@ -4,7 +4,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Animations;
 
-public class CharacterFuelInteraction : MonoBehaviour
+public class CharacterFuelInteraction : MonoBehaviour, IInteractionSource
 {
     [SerializeField] private PlayerInputInitialize playerInputScript;
     [SerializeField] private CharacterBarrelInteraction characterBarrelInteractionScript;
@@ -15,18 +15,16 @@ public class CharacterFuelInteraction : MonoBehaviour
 
     [SerializeField] AudioSource _audioSource;
     [SerializeField] AudioClip _audioClip;
-    void OnEnable()
+    public void Collect(List<Interaction> into)
     {
-        playerInputScript.actions.Player.Interact.performed += Interact;
-    }
-    void OnDisable()
-    {
-        playerInputScript.actions.Player.Interact.performed -= Interact;
+        if (inFuelingStationInteractArea && !characterBarrelInteractionScript.isCarrying && other != null)
+        {
+            into.Add(new Interaction { Verb = Verb.Refuel, Press = Press.Tap, Target = other.transform, Priority = 1, Run = Toggle, Source = "fuel station" });
+        }
     }
 
-    private void Interact(InputAction.CallbackContext context)
+    private void Toggle()
     {
-        if (context.performed && inFuelingStationInteractArea && !characterBarrelInteractionScript.isCarrying && Time.timeScale == 1)
         {
             if (isFueling)
             {

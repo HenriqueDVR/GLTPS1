@@ -4,7 +4,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Animations;
 
-public class CharacterBarrelInteraction : MonoBehaviour
+public class CharacterBarrelInteraction : MonoBehaviour, IInteractionSource
 {
     [SerializeField] private PlayerInputInitialize playerInputScript;
     [SerializeField] private Animator anim;
@@ -24,33 +24,26 @@ public class CharacterBarrelInteraction : MonoBehaviour
 
     public Rigidbody vehicleRigidbody;
 
-    // so the same press doesn't also start getting in
-    public int DropFrame { get; private set; } = -1;
-
-    void OnEnable()
+    public void Collect(List<Interaction> into)
     {
-        playerInputScript.actions.Player.Interact.performed += Interact;
-    }
-
-    void OnDisable()
-    {
-        playerInputScript.actions.Player.Interact.performed -= Interact;
-    }
-
-    private void Interact(InputAction.CallbackContext context)
-    {
-        if (Time.timeScale == 1)
+        if (anim.GetCurrentAnimatorStateInfo(2).IsTag("Carry"))
         {
-            // near the ket tap vs hold is decided on release (hold = get in)
-            if (context.performed && !GetComponent<CharacterVehicleInteraction>().ClaimsInteract)
-            {
-                PickUp();
-            }
-            if (context.performed && anim.GetCurrentAnimatorStateInfo(2).IsTag("Carry"))
-            {
-                DropBarrel();
-            }
+            into.Add(new Interaction { Verb = Verb.Drop, Press = Press.Tap, Priority = 5, Run = DropBarrel, Source = "barrel" });
+            return;
         }
+        // not from the back seat
+        bool riding = CoopKettenkrad.Instance != null && CoopKettenkrad.Instance.LocalSeat != CoopKettenkrad.SeatState.Off;
+        if (CanPickUp() && !riding)
+        {
+            into.Add(new Interaction { Verb = Verb.Take, Press = Press.Tap, Target = newBarrel != null ? newBarrel.transform : null, Priority = 1, Run = PickUp, Source = "barrel" });
+        }
+    }
+
+    private bool CanPickUp()
+    {
+        bool carrying = anim.GetCurrentAnimatorStateInfo(2).IsTag("Carry");
+        return (isPickupable && !carrying && inBarrelDropArea && !GameObject.FindWithTag("Barrel")) ||
+            (isPickupable && newBarrel != null && !CoopBarrel.RemoteCarrying && !carrying && !inBarrelDropArea && !isCarrying);
     }
 
     public void PickUp()
@@ -103,7 +96,6 @@ public class CharacterBarrelInteraction : MonoBehaviour
 
     public void DropBarrel()
     {
-        DropFrame = Time.frameCount;
         StopCarrying();
 
         SetCarryParameters(false, 0.25f, 0.23f, false, false);
