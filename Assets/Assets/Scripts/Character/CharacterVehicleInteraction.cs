@@ -202,7 +202,8 @@ public class CharacterVehicleInteraction : MonoBehaviour
         Physics.IgnoreLayerCollision(6, 7, false);
         controller.enabled = true;
         // wait for the exit lerp or she swings off the anim
-        playerInputScript.actions.Player.Enable();
+        boarding?.Release();
+        boarding = null;
         preOrientExit = false;
         exitStarted = false;
         exitLeft = false;
@@ -210,6 +211,17 @@ public class CharacterVehicleInteraction : MonoBehaviour
         elapsed = 0f;
 
         GetComponent<CharacterBarrelInteraction>().vehicleRigidbody.constraints = RigidbodyConstraints.FreezeAll;
+    }
+
+    // getting on or off: no walking. driving goes on top once the enter anim says so (CharacterVehicleAnimationEvents)
+    private InputContextStack.Token boarding;
+
+    private void Board()
+    {
+        if (boarding == null)
+        {
+            boarding = playerInputScript.Contexts.Push(InputContext.Boarding, "ket");
+        }
     }
 
     IEnumerator DelayEnter()
@@ -225,7 +237,8 @@ public class CharacterVehicleInteraction : MonoBehaviour
         if (!anim.GetCurrentAnimatorStateInfo(1).IsTag("Ket"))
         {
             Physics.IgnoreLayerCollision(6, 7, false);
-            playerInputScript.actions.Player.Enable();
+            boarding?.Release();
+            boarding = null;
             controller.enabled = true;
             GetComponent<NavMeshObstacle>().enabled = true;
             agent.enabled = false;
@@ -299,7 +312,7 @@ public class CharacterVehicleInteraction : MonoBehaviour
             Physics.IgnoreLayerCollision(6, 7, true);
 
             //disable player movement
-            playerInputScript.actions.Player.Disable();
+            Board();
             //disable character controller
             controller.enabled = false;
 
@@ -339,7 +352,7 @@ public class CharacterVehicleInteraction : MonoBehaviour
         {
             vehicleFuelManagerScript.playerInputScript = playerInputScript;
             Physics.IgnoreLayerCollision(6, 7, true);
-            playerInputScript.actions.Player.Disable();
+            Board();
             controller.enabled = false;
             GetComponent<NavMeshObstacle>().enabled = false;
             StartCoroutine(DelayEnter());

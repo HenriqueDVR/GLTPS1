@@ -152,8 +152,11 @@ public class CoopDowned : MonoBehaviour
 		{
 			component.DropBarrel();
 		}
-		// disabling PlayerMovement kills the controls too
 		local.GetComponent<PlayerMovement>().enabled = false;
+		if (downInput == null)
+		{
+			downInput = local.GetComponent<PlayerInputInitialize>().Contexts.Push(InputContext.Downed, "down");
+		}
 		local.GetComponentInChildren<Animator>().SetTrigger("die");
 		FollowWithCamera(instance.Remote);
 		Send(CoopSession.MessageType.Downed);
@@ -172,9 +175,13 @@ public class CoopDowned : MonoBehaviour
 		componentInChildren.Rebind();
 		componentInChildren.Update(0f);
 		local.GetComponent<PlayerMovement>().enabled = true;
+		downInput?.Release();
+		downInput = null;
 		FollowWithCamera(local);
 		localDown = false;
 	}
+
+	private InputContextStack.Token downInput;
 
 	private static void FollowWithCamera(Transform girl)
 	{

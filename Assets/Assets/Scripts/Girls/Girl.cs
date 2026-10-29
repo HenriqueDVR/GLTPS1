@@ -109,6 +109,10 @@ public class Girl : MonoBehaviour
 	public void SetControl(GirlControl control)
 	{
 		Control = control;
+		if (Input != null)
+		{
+			Input.Contexts.SetBase(control == GirlControl.Player ? InputContext.OnFoot : InputContext.None);
+		}
 		switch (control)
 		{
 		case GirlControl.Player:

@@ -30,6 +30,9 @@ public class VehicleMovement : MonoBehaviour
 
     private bool disableVehicle;
 
+    // no getting off in the air. kept so it's popped from whoever was driving
+    private InputContextStack.Token airborne;
+
     [SerializeField] private AudioSource vehicleAudioSource;
 
     public Animator Anim => anim;
@@ -120,12 +123,13 @@ public class VehicleMovement : MonoBehaviour
         //disable vehicle movement when not grounded
         if (!isGrounded && !disableVehicle)
         {
-            playerInputScript.actions.Vehicle.Exit.Disable();
+            airborne = playerInputScript.Contexts.Push(InputContext.KetAirborne, "ket");
             disableVehicle = true;
         }
         else if (isGrounded && disableVehicle)
         {
-            playerInputScript.actions.Vehicle.Exit.Enable();
+            airborne?.Release();
+            airborne = null;
             disableVehicle = false;
         }
 

@@ -62,7 +62,10 @@ public class CharacterDeath : MonoBehaviour
             {
                 girl.Barrel.DropBarrel();
             }
-            girl.Input.actions.Player.Disable();
+            if (!girl.Input.Contexts.Has(InputContext.Downed))
+            {
+                girl.Input.Contexts.Push(InputContext.Downed, "CharacterDeath");
+            }
             girl.Animator.SetTrigger("die");
             isDead = true;
         }

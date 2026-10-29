@@ -7,6 +7,8 @@ using System;
 public class PlayerMapController : MonoBehaviour
 {
     [SerializeField] private PlayerInputInitialize playerInputScript;
+
+    private InputContextStack.Token holding;
     public Node node;
     [SerializeField] private NodeData nodeDataScript;
     [SerializeField] private Camera mapCamera;
@@ -56,7 +58,11 @@ public class PlayerMapController : MonoBehaviour
             }
             if (!isMapEnabled)
             {
-                playerInputScript.actions.Player.Possess.Disable();
+                if (holding == null)
+                {
+                    // no switching girls with the map in hand
+                    holding = playerInputScript.Contexts.Push(InputContext.HoldingMap, "map");
+                }
 
                 //Time.timeScale = 0;
                 StartCoroutine(RenderMap(0f));
@@ -109,7 +115,8 @@ public class PlayerMapController : MonoBehaviour
 
     public void CloseMap()
     {
-        playerInputScript.actions.Player.Possess.Enable();
+        holding?.Release();
+        holding = null;
 
         Time.timeScale = 1;
         isMapEnabled = false;

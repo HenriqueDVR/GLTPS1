@@ -13,6 +13,10 @@ public class CharacterElevatorInteraction : MonoBehaviour
     [SerializeField] private bool inElevatorInteractArea;
     [SerializeField] private Animator elevatorAnim;
     private bool flag;
+
+    // no interacting while the gate closes, for both girls
+    private InputContextStack.Token selfClosing;
+    private InputContextStack.Token otherClosing;
     void OnEnable()
     {
         selfPlayerInputScript.actions.Player.Interact.performed += Interact;
@@ -31,8 +35,10 @@ public class CharacterElevatorInteraction : MonoBehaviour
             {
                 if (elevatorAnim.GetBool("isGateOpen"))
                 {
-                    selfPlayerInputScript.actions.Player.Interact.Enable();
-                    otherPlayerInputScript.actions.Player.Interact.Enable();
+                    selfClosing?.Release();
+                    otherClosing?.Release();
+                    selfClosing = null;
+                    otherClosing = null;
                 }
             }
         }
@@ -52,8 +58,11 @@ public class CharacterElevatorInteraction : MonoBehaviour
             }
 
             //disable interaction input when closing gate
-            selfPlayerInputScript.actions.Player.Interact.Disable();
-            otherPlayerInputScript.actions.Player.Interact.Disable();
+            if (selfClosing == null)
+            {
+                selfClosing = selfPlayerInputScript.Contexts.Push(InputContext.ElevatorClosing, "elevator");
+                otherClosing = otherPlayerInputScript.Contexts.Push(InputContext.ElevatorClosing, "elevator");
+            }
 
         }
     }

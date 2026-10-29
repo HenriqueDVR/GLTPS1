@@ -58,8 +58,7 @@ public class CharacterBarrelInteraction : MonoBehaviour
         if (isPickupable && !anim.GetCurrentAnimatorStateInfo(2).IsTag("Carry") && inBarrelDropArea && !GameObject.FindWithTag("Barrel"))
         {
             //disable player jump and sprint
-            playerInputScript.actions.Player.Jump.Disable();
-            playerInputScript.actions.Player.Sprint.Disable();
+            Carry();
 
             SetCarryParameters(true, 0.6f, 0f, true, true);
 
@@ -75,8 +74,7 @@ public class CharacterBarrelInteraction : MonoBehaviour
         if (isPickupable && newBarrel != null && !CoopBarrel.RemoteCarrying && !anim.GetCurrentAnimatorStateInfo(2).IsTag("Carry") && !inBarrelDropArea && !isCarrying)
         {
             //disable player jump and sprint
-            playerInputScript.actions.Player.Jump.Disable();
-            playerInputScript.actions.Player.Sprint.Disable();
+            Carry();
             SetCarryParameters(true, 0.6f, 0f, true, true);
             newBarrel.GetComponent<VehicleBarrel>().characterBarrelInteractionScript = this;
             SetParentConstraint();
@@ -86,11 +84,27 @@ public class CharacterBarrelInteraction : MonoBehaviour
         }
     }
 
+    // no jumping or sprinting with it
+    private InputContextStack.Token carrying;
+
+    private void Carry()
+    {
+        if (carrying == null)
+        {
+            carrying = playerInputScript.Contexts.Push(InputContext.Carrying, "barrel");
+        }
+    }
+
+    private void StopCarrying()
+    {
+        carrying?.Release();
+        carrying = null;
+    }
+
     public void DropBarrel()
     {
         DropFrame = Time.frameCount;
-        playerInputScript.actions.Player.Jump.Enable();
-        playerInputScript.actions.Player.Sprint.Enable();
+        StopCarrying();
 
         SetCarryParameters(false, 0.25f, 0.23f, false, false);
 
@@ -111,8 +125,7 @@ public class CharacterBarrelInteraction : MonoBehaviour
     // coop: both grabbed it at once and the host won, let go without dropping it
     public void LoseBarrel()
     {
-        playerInputScript.actions.Player.Jump.Enable();
-        playerInputScript.actions.Player.Sprint.Enable();
+        StopCarrying();
         SetCarryParameters(false, 0.25f, 0.23f, false, false);
         newBarrel = null;
         isPickupable = false;
@@ -151,8 +164,7 @@ public class CharacterBarrelInteraction : MonoBehaviour
     public void DebugTakeFromVehicle()
     {
         DebugTeleport(DebugDropArea() + Vector3.right);
-        playerInputScript.actions.Player.Jump.Disable();
-        playerInputScript.actions.Player.Sprint.Disable();
+        Carry();
         SetCarryParameters(true, 0.6f, 0f, true, true);
         newBarrel = SpawnBarrel();
         newBarrel.GetComponent<VehicleBarrel>().characterBarrelInteractionScript = this;
@@ -164,8 +176,7 @@ public class CharacterBarrelInteraction : MonoBehaviour
     {
         newBarrel = GameObject.FindWithTag("Barrel");
         DebugTeleport(newBarrel.transform.position + Vector3.right);
-        playerInputScript.actions.Player.Jump.Disable();
-        playerInputScript.actions.Player.Sprint.Disable();
+        Carry();
         SetCarryParameters(true, 0.6f, 0f, true, true);
         newBarrel.GetComponent<VehicleBarrel>().characterBarrelInteractionScript = this;
         SetParentConstraint();

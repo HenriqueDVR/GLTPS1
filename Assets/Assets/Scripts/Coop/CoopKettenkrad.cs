@@ -388,13 +388,18 @@ public class CoopKettenkrad : MonoBehaviour
 		}
 	}
 
+	private InputContextStack.Token ridingInput;
+
 	private void Mount()
 	{
 		Transform local = CoopPlayers.Instance.Local;
 		local.GetComponent<CharacterController>().enabled = false;
 		local.GetComponent<PlayerMovement>().enabled = false;
 		// keep controls on so she can hop off / eat / drink
-		local.GetComponent<PlayerInputInitialize>().actions.Player.Enable();
+		if (ridingInput == null)
+		{
+			ridingInput = local.GetComponent<PlayerInputInitialize>().Contexts.Push(InputContext.Riding, "ket back");
+		}
 		// "ket back" trigger blends for a whole second and she'd stand inside it
 		Animator animator = local.GetComponentInChildren<Animator>();
 		string girl = local.name.Replace("Parent", "");
@@ -459,6 +464,8 @@ public class CoopKettenkrad : MonoBehaviour
 			landing = false;
 			local.GetComponent<CharacterController>().enabled = true;
 			local.GetComponent<PlayerMovement>().enabled = true;
+			ridingInput?.Release();
+			ridingInput = null;
 		}
 	}
 
@@ -471,6 +478,8 @@ public class CoopKettenkrad : MonoBehaviour
 		local.SetPositionAndRotation(enterPosition.position, enterPosition.rotation);
 		local.GetComponent<CharacterController>().enabled = true;
 		local.GetComponent<PlayerMovement>().enabled = true;
+		ridingInput?.Release();
+		ridingInput = null;
 	}
 
 	// called right after CoopPlayers moves it so she's on this frame's position

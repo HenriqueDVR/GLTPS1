@@ -1,13 +1,9 @@
 using UnityEngine;
 
-// can't stop time in coop, just disable this player's controls
+// can't stop time in coop, just turn this player's controls off
 public static class CoopPause
 {
-	private static PlayerInputInitialize paused;
-
-	private static bool playerWasOn;
-
-	private static bool vehicleWasOn;
+	private static InputContextStack.Token paused;
 
 	public static void Pause()
 	{
@@ -16,27 +12,12 @@ public static class CoopPause
 		{
 			return;
 		}
-		paused = CoopPlayers.Instance.Local.GetComponent<PlayerInputInitialize>();
-		playerWasOn = paused.actions.Player.enabled;
-		vehicleWasOn = paused.actions.Vehicle.enabled;
-		paused.actions.Player.Disable();
-		paused.actions.Vehicle.Disable();
+		paused = CoopPlayers.Instance.Local.GetComponent<PlayerInputInitialize>().Contexts.Push(InputContext.Menu, "pause");
 	}
 
 	public static void Resume()
 	{
-		if (paused == null)
-		{
-			return;
-		}
-		if (playerWasOn)
-		{
-			paused.actions.Player.Enable();
-		}
-		if (vehicleWasOn)
-		{
-			paused.actions.Vehicle.Enable();
-		}
+		paused?.Release();
 		paused = null;
 	}
 }

@@ -5,7 +5,8 @@
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
         "GLTPS.Core",
-        "GLTPS.Game"
+        "GLTPS.Game",
+        "Unity.InputSystem"
     ],
     "includePlatforms": [
         "Editor"

@@ -45,7 +45,6 @@ public class PlayerMovement : MonoBehaviour
     public bool ADS;
     void OnEnable()
     {
-        playerInputScript.actions.Player.Enable();
         playerInputScript.actions.Player.Jump.performed += Jump;
 
         //set layermask interact with vehicle and default
@@ -54,7 +53,6 @@ public class PlayerMovement : MonoBehaviour
 
     void OnDisable()
     {
-        playerInputScript.actions.Player.Disable();
         playerInputScript.actions.Player.Jump.performed -= Jump;
     }
 

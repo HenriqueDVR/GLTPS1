@@ -7,6 +7,8 @@ public class CharacterVehicleAnimationEvents : MonoBehaviour
 
     [SerializeField] private PlayerInputInitialize playerInputScript;
 
+    private InputContextStack.Token driving;
+
     [SerializeField] private CharacterVehicleInteraction characterVehicleInteractionScript;
     [SerializeField] private NavMeshAgentVehicleInteraction navMeshAgentVehicleInteractionScript;
     [SerializeField] private NavMeshAgentVehicleInteraction navMeshAgentSelfVehicleInteractionScript;
@@ -25,7 +27,10 @@ public class CharacterVehicleAnimationEvents : MonoBehaviour
             return;
         }
         vehicleMovementScript.playerInputScript = playerInputScript;
-        playerInputScript.actions.Vehicle.Enable();
+        if (driving == null)
+        {
+            driving = playerInputScript.Contexts.Push(InputContext.Driving, "ket");
+        }
         vehicleAudioSource.Play();
 
         // reset flags for footstep sound when exiting vehicle
@@ -39,7 +44,8 @@ public class CharacterVehicleAnimationEvents : MonoBehaviour
         {
             return;
         }
-        playerInputScript.actions.Vehicle.Disable();
+        driving?.Release();
+        driving = null;
         vehicleAudioSource.Stop();
     }
 
