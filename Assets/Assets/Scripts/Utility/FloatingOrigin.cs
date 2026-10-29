@@ -110,6 +110,7 @@ public class FloatingOrigin : MonoBehaviour
 
         // character controllers and rigidbodies only see transform moves after a sync
         Physics.SyncTransforms();
+        RestorePhysicsPoses(referencePosition);
         Shifted?.Invoke(referencePosition);
         // not on the warm up, an agent that isn't on the navmesh yet would complain
         if (referencePosition != Vector3.zero)
@@ -131,27 +132,73 @@ public class FloatingOrigin : MonoBehaviour
     }
 
     // an interpolated rigidbody (the ket) would draw a frame between the old and new place and the camera follows it.
-    // off for the shift, back on after the next physics step
-    private readonly System.Collections.Generic.Dictionary<Rigidbody, RigidbodyInterpolation> paused = new System.Collections.Generic.Dictionary<Rigidbody, RigidbodyInterpolation>();
+    // off for the shift, back on at the next physics step
+    private class Paused
+    {
+        public Rigidbody Body;
+        public RigidbodyInterpolation Interpolation;
+        public Vector3 Position;
+        public Quaternion Rotation;
+    }
+
+    private readonly System.Collections.Generic.List<Paused> paused = new System.Collections.Generic.List<Paused>();
 
     private void PauseInterpolation()
     {
         foreach (Rigidbody body in FindObjectsOfType<Rigidbody>())
         {
-            if (body.interpolation != RigidbodyInterpolation.None && !paused.ContainsKey(body))
+            if (body.interpolation != RigidbodyInterpolation.None && paused.Find(p => p.Body == body) == null)
             {
-                paused.Add(body, body.interpolation);
+                paused.Add(new Paused { Body = body, Interpolation = body.interpolation });
                 body.interpolation = RigidbodyInterpolation.None;
             }
+        }
+        paused.RemoveAll(p => p.Body == null);
+        foreach (Paused p in paused)
+        {
+            p.Position = p.Body.position;
+            p.Rotation = p.Body.rotation;
+        }
+    }
+
+    // the sync pushed the drawn pose into physics, and that lags the real one by part of a step (the ket lost ~0.3m at 40m/s).
+    // put the real one back, shifted
+    private void RestorePhysicsPoses(Vector3 offset)
+    {
+        foreach (Paused p in paused)
+        {
+            if (p.Body != null && !p.Body.isKinematic)
+            {
+                p.Position -= offset;
+                p.Body.position = p.Position;
+                p.Body.rotation = p.Rotation;
+            }
+        }
+    }
+
+    // till the next step nothing moves it, so draw it where interpolation would (a step behind physics)
+    void Update()
+    {
+        if (paused.Count == 0)
+            return;
+        float behind = Time.fixedDeltaTime - Mathf.Clamp(Time.time - Time.fixedTime, 0f, Time.fixedDeltaTime);
+        foreach (Paused p in paused)
+        {
+            if (p.Body != null && !p.Body.isKinematic)
+                p.Body.transform.position = p.Body.position - p.Body.velocity * behind;
         }
     }
 
     void FixedUpdate()
     {
-        foreach (System.Collections.Generic.KeyValuePair<Rigidbody, RigidbodyInterpolation> body in paused)
+        foreach (Paused p in paused)
         {
-            if (body.Key != null)
-                body.Key.interpolation = body.Value;
+            if (p.Body == null)
+                continue;
+            // so the step starts from physics, not from what Update drew
+            if (!p.Body.isKinematic)
+                p.Body.transform.SetPositionAndRotation(p.Body.position, p.Body.rotation);
+            p.Body.interpolation = p.Interpolation;
         }
         paused.Clear();
     }
