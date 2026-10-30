@@ -527,7 +527,10 @@ public class TileStreamer : MonoBehaviour
 			}
 		}
 		Mesh lotsMesh = built.GetComponent<MeshFilter>().sharedMesh;
-		bool anyLots = lotMesh.Build(lotsMesh, lots, Plan.Def.Districts, Plan.Def.Ruin, x * Gen2.TileSize, z * Gen2.TileSize);
+		lotMesh.Begin();
+		lotMesh.AddLots(lots, Plan.Def.Districts, Plan.Def.Ruin, x * Gen2.TileSize, z * Gen2.TileSize);
+		Scatter(x, z);
+		bool anyLots = lotMesh.End(lotsMesh);
 		built.SetActive(anyLots);
 		MeshCollider lotsCollider = built.GetComponent<MeshCollider>();
 		lotsCollider.sharedMesh = null;
@@ -699,6 +702,59 @@ public class TileStreamer : MonoBehaviour
 			Instantiate(landmark.Extra, instance.transform.TransformPoint(landmark.ExtraPosition), instance.transform.rotation * landmark.ExtraRotation, props);
 		}
 		GraphicsTuning.Adopt(instance);
+	}
+
+	// debris on the ground from the tile's seed: plenty in open districts (slabs, piles, dead trees, broken frames,
+	// a leaning pole), a pile or two in town. clear of the tile's roads and lots and the start room
+	private void Scatter(int x, int z)
+	{
+		double size = Gen2.TileSize;
+		WorldRandom random = new WorldRandom(WorldRandom.Derive(Gen2.TileSeed(Plan.LayerSeed, x, z), Gen2.StreamLot + 5, 0uL));
+		bool open = Plan.Def.Districts[Plan.DistrictAt((x + 0.5) * size, (z + 0.5) * size)].Roads == DistrictRoads.Open;
+		int count = open ? 2 + random.Next(6) : random.Next(3);
+		for (int i = 0; i < count; i++)
+		{
+			XZ at = new XZ((x + Gen2.Unit(random.NextULong())) * size, (z + Gen2.Unit(random.NextULong())) * size);
+			double pick = Gen2.Unit(random.NextULong());
+			ulong seed = random.NextULong();
+			if (Blocked(at, 6.0))
+			{
+				continue;
+			}
+			LotMesh.Debris kind = LotMesh.Debris.Pile;
+			if (Plan.Def.Districts[Plan.DistrictAt(at.X, at.Z)].Roads == DistrictRoads.Open)
+			{
+				kind = (pick < 0.25) ? LotMesh.Debris.Slab : (pick < 0.5) ? LotMesh.Debris.Pile : (pick < 0.75) ? LotMesh.Debris.Tree : (pick < 0.93) ? LotMesh.Debris.Frame : LotMesh.Debris.Pole;
+			}
+			lotMesh.AddDebris(kind, new Vector3((float)(at.X - x * size), 0f, (float)(at.Z - z * size)), seed);
+		}
+	}
+
+	private bool Blocked(XZ p, double clear)
+	{
+		if (Plan.Origin.DistanceTo(p) < RoadPlan.StartClearance + clear)
+		{
+			return true;
+		}
+		foreach (RoadPiece piece in pieces)
+		{
+			if (RoadPlan.SegmentDistance(p, piece.A, piece.B) < piece.Width * 0.5 + clear)
+			{
+				return true;
+			}
+		}
+		foreach (Lot lot in lots)
+		{
+			double dx = p.X - lot.Center.X;
+			double dz = p.Z - lot.Center.Z;
+			double u = dx * lot.Axis.X + dz * lot.Axis.Z;
+			double v = -dx * lot.Axis.Z + dz * lot.Axis.X;
+			if (System.Math.Abs(u) < lot.HalfU + clear && System.Math.Abs(v) < lot.HalfV + clear)
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	// the tile's props and the items its spawners put out (taken ones are gone already, and stay taken by id)

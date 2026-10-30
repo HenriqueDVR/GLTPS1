@@ -37,8 +37,21 @@ public class LotMesh
 
 	public int Triangles { get; private set; }
 
-	// lots as they'll be drawn: a landmark lot that got no landmark comes in as Open
-	public bool Build(Mesh mesh, List<Lot> lots, DistrictDef[] districts, double ruin, double originX, double originZ)
+	public enum Debris
+	{
+		// a few small slabs and chunks
+		Pile,
+		// a big slab tipped into the snow
+		Slab,
+		// a bare dead tree
+		Tree,
+		// what's left of a frame: a column or two and a beam
+		Frame,
+		// a power pole leaning over
+		Pole
+	}
+
+	public void Begin()
 	{
 		vertices.Clear();
 		uvs.Clear();
@@ -46,6 +59,11 @@ public class LotMesh
 		{
 			list.Clear();
 		}
+	}
+
+	// lots as they'll be drawn: a landmark lot that got no landmark comes in as Open
+	public void AddLots(List<Lot> lots, DistrictDef[] districts, double ruin, double originX, double originZ)
+	{
 		foreach (Lot lot in lots)
 		{
 			random = new WorldRandom(lot.Seed);
@@ -85,6 +103,43 @@ public class LotMesh
 					break;
 			}
 		}
+	}
+
+	// one piece of scatter at a tile-local point on the ground
+	public void AddDebris(Debris kind, Vector3 at, ulong seed)
+	{
+		random = new WorldRandom(seed);
+		Quaternion turn = Quaternion.Euler(0f, Range(0f, 360f), 0f);
+		switch (kind)
+		{
+			case Debris.Pile:
+				for (int i = 3 + random.Next(4); i > 0; i--)
+				{
+					Vector3 p = at + turn * new Vector3(Range(-3f, 3f), 0f, Range(-3f, 3f));
+					OrientedBox(p, Quaternion.Euler(Range(-25f, 25f), Range(0f, 360f), Range(-25f, 25f)), new Vector3(Range(0.3f, 1.5f), Range(0.2f, 0.6f), Range(0.3f, 1.5f)), concrete);
+				}
+				break;
+			case Debris.Slab:
+				OrientedBox(at + Vector3.up * Range(-0.5f, 0.5f), turn * Quaternion.Euler(Range(10f, 35f), 0f, Range(-10f, 10f)), new Vector3(Range(2f, 5f), Range(0.25f, 0.5f), Range(1.5f, 4f)), concrete);
+				break;
+			case Debris.Tree:
+				Tree(at);
+				break;
+			case Debris.Frame:
+				Frame(at, turn);
+				break;
+			default:
+				Vector3 lean = turn * Quaternion.Euler(Range(5f, 25f), 0f, 0f) * Vector3.up;
+				float tall = Range(6f, 10f);
+				Beam(at - Vector3.up * sink, at + lean * tall, 0.15f, dark);
+				Vector3 arm = turn * Vector3.right;
+				Beam(at + lean * (tall - 0.6f) - arm * 1.2f, at + lean * (tall - 0.6f) + arm * 1.2f, 0.08f, dark);
+				break;
+		}
+	}
+
+	public bool End(Mesh mesh)
+	{
 		mesh.Clear();
 		Triangles = 0;
 		if (vertices.Count == 0)
@@ -383,6 +438,45 @@ public class LotMesh
 		}
 	}
 
+	// a trunk leaning a little, bare branches reaching up and out, a few twigs off those
+	private void Tree(Vector3 at)
+	{
+		float tall = Range(3f, 7f);
+		float girth = Range(0.12f, 0.25f);
+		Vector3 top = at + new Vector3(Range(-0.6f, 0.6f), tall, Range(-0.6f, 0.6f));
+		Beam(at - Vector3.up * sink, top, girth, dark);
+		int branches = 3 + random.Next(4);
+		for (int i = 0; i < branches; i++)
+		{
+			Vector3 from = Vector3.Lerp(at, top, Range(0.45f, 0.95f));
+			Vector3 dir = Quaternion.Euler(Range(-55f, -15f), Range(0f, 360f), 0f) * Vector3.forward;
+			Vector3 to = from + dir * Range(1f, 3f);
+			Beam(from, to, girth * 0.45f, dark);
+			if (Unit() < 0.5f)
+			{
+				Beam(to, to + Quaternion.Euler(Range(-60f, -10f), Range(0f, 360f), 0f) * Vector3.forward * Range(0.5f, 1.4f), girth * 0.25f, dark);
+			}
+		}
+	}
+
+	// one or two columns with a beam across, snapped somewhere, sometimes leaning
+	private void Frame(Vector3 at, Quaternion turn)
+	{
+		Vector3 across = turn * Vector3.right;
+		float span = Range(4f, 8f);
+		float tall = Range(4f, 10f);
+		Vector3 up = Quaternion.AngleAxis(Range(-8f, 8f), turn * Vector3.forward) * Vector3.up;
+		Beam(at - Vector3.up * sink, at + up * tall, 0.35f, concrete);
+		bool second = Unit() < 0.6f;
+		if (second)
+		{
+			Beam(at + across * span - Vector3.up * sink, at + across * span + up * (tall * Range(0.3f, 1f)), 0.35f, concrete);
+		}
+		// the beam, broken off past the column or carrying on to the second
+		float reach = second ? span : span * Range(0.4f, 0.9f);
+		Beam(at + up * (tall - 0.3f) - across * Range(0.5f, 2f), at + up * (tall - 0.3f) + across * reach, 0.3f, concrete);
+	}
+
 	// a few low slabs and heaps, turned every which way
 	private void Rubble(Vector3 centre, Vector3 u, float hu, float hv)
 	{
@@ -416,6 +510,25 @@ public class LotMesh
 		if (bottom)
 		{
 			Quad(top, c00 + lo, c01 + lo, c11 + lo, c10 + lo, Vector3.down);
+		}
+	}
+
+	// a box turned any way, half its size each way
+	private void OrientedBox(Vector3 centre, Quaternion turn, Vector3 half, int submesh)
+	{
+		Vector3 x = turn * Vector3.right * half.x;
+		Vector3 y = turn * Vector3.up * half.y;
+		Vector3 z = turn * Vector3.forward * half.z;
+		for (int axis = 0; axis < 3; axis++)
+		{
+			Vector3 n = (axis == 0) ? x : (axis == 1) ? y : z;
+			Vector3 a = (axis == 0) ? y : (axis == 1) ? z : x;
+			Vector3 b = (axis == 0) ? z : (axis == 1) ? x : y;
+			for (int side = -1; side <= 1; side += 2)
+			{
+				Vector3 c = centre + n * side;
+				Quad(submesh, c - a - b, c + a - b, c + a + b, c - a + b, n * side);
+			}
 		}
 	}
 
