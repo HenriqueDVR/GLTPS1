@@ -35,6 +35,19 @@ public enum DistrictRoads
 	Streets
 }
 
+// how a district's buildings look (13-content-pipeline, look of the source)
+public enum BuildingStyle
+{
+	// concrete masses with raised panels, few small windows, setbacks, cantilevered boxes
+	Monolith,
+	// tall office slabs with window bands, lined up along the streets
+	Slab,
+	// broken monoliths and bare skeleton frames
+	Ruin,
+	// cylinder tanks with pipes that run somewhere
+	Industrial
+}
+
 public sealed class DistrictDef
 {
 	// stable id, saves and the director refer to districts by it
@@ -64,4 +77,6 @@ public sealed class DistrictDef
 
 	// share of street pieces with a lamp on the sidewalk
 	public double Lamps;
+
+	public BuildingStyle Style;
 }

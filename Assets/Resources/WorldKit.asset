@@ -51,15 +51,6 @@ MonoBehaviour:
     Extra: {fileID: 0}
     ExtraPosition: {x: 0, y: 0, z: 0}
     ExtraRotation: {x: 0, y: 0, z: 0, w: 1}
-  - Id: pipe_frame
-    Model: {fileID: 8393997531462662198, guid: f9c91ae519c53c5489ea41b496746aaf, type: 3}
-    Districts:
-    - pipes
-    - technology
-    Weight: 2
-    Extra: {fileID: 0}
-    ExtraPosition: {x: 0, y: 0, z: 0}
-    ExtraRotation: {x: 0, y: 0, z: 0, w: 1}
   Lamps:
   - {fileID: 555396389904504815, guid: 1cc79b0780aed4d418ee33431718b144, type: 3}
   - {fileID: 9085532534757251729, guid: 9b0a3e9f661042a4db520cb1cb5bef66, type: 3}

@@ -57,7 +57,7 @@ public class TileStreamer : MonoBehaviour
 
 	private readonly RoadMesh roadMesh = new RoadMesh();
 
-	// building walls, concrete
+	// office walls, concrete, dark (windows, voids), metal (tanks, pipes)
 	private Material[] lotMaterials;
 
 	private readonly LotMesh lotMesh = new LotMesh();
@@ -167,7 +167,7 @@ public class TileStreamer : MonoBehaviour
 			wall.SetColor("_BaseColor", new Color(0.6f, 0.6f, 0.62f));
 			wall.SetFloat("_Smoothness", 0.1f);
 		}
-		lotMaterials = new[] { (wall != null) ? wall : floor, roadMaterials[2] };
+		lotMaterials = new[] { (wall != null) ? wall : floor, roadMaterials[2], LotMaterial("Dark", new Color(0.11f, 0.11f, 0.12f), lit, floor), LotMaterial("Metal", new Color(0.5f, 0.45f, 0.4f), lit, floor) };
 		MeasureLandmarks();
 #if DUMP_WORLDGEN
 		string[] args = System.Environment.GetCommandLineArgs();
@@ -189,6 +189,20 @@ public class TileStreamer : MonoBehaviour
 		{
 			Destroy(m);
 		}
+	}
+
+	// Resources/Buildings/<name>, a flat colour if it's missing
+	private Material LotMaterial(string name, Color fallback, Shader lit, Material floor)
+	{
+		Material loaded = Resources.Load<Material>("Buildings/" + name);
+		if (loaded != null || lit == null)
+		{
+			return (loaded != null) ? loaded : floor;
+		}
+		Material made = Made(new Material(lit));
+		made.SetColor("_BaseColor", fallback);
+		made.SetFloat("_Smoothness", 0.1f);
+		return made;
 	}
 
 	private Material Made(Material m)
@@ -513,7 +527,7 @@ public class TileStreamer : MonoBehaviour
 			}
 		}
 		Mesh lotsMesh = built.GetComponent<MeshFilter>().sharedMesh;
-		bool anyLots = lotMesh.Build(lotsMesh, lots, Plan.Def.Ruin, x * Gen2.TileSize, z * Gen2.TileSize);
+		bool anyLots = lotMesh.Build(lotsMesh, lots, Plan.Def.Districts, Plan.Def.Ruin, x * Gen2.TileSize, z * Gen2.TileSize);
 		built.SetActive(anyLots);
 		MeshCollider lotsCollider = built.GetComponent<MeshCollider>();
 		lotsCollider.sharedMesh = null;
