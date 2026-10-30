@@ -115,31 +115,111 @@ public class LotMesh
 			}
 			BuildingStyle style = districts[lot.District].Style;
 			float share = (style == BuildingStyle.Ruin) ? 0.25f : (style == BuildingStyle.Industrial) ? 0f : 0.35f;
-			if (Unit() < share && Harvested(Buildings, centre, u, hu, hv, concrete, 0.6f))
+			int first = vertices.Count;
+			if (!(Unit() < share && Harvested(Buildings, centre, u, hu, hv, concrete, 0.6f)))
 			{
-				continue;
+				Building(style, centre, u, hu, hv, lot.Floors, ruin);
 			}
+			if (lot.Base > 0.0)
+			{
+				// the building goes up onto its plate
+				Raise(first, (float)lot.Base);
+				Podium(centre, u, hu, hv, (float)lot.Base);
+			}
+		}
+	}
+
+	private void Building(BuildingStyle style, Vector3 centre, Vector3 u, float hu, float hv, int floors, double ruin)
+	{
+		{
 			switch (style)
 			{
 				case BuildingStyle.Slab:
-					Slab(centre, u, hu, hv, lot.Floors);
+					Slab(centre, u, hu, hv, floors);
 					break;
 				case BuildingStyle.Ruin:
 					if (Unit() < 0.5f)
 					{
-						Skeleton(centre, u, hu, hv, lot.Floors);
+						Skeleton(centre, u, hu, hv, floors);
 					}
 					else
 					{
-						Monolith(centre, u, hu, hv, lot.Floors, 1.0);
+						Monolith(centre, u, hu, hv, floors, 1.0);
 					}
 					break;
 				case BuildingStyle.Industrial:
-					Industrial(centre, u, hu, hv, lot.Floors);
+					Industrial(centre, u, hu, hv, floors);
 					break;
 				default:
-					Monolith(centre, u, hu, hv, lot.Floors, ruin);
+					Monolith(centre, u, hu, hv, floors, ruin);
 					break;
+			}
+		}
+	}
+
+	// everything added since first, moved up (or down)
+	private void Raise(int first, float by)
+	{
+		for (int i = first; i < vertices.Count; i++)
+		{
+			vertices[i] += Vector3.up * by;
+		}
+	}
+
+	// the raised plate a podium lot stands on, its cornice, and stairs up one long side, on the sidewalk
+	private void Podium(Vector3 centre, Vector3 u, float hu, float hv, float height)
+	{
+		Box(centre, u, hu, hv, -sink, height, concrete, concrete, false);
+		Box(centre, u, hu + 0.3f, hv + 0.3f, height - 0.8f, height, concrete, concrete, false);
+		Vector3 along = (hu >= hv) ? u : Left(u);
+		float length = Mathf.Max(hu, hv);
+		float depth = Mathf.Min(hu, hv);
+		float side = (Unit() < 0.5f) ? 1f : -1f;
+		Vector3 out_ = Left(along) * side * (depth + 1.3f);
+		int steps = Mathf.CeilToInt(height / stairRise);
+		for (int k = 0; k < steps; k++)
+		{
+			float top = Mathf.Min(height, (k + 1) * stairRise);
+			Box(centre + out_ + along * (-length + (k + 0.5f) * stairRun), along, stairRun * 0.5f, 1.2f, -sink, top, concrete, concrete, false);
+		}
+	}
+
+	private const float stairRise = 0.25f;
+
+	private const float stairRun = 0.375f;
+
+	// ---- voids (ChasmPlan)
+
+	// a block on a stilt standing up out of a void: its body from top down, the stilt on down into the dark
+	public void AddStiltTower(Vector3 centre, Vector3 u, float half, float top, float body, ulong seed)
+	{
+		random = new WorldRandom(seed);
+		int floors = Mathf.Max(4, Mathf.RoundToInt(body / FloorHeight));
+		int first = vertices.Count;
+		Slab(centre, u, half, half * Range(0.7f, 1f), floors);
+		float bottom = top - floors * FloorHeight;
+		Raise(first, bottom);
+		Box(centre, u, 2.2f, 2.2f, -260f, bottom + 1f, concrete, concrete, false);
+		// a strut or two from the stilt up under the block
+		Box(centre, u, half * 0.9f, 0.8f, bottom - 1.5f, bottom + 0.5f, metal, metal, true);
+		Box(centre, Left(u), half * 0.6f, 0.8f, bottom - 1.5f, bottom + 0.5f, metal, metal, true);
+	}
+
+	// a narrow steel walkway straight across a void, railings over the gap, the ends resting on the deck
+	public void AddFootbridge(Vector3 middle, Vector3 across, float length, float gap)
+	{
+		float w = 1.2f;
+		Vector3 v = Left(across);
+		Box(middle, across, length * 0.5f, w, -0.45f, 0.12f, metal, metal, true);
+		Box(middle + v * (w - 0.3f), across, length * 0.5f, 0.15f, -1.1f, -0.45f, metal, metal, true);
+		Box(middle - v * (w - 0.3f), across, length * 0.5f, 0.15f, -1.1f, -0.45f, metal, metal, true);
+		for (int s = -1; s <= 1; s += 2)
+		{
+			Vector3 rail = middle + v * (s * (w - 0.06f));
+			Box(rail, across, gap * 0.5f, 0.05f, 1.0f, 1.08f, metal, metal, true);
+			for (float t = -gap * 0.5f; t <= gap * 0.5f + 0.01f; t += 2.5f)
+			{
+				Box(rail + across * t, across, 0.04f, 0.04f, 0.12f, 1.0f, metal, metal, false);
 			}
 		}
 	}

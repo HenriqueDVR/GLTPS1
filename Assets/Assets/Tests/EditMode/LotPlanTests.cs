@@ -29,7 +29,7 @@ public class LotPlanTests
 		StringBuilder text = new StringBuilder();
 		foreach (Lot lot in lots)
 		{
-			text.Append(lot.Kind).Append(' ').Append(lot.District).Append(' ').Append(F(lot.Center.X)).Append(',').Append(F(lot.Center.Z)).Append(' ').Append(F(lot.Axis.X)).Append(',').Append(F(lot.Axis.Z)).Append(' ').Append(F(lot.HalfU)).Append(' ').Append(F(lot.HalfV)).Append(' ').Append(lot.Floors).Append(' ').Append(lot.Seed).Append('\n');
+			text.Append(lot.Kind).Append(' ').Append(lot.District).Append(' ').Append(F(lot.Center.X)).Append(',').Append(F(lot.Center.Z)).Append(' ').Append(F(lot.Axis.X)).Append(',').Append(F(lot.Axis.Z)).Append(' ').Append(F(lot.HalfU)).Append(' ').Append(F(lot.HalfV)).Append(' ').Append(lot.Floors).Append(' ').Append(F(lot.Base)).Append(' ').Append(lot.Seed).Append('\n');
 		}
 		return text.ToString();
 	}
@@ -270,8 +270,8 @@ public class LotPlanTests
 	[Test]
 	public void GoldenValues()
 	{
-		Assert.AreEqual(0xe59bcae00de77843uL, Fold(Layer0(), -12, -12, 24), "layer 0 lots");
-		Assert.AreEqual(0xf8aac4b954c86f58uL, Fold(Layer1(), 50, -20, 12), "layer 1 lots");
+		Assert.AreEqual(0xddf1741b305e763fuL, Fold(Layer0(), -12, -12, 24), "layer 0 lots");
+		Assert.AreEqual(0x464ae2e2bf2c259buL, Fold(Layer1(), 50, -20, 12), "layer 1 lots");
 	}
 
 	private static ulong Fold(LayerPlan plan, int x0, int z0, int size)

@@ -4,7 +4,7 @@ using System.Diagnostics;
 using UnityEngine;
 
 // world gen v2: 128m tiles around both girls, nearest first, a couple of ms a frame, pooled when out of reach.
-// a tile is placeholder flat snow ground, its roads (RoadMesh), its lots' buildings and rubble (LotMesh)
+// a tile is its deck with the voids cut out (DeckMesh), its roads (RoadMesh), its lots' buildings and rubble (LotMesh)
 // and its props from the WorldKit: small landmarks, street lamps, item spawners.
 // everything is in layout coords (world + TotalOffset)
 public class TileStreamer : MonoBehaviour
@@ -17,8 +17,6 @@ public class TileStreamer : MonoBehaviour
 	private const double budgetMs = 2.0;
 
 	private const float refreshInterval = 0.25f;
-
-	private const float thickness = 2f;
 
 	public LayerPlan Plan { get; private set; }
 
@@ -52,6 +50,10 @@ public class TileStreamer : MonoBehaviour
 	};
 
 	private readonly RoadMesh roadMesh = new RoadMesh();
+
+	private readonly DeckMesh deckMesh = new DeckMesh();
+
+	private readonly List<Chasm> chasms = new List<Chasm>();
 
 	// office walls, concrete, dark (windows, voids), metal (tanks, pipes)
 	private Material[] lotMaterials;
@@ -494,9 +496,16 @@ public class TileStreamer : MonoBehaviour
 		tile.transform.SetPositionAndRotation(new Vector3(x * size, groundY, z * size) - Offset(), Quaternion.identity);
 		// active before the collider gets its mesh: a collider in an inactive pooled tile drops it
 		tile.SetActive(true);
+		GameObject ground = tile.transform.GetChild(0).gameObject;
+		Mesh groundMesh = ground.GetComponent<MeshFilter>().sharedMesh;
+		deckMesh.Build(groundMesh, Plan.Chasms, x, z);
+		MeshCollider groundCollider = ground.GetComponent<MeshCollider>();
+		groundCollider.sharedMesh = null;
+		groundCollider.sharedMesh = groundMesh;
 		GameObject roads = tile.transform.GetChild(1).gameObject;
 		Plan.Roads.Collect(x, z, pieces, patches);
 		Mesh mesh = roads.GetComponent<MeshFilter>().sharedMesh;
+		roadMesh.Voids = Plan.Chasms;
 		bool any = roadMesh.Build(mesh, pieces, patches, x * Gen2.TileSize, z * Gen2.TileSize);
 		// set again so the collider cooks the new shape
 		roads.SetActive(any);
@@ -536,6 +545,7 @@ public class TileStreamer : MonoBehaviour
 		Scatter(x, z);
 		PlaceCables(x, z);
 		PlaceViaducts(x, z);
+		DressVoids(x, z);
 		bool anyLots = lotMesh.End(lotsMesh);
 		built.SetActive(anyLots);
 		MeshCollider lotsCollider = built.GetComponent<MeshCollider>();
@@ -564,19 +574,20 @@ public class TileStreamer : MonoBehaviour
 		return tile;
 	}
 
-	// root at the tile's corner on the deck: child 0 the ground slab, child 1 the roads, child 2 the lots, child 3 the props
+	// root at the tile's corner on the deck: child 0 the deck, child 1 the roads, child 2 the lots, child 3 the props
 	private GameObject NewTile()
 	{
-		float size = (float)Gen2.TileSize;
 		GameObject tile = new GameObject();
 		tile.layer = groundLayer;
-		GameObject ground = GameObject.CreatePrimitive(PrimitiveType.Cube);
-		ground.name = "ground";
+		GameObject ground = new GameObject("ground", typeof(MeshFilter), typeof(MeshRenderer), typeof(MeshCollider));
 		ground.layer = groundLayer;
-		ground.GetComponent<Renderer>().sharedMaterial = material;
 		ground.transform.SetParent(tile.transform, false);
-		ground.transform.localPosition = new Vector3(size * 0.5f, -thickness * 0.5f - 0.02f, size * 0.5f);
-		ground.transform.localScale = new Vector3(size, thickness, size);
+		// a hair under the roads' shoulders
+		ground.transform.localPosition = Vector3.down * 0.02f;
+		Mesh groundMesh = new Mesh { name = "deck" };
+		groundMesh.MarkDynamic();
+		ground.GetComponent<MeshFilter>().sharedMesh = groundMesh;
+		ground.GetComponent<MeshRenderer>().sharedMaterials = new[] { material, roadMaterials[2], lotMaterials[2] };
 		GameObject roads = new GameObject("roads", typeof(MeshFilter), typeof(MeshRenderer), typeof(MeshCollider));
 		roads.layer = groundLayer;
 		roads.transform.SetParent(tile.transform, false);
@@ -824,8 +835,86 @@ public class TileStreamer : MonoBehaviour
 		}
 	}
 
+	// what stands in and over the voids near this tile, each owned by the tile its middle is in: blocks on stilts
+	// rising out of the dark, footbridges across the rifts. from the void's seed, so peers agree
+	private void DressVoids(int x, int z)
+	{
+		double size = Gen2.TileSize;
+		Plan.Chasms.Near((x + 0.5) * size, (z + 0.5) * size, chasms);
+		Vector3 corner = new Vector3((float)(x * size), 0f, (float)(z * size));
+		foreach (Chasm chasm in chasms)
+		{
+			WorldRandom random = new WorldRandom(chasm.Seed);
+			if (chasm.Shaft)
+			{
+				float half = (float)System.Math.Min(chasm.HalfU, chasm.HalfV) * 0.45f;
+				if (half >= 7f && Gen2.Unit(random.NextULong()) < 0.6 && Owns(chasm.Center, x, z))
+				{
+					Vector3 axis = new Vector3((float)chasm.Axis.X, 0f, (float)chasm.Axis.Z);
+					lotMesh.AddStiltTower(Local(chasm.Center, corner), axis, Mathf.Min(half, 14f), Range(random, -8f, 40f), Range(random, 25f, 60f), random.NextULong());
+				}
+				continue;
+			}
+			double length = chasm.A.DistanceTo(chasm.M) + chasm.M.DistanceTo(chasm.B);
+			for (double s = 90.0; s < length - 60.0; s += 180.0)
+			{
+				XZ at = Along(chasm, s, out XZ dir);
+				XZ side = new XZ(-dir.Z, dir.X);
+				double roll = Gen2.Unit(random.NextULong());
+				double shift = (Gen2.Unit(random.NextULong()) * 2.0 - 1.0) * chasm.Half * 0.25;
+				ulong seed = random.NextULong();
+				float top = Range(random, -8f, 40f);
+				float body = Range(random, 25f, 60f);
+				if (chasm.Half >= 14.0 && roll < 0.45)
+				{
+					XZ centre = new XZ(at.X + side.X * shift, at.Z + side.Z * shift);
+					if (Owns(centre, x, z))
+					{
+						lotMesh.AddStiltTower(Local(centre, corner), new Vector3((float)dir.X, 0f, (float)dir.Z), Mathf.Min((float)chasm.Half * 0.6f, 12f), top, body, seed);
+					}
+				}
+				else if (roll > 0.6 && Owns(at, x, z))
+				{
+					float reach = (float)(chasm.Half + ChasmPlan.Ragged);
+					lotMesh.AddFootbridge(Local(at, corner), new Vector3((float)side.X, 0f, (float)side.Z), reach * 2f + 10f, reach * 2f);
+				}
+			}
+		}
+	}
+
+	private static bool Owns(XZ p, int x, int z)
+	{
+		return Gen2.Cell(p.X, Gen2.TileSize) == x && Gen2.Cell(p.Z, Gen2.TileSize) == z;
+	}
+
+	private static Vector3 Local(XZ p, Vector3 corner)
+	{
+		return new Vector3((float)p.X, 0f, (float)p.Z) - corner;
+	}
+
+	private static float Range(WorldRandom random, float a, float b)
+	{
+		return a + (float)Gen2.Unit(random.NextULong()) * (b - a);
+	}
+
+	// s metres along a rift's middle line, and its direction there
+	private static XZ Along(Chasm chasm, double s, out XZ dir)
+	{
+		double first = chasm.A.DistanceTo(chasm.M);
+		XZ from = (s < first) ? chasm.A : chasm.M;
+		XZ to = (s < first) ? chasm.M : chasm.B;
+		double t = (s < first) ? s / first : (s - first) / chasm.M.DistanceTo(chasm.B);
+		double length = from.DistanceTo(to);
+		dir = new XZ((to.X - from.X) / length, (to.Z - from.Z) / length);
+		return new XZ(from.X + (to.X - from.X) * t, from.Z + (to.Z - from.Z) * t);
+	}
+
 	private bool PierStands(XZ p)
 	{
+		if (Plan.Chasms.Inside(p.X, p.Z) > -ViaductPlan.PierWidth)
+		{
+			return false;
+		}
 		foreach (RoadPiece piece in PiecesOf(Gen2.Cell(p.X, Gen2.TileSize), Gen2.Cell(p.Z, Gen2.TileSize)))
 		{
 			if (RoadPlan.SegmentDistance(p, piece.A, piece.B) < piece.Width * 0.5 + ViaductPlan.PierWidth)
@@ -869,12 +958,12 @@ public class TileStreamer : MonoBehaviour
 		across = new Vector3((float)-piece.TangentA.Z, 0f, (float)piece.TangentA.X);
 		at = new Vector3((float)mid.X, 0f, (float)mid.Z) + across * (side * ((float)piece.Width * 0.5f + (street ? 2.5f : 3f)));
 		tall = street ? 8.5f : 7f;
-		return true;
+		return Plan.Chasms.Inside(at.x, at.z) < -1.0;
 	}
 
 	private bool Blocked(XZ p, double clear)
 	{
-		if (Plan.Origin.DistanceTo(p) < RoadPlan.StartClearance + clear)
+		if (Plan.Origin.DistanceTo(p) < RoadPlan.StartClearance + clear || Plan.Chasms.Inside(p.X, p.Z) > -clear)
 		{
 			return true;
 		}
@@ -963,6 +1052,10 @@ public class TileStreamer : MonoBehaviour
 			Vector3 left = new Vector3((float)-piece.TangentA.Z, 0f, (float)piece.TangentA.X);
 			float side = ((piece.Index / 2) % 2 == 0) ? 1f : -1f;
 			Vector3 at = new Vector3((float)mid.X, groundY, (float)mid.Z) + left * (side * ((float)RoadPlan.StreetWidth * 0.5f + 1.5f));
+			if (Plan.Chasms.Inside(at.x, at.z) > -1.0)
+			{
+				continue;
+			}
 			GameObject prefab = kit.Lamps[(int)(roll % (ulong)kit.Lamps.Length)];
 			GameObject lamp = Instantiate(prefab, at - Offset(), Quaternion.LookRotation(-left * side) * prefab.transform.rotation, props);
 			GraphicsTuning.Adopt(lamp);

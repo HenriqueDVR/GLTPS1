@@ -83,8 +83,8 @@ public class WorldGenerator : MonoBehaviour
 			girls.y = node.transform.position.y;
 			Vector3 centre = OriginTunnel.Centre(girls + Offset(), node.transform.rotation);
 			Plan = new LayerPlan(Seed, 0, new XZ(centre.x, centre.z), null);
-			// roads too, so peers on different road code see the mismatch warning
-			ulong planHash = Plan.PlanHash(Plan.Origin, 1) ^ Plan.Roads.Hash(Plan.Origin, 1);
+			// roads, voids and viaducts too, so peers on different world code see the mismatch warning
+			ulong planHash = Plan.PlanHash(Plan.Origin, 1) ^ Plan.Roads.Hash(Plan.Origin, 1) ^ Plan.Chasms.Hash(Plan.Origin, 1);
 			LayoutHash = (uint)(planHash ^ (planHash >> 32));
 			Debug.Log("WorldGenerator: gen2 seed=" + Seed + " origin=" + Plan.Origin + " planhash=" + planHash.ToString("x16"));
 #if DUMP_WORLDGEN

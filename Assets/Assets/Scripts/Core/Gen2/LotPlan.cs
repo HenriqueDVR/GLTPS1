@@ -28,6 +28,9 @@ public struct Lot
 
 	public int Floors;
 
+	// a building lot standing on a raised plate this high (podium), 0 on the deck
+	public double Base;
+
 	// the world side's own randomness for this lot (building shape, which landmark, props)
 	public ulong Seed;
 }
@@ -232,7 +235,8 @@ public sealed class LotPlan
 
 	private void AddLot(int district, XZ centre, XZ axis, double hu, double hv, ulong seed, List<Lot> lots)
 	{
-		if (HighwayNear(centre, Math.Sqrt(hu * hu + hv * hv) + HighwayGap) || plan.Viaducts.Blocks(centre, Math.Sqrt(hu * hu + hv * hv), viaducts))
+		double reach = Math.Sqrt(hu * hu + hv * hv);
+		if (HighwayNear(centre, reach + HighwayGap) || plan.Viaducts.Blocks(centre, reach, viaducts) || plan.Chasms.Blocks(centre, reach))
 		{
 			return;
 		}
@@ -249,8 +253,20 @@ public sealed class LotPlan
 			HalfU = hu,
 			HalfV = hv,
 			Floors = Floors(def, seed),
+			Base = (kind == LotKind.Building) ? Podium(def, seed, hu, hv) : 0.0,
 			Seed = WorldRandom.Derive(seed, Gen2.StreamLot, 5uL)
 		});
+	}
+
+	// 6-20 m, low enough that its stairs (1.5 m of run a metre up) fit along the lot's long side
+	private static double Podium(DistrictDef def, ulong seed, double hu, double hv)
+	{
+		if (Gen2.Unit(WorldRandom.Derive(seed, Gen2.StreamLot, 12uL)) >= def.Podiums)
+		{
+			return 0.0;
+		}
+		double height = 6.0 + Gen2.Unit(WorldRandom.Derive(seed, Gen2.StreamLot, 13uL)) * 14.0;
+		return Math.Floor(Math.Min(height, Math.Max(hu, hv) * 2.0 / 1.5));
 	}
 
 	private static int Floors(DistrictDef def, ulong seed)
@@ -280,7 +296,7 @@ public sealed class LotPlan
 				ulong seed = WorldRandom.Derive(plan.LayerSeed, Gen2.StreamLot + 1, Gen2.Pack(cx, cz));
 				double pick = Gen2.Unit(WorldRandom.Derive(seed, Gen2.StreamLot, 4uL));
 				// the rest of the sites stay empty snow
-				if (pick >= def.LotLandmark + def.LotOpen || HighwayNear(site, SiteLot * 1.42 + HighwayGap) || plan.Viaducts.Blocks(site, SiteLot * 1.42, viaducts))
+				if (pick >= def.LotLandmark + def.LotOpen || HighwayNear(site, SiteLot * 1.42 + HighwayGap) || plan.Viaducts.Blocks(site, SiteLot * 1.42, viaducts) || plan.Chasms.Blocks(site, SiteLot * 1.42))
 				{
 					continue;
 				}

@@ -97,6 +97,9 @@ public static class Gen2
 	// arched viaducts (ViaductPlan)
 	public const ulong StreamViaduct = 0x56494144uL;
 
+	// rifts and shafts in the deck (ChasmPlan). +1 is the ragged edge
+	public const ulong StreamChasm = 0x4348534DuL;
+
 	// world items spawned by v2 tiles: bit 61, then (layer:8)(tileX:20)(tileZ:20)(index:12) as in 01-world-layers.
 	// legacy spawner ids are small, scene pickups use bit 62, items made at runtime will use bit 62 with a peer (03)
 	public const ulong TileItemTag = 0x2000000000000000uL;

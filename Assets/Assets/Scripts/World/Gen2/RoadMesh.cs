@@ -61,6 +61,17 @@ public class RoadMesh
 	}
 
 	// false when there's nothing to draw
+	// how deep a road's slab is where it crosses a void
+	private const float spanDepth = 2.2f;
+
+	// voids (ChasmPlan): roads over them are drawn as bridges. null for none
+	public ChasmPlan Voids;
+
+	private bool OverVoid(XZ p)
+	{
+		return Voids != null && Voids.Inside(p.X, p.Z) > -3.0;
+	}
+
 	public bool Build(Mesh mesh, List<RoadPiece> pieces, List<RoadPatch> patches, double originX, double originZ)
 	{
 		vertices.Clear();
@@ -76,14 +87,15 @@ public class RoadMesh
 			Vector3 ta = Flat(piece.TangentA);
 			Vector3 tb = Flat(piece.TangentB);
 			float half = (float)piece.Width * 0.5f;
+			bool span = OverVoid(piece.A) || OverVoid(piece.B) || OverVoid(new XZ((piece.A.X + piece.B.X) * 0.5, (piece.A.Z + piece.B.Z) * 0.5));
 			// the foot of a ramp keeps the ground cross-section, so the ket meets no seam where the climb starts
-			if (piece.HeightA <= parapetFrom && piece.HeightB <= parapetFrom)
+			if (!span && piece.HeightA <= parapetFrom && piece.HeightB <= parapetFrom)
 			{
 				Ground(a, b, ta, tb, half, Lift(piece.Kind) + (float)piece.HeightA, Lift(piece.Kind) + (float)piece.HeightB, Surface(piece.Kind));
 			}
 			else
 			{
-				Deck(piece, a, b, ta, tb, half);
+				Deck(piece, a, b, ta, tb, half, span);
 			}
 		}
 		foreach (RoadPatch patch in patches)
@@ -97,6 +109,12 @@ public class RoadMesh
 			else
 			{
 				Square(centre, Flat(patch.Axis), (float)patch.Size, lift, Surface(patch.Kind));
+			}
+			if (OverVoid(patch.Center))
+			{
+				// a crossing over the void sits on a slab
+				float size = (float)patch.Size;
+				Box(centre + Vector3.up * (lift - spanDepth * 0.5f), Flat(patch.Axis), new Vector3(size, spanDepth * 0.5f - 0.02f, size));
 			}
 		}
 		mesh.Clear();
@@ -149,13 +167,14 @@ public class RoadMesh
 
 	// an elevated piece or a ramp: top, sides down to the underside (or the ground on a low ramp), parapets,
 	// a column under every other piece, a wall across a broken end
-	private void Deck(RoadPiece piece, Vector3 a, Vector3 b, Vector3 ta, Vector3 tb, float half)
+	private void Deck(RoadPiece piece, Vector3 a, Vector3 b, Vector3 ta, Vector3 tb, float half, bool span)
 	{
 		float ha = (float)piece.HeightA + Lift(piece.Kind);
 		float hb = (float)piece.HeightB + Lift(piece.Kind);
-		float ba = Mathf.Max(0f, (float)piece.HeightA - deckThickness);
-		float bb = Mathf.Max(0f, (float)piece.HeightB - deckThickness);
-		bool parapets = piece.HeightA > parapetFrom || piece.HeightB > parapetFrom;
+		// over a void the slab hangs below the deck's level
+		float ba = span ? (float)piece.HeightA - spanDepth : Mathf.Max(0f, (float)piece.HeightA - deckThickness);
+		float bb = span ? (float)piece.HeightB - spanDepth : Mathf.Max(0f, (float)piece.HeightB - deckThickness);
+		bool parapets = span || piece.HeightA > parapetFrom || piece.HeightB > parapetFrom;
 		float rise = parapets ? parapetHeight : 0f;
 		Vector3 la = Left(ta);
 		Vector3 lb = Left(tb);
@@ -165,7 +184,7 @@ public class RoadMesh
 		// outer sides, up to the parapet top
 		Quad(concrete, a + la * half + Vector3.up * ba, a + la * half + Vector3.up * (ha + rise), b + lb * half + Vector3.up * (hb + rise), b + lb * half + Vector3.up * bb);
 		Quad(concrete, b - lb * half + Vector3.up * bb, b - lb * half + Vector3.up * (hb + rise), a - la * half + Vector3.up * (ha + rise), a - la * half + Vector3.up * ba);
-		if (ba > 0f || bb > 0f)
+		if (ba != 0f || bb != 0f)
 		{
 			Quad(concrete, a + la * half + Vector3.up * ba, b + lb * half + Vector3.up * bb, b - lb * half + Vector3.up * bb, a - la * half + Vector3.up * ba);
 		}
@@ -177,7 +196,7 @@ public class RoadMesh
 			Quad(concrete, topA - la * inner, topA - la * inner + Vector3.up * rise, topB - lb * inner + Vector3.up * rise, topB - lb * inner);
 			Quad(concrete, topA - la * inner + Vector3.up * rise, topA - la * half + Vector3.up * rise, topB - lb * half + Vector3.up * rise, topB - lb * inner + Vector3.up * rise);
 		}
-		if (piece.Index % 2 == 0 && piece.HeightA > supportFrom)
+		if (!span && piece.Index % 2 == 0 && piece.HeightA > supportFrom)
 		{
 			Box(a + Vector3.up * (ba * 0.5f), ta, new Vector3(supportSize, ba, supportSize) * 0.5f);
 		}

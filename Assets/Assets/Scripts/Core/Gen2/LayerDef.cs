@@ -85,4 +85,12 @@ public sealed class DistrictDef
 
 	// share of region cells centred here with an arched viaduct (ViaductPlan)
 	public double Viaducts;
+
+	// voids in the deck (ChasmPlan): share of region cells with a rift, chance of each of a cell's two shafts
+	public double Rifts;
+
+	public double Shafts;
+
+	// share of building lots standing on a raised plate with stairs up (Lot.Base)
+	public double Podiums;
 }
