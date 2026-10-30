@@ -51,6 +51,9 @@ public class LotMesh
 
 		public int[] Triangles;
 
+		// filled window openings (uv -1,-1 from Art/Scripts/fill_holes.py), drawn dark
+		public int[] Windows;
+
 		public Vector3 Size;
 	}
 
@@ -592,8 +595,21 @@ public class LotMesh
 		{
 			piece.Vertices = mesh.vertices;
 			piece.Uvs = mesh.uv;
-			piece.Triangles = mesh.triangles;
 			piece.Size = mesh.bounds.size;
+			int[] all = mesh.triangles;
+			List<int> solid = new List<int>(all.Length);
+			List<int> windows = new List<int>();
+			bool uv = piece.Uvs != null && piece.Uvs.Length == piece.Vertices.Length;
+			for (int i = 0; i < all.Length; i += 3)
+			{
+				bool window = uv && Marked(piece.Uvs[all[i]]) && Marked(piece.Uvs[all[i + 1]]) && Marked(piece.Uvs[all[i + 2]]);
+				List<int> to = window ? windows : solid;
+				to.Add(all[i]);
+				to.Add(all[i + 1]);
+				to.Add(all[i + 2]);
+			}
+			piece.Triangles = solid.ToArray();
+			piece.Windows = windows.ToArray();
 			pieces[mesh] = piece;
 		}
 		return piece;
@@ -613,6 +629,15 @@ public class LotMesh
 		{
 			list.Add(first + index);
 		}
+		foreach (int index in piece.Windows)
+		{
+			triangles[dark].Add(first + index);
+		}
+	}
+
+	private static bool Marked(Vector2 uv)
+	{
+		return uv.x < -0.99f && uv.x > -1.01f && uv.y < -0.99f && uv.y > -1.01f;
 	}
 
 	// ---- shapes
