@@ -88,6 +88,9 @@ public static class Gen2
 
 	public const ulong StreamTrack = 0x5452434BuL;
 
+	// lots (LotPlan)
+	public const ulong StreamLot = 0x4C4F54uL;
+
 	public static ulong Pack(int x, int z)
 	{
 		return ((ulong)(uint)x << 32) | (uint)z;

@@ -51,6 +51,8 @@ public sealed class LayerPlan
 
 	public readonly RoadPlan Roads;
 
+	public readonly LotPlan Lots;
+
 	public LayerPlan(ulong worldSeed, int layer, XZ origin, LayerPlan below)
 	{
 		if (layer > 0 && (below == null || below.Layer != layer - 1 || below.WorldSeed != worldSeed))
@@ -64,6 +66,7 @@ public sealed class LayerPlan
 		LayerSeed = Gen2.LayerSeed(worldSeed, layer);
 		Below = (layer > 0) ? below : null;
 		Roads = new RoadPlan(this);
+		Lots = new LotPlan(this);
 	}
 
 	// at most WarpAmplitude either way, so district edges wobble instead of being rings

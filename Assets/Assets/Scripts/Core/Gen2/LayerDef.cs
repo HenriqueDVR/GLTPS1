@@ -22,6 +22,9 @@ public sealed class LayerDef
 
 	// share of elevated stretches with a collapsed span in the middle
 	public double BrokenChance;
+
+	// share of buildings with a broken, stepped top
+	public double Ruin;
 }
 
 public enum DistrictRoads
@@ -46,4 +49,16 @@ public sealed class DistrictDef
 
 	// share of the grid's street segments that are still there
 	public double StreetKeep;
+
+	// lots (LotPlan): in street districts the shares of building, open and landmark lots (normalised);
+	// in open districts the share of sites with a landmark or an open lot, the rest stay empty snow
+	public double LotBuilding;
+
+	public double LotOpen;
+
+	public double LotLandmark;
+
+	public int FloorsMin = 1;
+
+	public int FloorsMax = 1;
 }

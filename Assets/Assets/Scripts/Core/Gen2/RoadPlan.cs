@@ -190,6 +190,16 @@ public sealed class RoadPlan
 
 	private readonly List<XZ> shifts = new List<XZ>();
 
+	private sealed class Curve
+	{
+		public XZ[] Points;
+
+		public double[] Along;
+	}
+
+	// sampled roads by (kind: 0 expressway 1 buried road, cell x, cell z, direction)
+	private readonly Dictionary<(int, int, int, int), Curve> curves = new Dictionary<(int, int, int, int), Curve>();
+
 	private readonly HashSet<int> districts = new HashSet<int>();
 
 	public RoadPlan(LayerPlan plan)
@@ -309,7 +319,7 @@ public sealed class RoadPlan
 					{
 						continue;
 					}
-					Sample(link.P0, link.C1, link.C2, link.P1, PillarClearance + HighwayWidth * 0.5);
+					Sample(0, link.CellX, link.CellZ, link.North ? 1 : 0, link.P0, link.C1, link.C2, link.P1, PillarClearance + HighwayWidth * 0.5);
 					double length = along[along.Count - 1];
 					double from = link.ElevatedFrom * length;
 					double to = link.ElevatedTo * length;
@@ -553,6 +563,21 @@ public sealed class RoadPlan
 		return plan.DistrictAt(a.X + sx, a.Z + sz) == district && plan.DistrictAt(a.X - sx, a.Z - sz) == district && plan.DistrictAt(b.X + sx, b.Z + sz) == district && plan.DistrictAt(b.X - sx, b.Z - sz) == district;
 	}
 
+	// the street grid of a district, for LotPlan's blocks
+	internal void GridFrame(int district, out XZ origin, out XZ u, out XZ v, out ulong gridSeed)
+	{
+		Grid grid = grids[district];
+		origin = grid.Origin;
+		u = grid.U;
+		v = grid.V;
+		gridSeed = grid.Seed;
+	}
+
+	internal double GridLine(int district, int axis, int k)
+	{
+		return Line(grids[district], axis, k);
+	}
+
 	// ---- buried roads
 
 	public bool Site(int cellX, int cellZ, out XZ position)
@@ -596,7 +621,7 @@ public sealed class RoadPlan
 					{
 						continue;
 					}
-					Sample(p0, c1, c2, p1, PillarClearance + TrackWidth * 0.5);
+					Sample(1, cx, cz, d, p0, c1, c2, p1, PillarClearance + TrackWidth * 0.5);
 					for (int i = 0; i + 1 < points.Count; i++)
 					{
 						XZ mid = Mid(points[i], points[i + 1]);
@@ -611,6 +636,72 @@ public sealed class RoadPlan
 	}
 
 	// ---- shared
+
+	// an expressway's edge within distance of p
+	public bool HighwayNear(XZ p, double distance)
+	{
+		double reach = distance + HighwayWidth * 0.5;
+		Rect around = new Rect { X0 = p.X - reach, Z0 = p.Z - reach, X1 = p.X + reach, Z1 = p.Z + reach };
+		int cx = Gen2.Cell(p.X, HighwayCell);
+		int cz = Gen2.Cell(p.Z, HighwayCell);
+		for (int x = cx - 2; x <= cx + 1; x++)
+		{
+			for (int z = cz - 2; z <= cz + 1; z++)
+			{
+				for (int d = 0; d < 2; d++)
+				{
+					if (!Highway(x, z, d == 1, out HighwayLink link) || !CurveTouches(around, link.P0, link.C1, link.C2, link.P1, PillarClearance + HighwayWidth))
+					{
+						continue;
+					}
+					Sample(0, link.CellX, link.CellZ, link.North ? 1 : 0, link.P0, link.C1, link.C2, link.P1, PillarClearance + HighwayWidth * 0.5);
+					for (int i = 0; i + 1 < points.Count; i++)
+					{
+						if (SegmentDistance(p, points[i], points[i + 1]) < reach)
+						{
+							return true;
+						}
+					}
+				}
+			}
+		}
+		return false;
+	}
+
+	// every expressway centreline segment that may come within reach of the box, as pairs (a, b)
+	public void HighwaySegments(double x0, double z0, double x1, double z1, List<XZ> segments)
+	{
+		segments.Clear();
+		Rect around = new Rect { X0 = x0, Z0 = z0, X1 = x1, Z1 = z1 };
+		for (int x = Gen2.Cell(x0, HighwayCell) - 2; x <= Gen2.Cell(x1, HighwayCell) + 1; x++)
+		{
+			for (int z = Gen2.Cell(z0, HighwayCell) - 2; z <= Gen2.Cell(z1, HighwayCell) + 1; z++)
+			{
+				for (int d = 0; d < 2; d++)
+				{
+					if (!Highway(x, z, d == 1, out HighwayLink link) || !CurveTouches(around, link.P0, link.C1, link.C2, link.P1, PillarClearance + HighwayWidth))
+					{
+						continue;
+					}
+					Sample(0, link.CellX, link.CellZ, link.North ? 1 : 0, link.P0, link.C1, link.C2, link.P1, PillarClearance + HighwayWidth * 0.5);
+					for (int i = 0; i + 1 < points.Count; i++)
+					{
+						segments.Add(points[i]);
+						segments.Add(points[i + 1]);
+					}
+				}
+			}
+		}
+	}
+
+	public static double SegmentDistance(XZ p, XZ a, XZ b)
+	{
+		double dx = b.X - a.X;
+		double dz = b.Z - a.Z;
+		double length = dx * dx + dz * dz;
+		double t = (length > 0.0) ? Math.Max(0.0, Math.Min(1.0, ((p.X - a.X) * dx + (p.Z - a.Z) * dz) / length)) : 0.0;
+		return p.DistanceTo(new XZ(a.X + dx * t, a.Z + dz * t));
+	}
 
 	// the pillar of p's own region cell: pillars sit PillarMargin inside their cell, so it's the only one that close
 	private XZ PillarOf(XZ p)
@@ -649,7 +740,27 @@ public sealed class RoadPlan
 
 	// the whole curve into points/along, about PieceLength apart, shifted sideways around any pillar it passes
 	// closer than clear. the shift fades out over Detour along the road, so it never reaches the ends (PillarGap)
-	private void Sample(XZ p0, XZ c1, XZ c2, XZ p1, double clear)
+	private void Sample(int kind, int cellX, int cellZ, int dir, XZ p0, XZ c1, XZ c2, XZ p1, double clear)
+	{
+		// a road crosses a dozen tiles and every lot near it asks too: keep the samples
+		(int, int, int, int) key = (kind, cellX, cellZ, dir);
+		if (curves.TryGetValue(key, out Curve curve))
+		{
+			points.Clear();
+			points.AddRange(curve.Points);
+			along.Clear();
+			along.AddRange(curve.Along);
+			return;
+		}
+		SampleCurve(p0, c1, c2, p1, clear);
+		if (curves.Count >= 1024)
+		{
+			curves.Clear();
+		}
+		curves[key] = new Curve { Points = points.ToArray(), Along = along.ToArray() };
+	}
+
+	private void SampleCurve(XZ p0, XZ c1, XZ c2, XZ p1, double clear)
 	{
 		points.Clear();
 		along.Clear();

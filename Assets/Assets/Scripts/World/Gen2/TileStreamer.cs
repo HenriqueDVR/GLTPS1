@@ -4,7 +4,7 @@ using System.Diagnostics;
 using UnityEngine;
 
 // world gen v2: 128m tiles around both girls, nearest first, a couple of ms a frame, pooled when out of reach.
-// a tile is placeholder flat ground tinted by district, plus its roads from the road plan (RoadMesh).
+// a tile is placeholder flat ground tinted by district, its roads (RoadMesh) and its lots' buildings and rubble (LotMesh).
 // everything is in layout coords (world + TotalOffset)
 public class TileStreamer : MonoBehaviour
 {
@@ -55,6 +55,13 @@ public class TileStreamer : MonoBehaviour
 	};
 
 	private readonly RoadMesh roadMesh = new RoadMesh();
+
+	// building walls, concrete
+	private Material[] lotMaterials;
+
+	private readonly LotMesh lotMesh = new LotMesh();
+
+	private readonly List<Lot> lots = new List<Lot>();
 
 	private readonly List<RoadPiece> pieces = new List<RoadPiece>();
 
@@ -134,6 +141,14 @@ public class TileStreamer : MonoBehaviour
 				roadMaterials[i] = floor;
 			}
 		}
+		Material wall = Resources.Load<Material>("Buildings/Wall");
+		if (wall == null && lit != null)
+		{
+			wall = Made(new Material(lit));
+			wall.SetColor("_BaseColor", new Color(0.6f, 0.6f, 0.62f));
+			wall.SetFloat("_Smoothness", 0.1f);
+		}
+		lotMaterials = new[] { (wall != null) ? wall : floor, roadMaterials[2] };
 #if DUMP_WORLDGEN
 		string[] args = System.Environment.GetCommandLineArgs();
 		int at = System.Array.IndexOf(args, "-gen2run");
@@ -179,6 +194,8 @@ public class TileStreamer : MonoBehaviour
 	private int builtTiles;
 
 	private long roadTriangles;
+
+	private long lotTriangles;
 
 	private double slowestBuild;
 
@@ -296,7 +313,7 @@ public class TileStreamer : MonoBehaviour
 		{
 			nextLog = Time.unscaledTime + 5f;
 			Vector3 p = (chito != null) ? chito.position + Offset() : Vector3.zero;
-			UnityEngine.Debug.Log("TileStreamer: tiles=" + tiles.Count + " pooled=" + pool.Count + " queued=" + missing.Count + " chito=" + p + " offset=" + Offset() + " district=" + Plan.Def.Districts[Plan.DistrictAt(p.x, p.z)].Id + " built=" + builtTiles + " road tris=" + roadTriangles + " slowest tile=" + slowestBuild.ToString("F2") + "ms");
+			UnityEngine.Debug.Log("TileStreamer: tiles=" + tiles.Count + " pooled=" + pool.Count + " queued=" + missing.Count + " chito=" + p + " offset=" + Offset() + " district=" + Plan.Def.Districts[Plan.DistrictAt(p.x, p.z)].Id + " built=" + builtTiles + " road tris=" + roadTriangles + " lot tris=" + lotTriangles + " slowest tile=" + slowestBuild.ToString("F2") + "ms");
 			slowestBuild = 0.0;
 		}
 	}
@@ -450,15 +467,37 @@ public class TileStreamer : MonoBehaviour
 		{
 			collider.sharedMesh = mesh;
 		}
+		GameObject built = tile.transform.GetChild(2).gameObject;
+		Plan.Lots.Collect(x, z, lots);
+		// no landmarks yet: their lots are open ground
+		for (int i = 0; i < lots.Count; i++)
+		{
+			if (lots[i].Kind == LotKind.Landmark)
+			{
+				Lot open = lots[i];
+				open.Kind = LotKind.Open;
+				lots[i] = open;
+			}
+		}
+		Mesh lotsMesh = built.GetComponent<MeshFilter>().sharedMesh;
+		bool anyLots = lotMesh.Build(lotsMesh, lots, Plan.Def.Ruin, x * Gen2.TileSize, z * Gen2.TileSize);
+		built.SetActive(anyLots);
+		MeshCollider lotsCollider = built.GetComponent<MeshCollider>();
+		lotsCollider.sharedMesh = null;
+		if (anyLots)
+		{
+			lotsCollider.sharedMesh = lotsMesh;
+		}
 #if DUMP_WORLDGEN
 		builtTiles++;
 		roadTriangles += roadMesh.Triangles;
+		lotTriangles += anyLots ? lotMesh.Triangles : 0;
 		slowestBuild = System.Math.Max(slowestBuild, buildWatch.Elapsed.TotalMilliseconds);
 #endif
 		return tile;
 	}
 
-	// root at the tile's corner on the deck: child 0 the ground slab, child 1 the roads
+	// root at the tile's corner on the deck: child 0 the ground slab, child 1 the roads, child 2 the lots
 	private GameObject NewTile()
 	{
 		float size = (float)Gen2.TileSize;
@@ -478,6 +517,13 @@ public class TileStreamer : MonoBehaviour
 		mesh.MarkDynamic();
 		roads.GetComponent<MeshFilter>().sharedMesh = mesh;
 		roads.GetComponent<MeshRenderer>().sharedMaterials = roadMaterials;
+		GameObject built = new GameObject("lots", typeof(MeshFilter), typeof(MeshRenderer), typeof(MeshCollider));
+		built.layer = groundLayer;
+		built.transform.SetParent(tile.transform, false);
+		Mesh lotsMesh = new Mesh { name = "lots" };
+		lotsMesh.MarkDynamic();
+		built.GetComponent<MeshFilter>().sharedMesh = lotsMesh;
+		built.GetComponent<MeshRenderer>().sharedMaterials = lotMaterials;
 		return tile;
 	}
 }
