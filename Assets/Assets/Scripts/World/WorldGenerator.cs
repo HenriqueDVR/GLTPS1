@@ -76,7 +76,8 @@ public class WorldGenerator : MonoBehaviour
 		{
 			// the start node stays as the starting room, layer 0's origin is where it stands
 			Plan = new LayerPlan(Seed, 0, new XZ(rootPose.position.x, rootPose.position.z), null);
-			ulong planHash = Plan.PlanHash(Plan.Origin, 1);
+			// roads too, so peers on different road code see the mismatch warning
+			ulong planHash = Plan.PlanHash(Plan.Origin, 1) ^ Plan.Roads.Hash(Plan.Origin, 1);
 			LayoutHash = (uint)(planHash ^ (planHash >> 32));
 			Debug.Log("WorldGenerator: gen2 seed=" + Seed + " origin=" + Plan.Origin + " planhash=" + planHash.ToString("x16"));
 #if DUMP_WORLDGEN

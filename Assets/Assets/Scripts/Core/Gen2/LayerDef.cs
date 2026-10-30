@@ -16,6 +16,20 @@ public sealed class LayerDef
 
 	// last layer: no Up pillars, no ceiling, the ending plays at its top
 	public bool IsLast;
+
+	// share of highway links with an elevated stretch
+	public double ElevatedChance;
+
+	// share of elevated stretches with a collapsed span in the middle
+	public double BrokenChance;
+}
+
+public enum DistrictRoads
+{
+	// buried roads between sites, no streets
+	Open,
+	// a street grid of its own
+	Streets
 }
 
 public sealed class DistrictDef
@@ -27,4 +41,9 @@ public sealed class DistrictDef
 
 	// warped progress where the band starts, metres
 	public double From;
+
+	public DistrictRoads Roads;
+
+	// share of the grid's street segments that are still there
+	public double StreetKeep;
 }

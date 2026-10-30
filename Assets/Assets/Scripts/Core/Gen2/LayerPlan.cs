@@ -49,6 +49,8 @@ public sealed class LayerPlan
 	// null on layer 0. its Up pillars are this layer's Down pillars
 	public readonly LayerPlan Below;
 
+	public readonly RoadPlan Roads;
+
 	public LayerPlan(ulong worldSeed, int layer, XZ origin, LayerPlan below)
 	{
 		if (layer > 0 && (below == null || below.Layer != layer - 1 || below.WorldSeed != worldSeed))
@@ -61,6 +63,7 @@ public sealed class LayerPlan
 		Origin = origin;
 		LayerSeed = Gen2.LayerSeed(worldSeed, layer);
 		Below = (layer > 0) ? below : null;
+		Roads = new RoadPlan(this);
 	}
 
 	// at most WarpAmplitude either way, so district edges wobble instead of being rings
@@ -198,13 +201,13 @@ public sealed class LayerPlan
 		return hash;
 	}
 
-	private static long Centimetres(double v)
+	internal static long Centimetres(double v)
 	{
 		return (long)Math.Round(v * 100.0);
 	}
 
 	// fnv-1a over the 8 bytes
-	private static ulong Mix(ulong hash, long value)
+	internal static ulong Mix(ulong hash, long value)
 	{
 		ulong v = (ulong)value;
 		for (int i = 0; i < 8; i++)

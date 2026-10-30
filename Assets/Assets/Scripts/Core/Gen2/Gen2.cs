@@ -73,6 +73,21 @@ public static class Gen2
 
 	public const ulong StreamTile = 0x54494C45uL;
 
+	// roads (RoadPlan). the +1/+2/+3 next to each are taken too
+	public const ulong StreamHighway = 0x48574159uL;
+
+	public const ulong StreamElevated = 0x454C4556uL;
+
+	public const ulong StreamStreets = 0x53545245uL;
+
+	public const ulong StreamStreetLine = 0x4C494E45uL;
+
+	public const ulong StreamStreetKeep = 0x4B454550uL;
+
+	public const ulong StreamSite = 0x53495445uL;
+
+	public const ulong StreamTrack = 0x5452434BuL;
+
 	public static ulong Pack(int x, int z)
 	{
 		return ((ulong)(uint)x << 32) | (uint)z;

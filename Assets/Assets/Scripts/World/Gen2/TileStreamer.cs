@@ -4,7 +4,8 @@ using System.Diagnostics;
 using UnityEngine;
 
 // world gen v2: 128m tiles around both girls, nearest first, a couple of ms a frame, pooled when out of reach.
-// tiles are placeholder flat ground tinted by district for now. everything is in layout coords (world + TotalOffset)
+// a tile is placeholder flat ground tinted by district, plus its roads from the road plan (RoadMesh).
+// everything is in layout coords (world + TotalOffset)
 public class TileStreamer : MonoBehaviour
 {
 	public const float BuildRadius = 700f;
@@ -40,6 +41,22 @@ public class TileStreamer : MonoBehaviour
 	private int groundLayer;
 
 	private Material material;
+
+	// asphalt, buried road, concrete
+	private Material[] roadMaterials;
+
+	private static readonly Color[] roadColors =
+	{
+		new Color(0.25f, 0.25f, 0.27f),
+		new Color(0.56f, 0.58f, 0.62f),
+		new Color(0.58f, 0.58f, 0.56f)
+	};
+
+	private readonly RoadMesh roadMesh = new RoadMesh();
+
+	private readonly List<RoadPiece> pieces = new List<RoadPiece>();
+
+	private readonly List<RoadPatch> patches = new List<RoadPatch>();
 
 	private MaterialPropertyBlock block;
 
@@ -91,6 +108,17 @@ public class TileStreamer : MonoBehaviour
 		Shader lit = Shader.Find("Universal Render Pipeline/Lit");
 		material = (lit != null) ? new Material(lit) : floor;
 		block = new MaterialPropertyBlock();
+		roadMaterials = new Material[RoadMesh.SubmeshCount];
+		for (int i = 0; i < roadMaterials.Length; i++)
+		{
+			roadMaterials[i] = (lit != null) ? new Material(lit) : floor;
+			if (lit != null)
+			{
+				roadMaterials[i].SetColor("_BaseColor", roadColors[i]);
+				roadMaterials[i].SetColor("_Color", roadColors[i]);
+				roadMaterials[i].SetFloat("_Smoothness", 0.1f);
+			}
+		}
 #if DUMP_WORLDGEN
 		string[] args = System.Environment.GetCommandLineArgs();
 		int at = System.Array.IndexOf(args, "-gen2run");
@@ -107,9 +135,22 @@ public class TileStreamer : MonoBehaviour
 
 	private void OnDestroy()
 	{
-		if (material != null && material.shader != null && material.shader.name == "Universal Render Pipeline/Lit")
+		DestroyOwn(material);
+		if (roadMaterials != null)
 		{
-			Destroy(material);
+			foreach (Material road in roadMaterials)
+			{
+				DestroyOwn(road);
+			}
+		}
+	}
+
+	// only the ones made here, not the floor's own material borrowed as a fallback
+	private static void DestroyOwn(Material made)
+	{
+		if (made != null && made.shader != null && made.shader.name == "Universal Render Pipeline/Lit")
+		{
+			Destroy(made);
 		}
 	}
 
@@ -126,6 +167,14 @@ public class TileStreamer : MonoBehaviour
 
 #if DUMP_WORLDGEN
 	private float nextLog;
+
+	private int builtTiles;
+
+	private long roadTriangles;
+
+	private double slowestBuild;
+
+	private readonly Stopwatch buildWatch = new Stopwatch();
 
 	private bool run;
 
@@ -239,7 +288,8 @@ public class TileStreamer : MonoBehaviour
 		{
 			nextLog = Time.unscaledTime + 5f;
 			Vector3 p = (chito != null) ? chito.position + Offset() : Vector3.zero;
-			UnityEngine.Debug.Log("TileStreamer: tiles=" + tiles.Count + " pooled=" + pool.Count + " queued=" + missing.Count + " chito=" + p + " offset=" + Offset() + " district=" + Plan.Def.Districts[Plan.DistrictAt(p.x, p.z)].Id);
+			UnityEngine.Debug.Log("TileStreamer: tiles=" + tiles.Count + " pooled=" + pool.Count + " queued=" + missing.Count + " chito=" + p + " offset=" + Offset() + " district=" + Plan.Def.Districts[Plan.DistrictAt(p.x, p.z)].Id + " built=" + builtTiles + " road tris=" + roadTriangles + " slowest tile=" + slowestBuild.ToString("F2") + "ms");
+			slowestBuild = 0.0;
 		}
 	}
 #endif
@@ -366,28 +416,60 @@ public class TileStreamer : MonoBehaviour
 	// a pure function of (plan, x, z) so co-op peers get the same tile
 	private GameObject Build(int x, int z)
 	{
-		GameObject tile;
-		if (pool.Count > 0)
-		{
-			tile = pool.Pop();
-		}
-		else
-		{
-			tile = GameObject.CreatePrimitive(PrimitiveType.Cube);
-			tile.GetComponent<Renderer>().sharedMaterial = material;
-		}
+#if DUMP_WORLDGEN
+		buildWatch.Restart();
+#endif
+		GameObject tile = (pool.Count > 0) ? pool.Pop() : NewTile();
 		tile.name = "tile " + x + "," + z;
-		tile.layer = groundLayer;
 		float size = (float)Gen2.TileSize;
-		Vector3 layout = new Vector3((x + 0.5f) * size, groundY - thickness * 0.5f - 0.02f, (z + 0.5f) * size);
-		tile.transform.SetPositionAndRotation(layout - Offset(), Quaternion.identity);
-		tile.transform.localScale = new Vector3(size, thickness, size);
+		tile.transform.SetPositionAndRotation(new Vector3(x * size, groundY, z * size) - Offset(), Quaternion.identity);
+		// active before the collider gets its mesh: a collider in an inactive pooled tile drops it
+		tile.SetActive(true);
 		int district = Plan.DistrictAt((x + 0.5) * Gen2.TileSize, (z + 0.5) * Gen2.TileSize);
 		Color color = districtColors[district % districtColors.Length];
 		block.SetColor("_BaseColor", color);
 		block.SetColor("_Color", color);
-		tile.GetComponent<Renderer>().SetPropertyBlock(block);
-		tile.SetActive(true);
+		tile.transform.GetChild(0).GetComponent<Renderer>().SetPropertyBlock(block);
+		GameObject roads = tile.transform.GetChild(1).gameObject;
+		Plan.Roads.Collect(x, z, pieces, patches);
+		Mesh mesh = roads.GetComponent<MeshFilter>().sharedMesh;
+		bool any = roadMesh.Build(mesh, pieces, patches, x * Gen2.TileSize, z * Gen2.TileSize);
+		// set again so the collider cooks the new shape
+		roads.SetActive(any);
+		MeshCollider collider = roads.GetComponent<MeshCollider>();
+		collider.sharedMesh = null;
+		if (any)
+		{
+			collider.sharedMesh = mesh;
+		}
+#if DUMP_WORLDGEN
+		builtTiles++;
+		roadTriangles += roadMesh.Triangles;
+		slowestBuild = System.Math.Max(slowestBuild, buildWatch.Elapsed.TotalMilliseconds);
+#endif
+		return tile;
+	}
+
+	// root at the tile's corner on the deck: child 0 the ground slab, child 1 the roads
+	private GameObject NewTile()
+	{
+		float size = (float)Gen2.TileSize;
+		GameObject tile = new GameObject();
+		tile.layer = groundLayer;
+		GameObject ground = GameObject.CreatePrimitive(PrimitiveType.Cube);
+		ground.name = "ground";
+		ground.layer = groundLayer;
+		ground.GetComponent<Renderer>().sharedMaterial = material;
+		ground.transform.SetParent(tile.transform, false);
+		ground.transform.localPosition = new Vector3(size * 0.5f, -thickness * 0.5f - 0.02f, size * 0.5f);
+		ground.transform.localScale = new Vector3(size, thickness, size);
+		GameObject roads = new GameObject("roads", typeof(MeshFilter), typeof(MeshRenderer), typeof(MeshCollider));
+		roads.layer = groundLayer;
+		roads.transform.SetParent(tile.transform, false);
+		Mesh mesh = new Mesh { name = "roads" };
+		mesh.MarkDynamic();
+		roads.GetComponent<MeshFilter>().sharedMesh = mesh;
+		roads.GetComponent<MeshRenderer>().sharedMaterials = roadMaterials;
 		return tile;
 	}
 }
