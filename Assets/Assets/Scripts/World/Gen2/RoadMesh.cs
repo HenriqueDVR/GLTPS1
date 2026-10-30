@@ -76,9 +76,10 @@ public class RoadMesh
 			Vector3 ta = Flat(piece.TangentA);
 			Vector3 tb = Flat(piece.TangentB);
 			float half = (float)piece.Width * 0.5f;
-			if (piece.HeightA <= 0.0 && piece.HeightB <= 0.0)
+			// the foot of a ramp keeps the ground cross-section, so the ket meets no seam where the climb starts
+			if (piece.HeightA <= parapetFrom && piece.HeightB <= parapetFrom)
 			{
-				Ground(a, b, ta, tb, half, Lift(piece.Kind), Surface(piece.Kind));
+				Ground(a, b, ta, tb, half, Lift(piece.Kind) + (float)piece.HeightA, Lift(piece.Kind) + (float)piece.HeightB, Surface(piece.Kind));
 			}
 			else
 			{
@@ -133,16 +134,17 @@ public class RoadMesh
 		return new Vector3(-tangent.z, 0f, tangent.x);
 	}
 
-	// a road on the deck: flat top, sloped shoulders
-	private void Ground(Vector3 a, Vector3 b, Vector3 ta, Vector3 tb, float half, float lift, int submesh)
+	// a road on the deck: flat top at liftA/liftB, sloped shoulders down to the deck
+	private void Ground(Vector3 a, Vector3 b, Vector3 ta, Vector3 tb, float half, float liftA, float liftB, int submesh)
 	{
 		Vector3 la = Left(ta);
 		Vector3 lb = Left(tb);
-		Vector3 up = Vector3.up * lift;
+		Vector3 upA = Vector3.up * liftA;
+		Vector3 upB = Vector3.up * liftB;
 		float inner = half - shoulder;
-		Quad(submesh, a + la * half, a + la * inner + up, b + lb * inner + up, b + lb * half);
-		Quad(submesh, a + la * inner + up, a - la * inner + up, b - lb * inner + up, b + lb * inner + up);
-		Quad(submesh, a - la * inner + up, a - la * half, b - lb * half, b - lb * inner + up);
+		Quad(submesh, a + la * half, a + la * inner + upA, b + lb * inner + upB, b + lb * half);
+		Quad(submesh, a + la * inner + upA, a - la * inner + upA, b - lb * inner + upB, b + lb * inner + upB);
+		Quad(submesh, a - la * inner + upA, a - la * half, b - lb * half, b - lb * inner + upB);
 	}
 
 	// an elevated piece or a ramp: top, sides down to the underside (or the ground on a low ramp), parapets,

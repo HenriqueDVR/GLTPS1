@@ -201,8 +201,8 @@ public class RoadPlanTests
 		{
 			Assert.GreaterOrEqual(p.HeightA, 0.0);
 			Assert.LessOrEqual(p.HeightA, RoadPlan.DeckHeight);
-			// ramps no steeper than deck height over ramp length
-			Assert.LessOrEqual(Math.Abs(p.HeightB - p.HeightA), p.A.DistanceTo(p.B) * RoadPlan.DeckHeight / RoadPlan.RampLength + 1e-9);
+			// ramps no steeper than their steady middle part
+			Assert.LessOrEqual(Math.Abs(p.HeightB - p.HeightA), p.A.DistanceTo(p.B) * RoadPlan.DeckHeight / (RoadPlan.RampLength * (1.0 - RoadPlan.RampEase)) + 1e-9);
 			if (p.BrokenA || p.BrokenB)
 			{
 				Assert.AreEqual(RoadKind.Highway, p.Kind);
@@ -227,8 +227,8 @@ public class RoadPlanTests
 				if (p.Kind == RoadKind.Street)
 				{
 					streets++;
-					// a street belongs to the district at its middle, its ends can poke past the edge
-					outside += plan.Def.Districts[plan.DistrictAt(mid.X, mid.Z)].Roads == DistrictRoads.Streets ? 0 : 1;
+					// streets stop at their district's edge
+					outside += plan.Def.Districts[plan.DistrictAt(p.A.X, p.A.Z)].Roads == DistrictRoads.Streets && plan.Def.Districts[plan.DistrictAt(p.B.X, p.B.Z)].Roads == DistrictRoads.Streets ? 0 : 1;
 				}
 				if (p.Kind == RoadKind.Track)
 				{
@@ -236,7 +236,7 @@ public class RoadPlanTests
 				}
 			}
 			Assert.Greater(streets, 0, "layer " + plan.Layer);
-			Assert.Less(outside, streets / 20, "layer " + plan.Layer);
+			Assert.AreEqual(0, outside, "layer " + plan.Layer);
 			if (plan.Layer == 0)
 			{
 				Assert.Greater(tracks, 0, "the fields have buried roads");
@@ -296,8 +296,8 @@ public class RoadPlanTests
 	[Test]
 	public void GoldenValues()
 	{
-		Assert.AreEqual(0xb3a1123bfebcbab5uL, Fold(Layer0(), -12, -12, 24), "layer 0 roads");
-		Assert.AreEqual(0x9e40b869c498b283uL, Fold(Layer1(), 50, -20, 12), "layer 1 roads");
+		Assert.AreEqual(0x7e9988be1bf0d720uL, Fold(Layer0(), -12, -12, 24), "layer 0 roads");
+		Assert.AreEqual(0xe1ad0c110a791f3duL, Fold(Layer1(), 50, -20, 12), "layer 1 roads");
 		Assert.AreEqual(0x843116a825c27decuL, Layer0().Roads.Hash(new XZ(6000.0, 2500.0), 2));
 	}
 

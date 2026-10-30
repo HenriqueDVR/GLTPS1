@@ -110,7 +110,11 @@ public sealed class RoadPlan
 
 	public const double DeckHeight = 9.0;
 
-	public const double RampLength = 96.0;
+	public const double RampLength = 128.0;
+
+	// share of the ramp at each end that eases in and out, so the slope doesn't start in one step.
+	// the steepest part is DeckHeight / (RampLength * (1 - RampEase)), 9.4%
+	public const double RampEase = 0.25;
 
 	public const double GapLength = 24.0;
 
@@ -349,9 +353,23 @@ public sealed class RoadPlan
 		{
 			return 0.0;
 		}
-		double up = (s - from) / RampLength;
-		double down = (to - s) / RampLength;
-		return DeckHeight * Math.Min(1.0, Math.Min(up, down));
+		double u = Math.Min((s - from) / RampLength, (to - s) / RampLength);
+		if (u >= 1.0)
+		{
+			return DeckHeight;
+		}
+		// slope rises evenly over the ease, steady in the middle, eases off at the top
+		double m = 1.0 / (1.0 - RampEase);
+		if (u < RampEase)
+		{
+			return DeckHeight * m * u * u / (2.0 * RampEase);
+		}
+		if (u <= 1.0 - RampEase)
+		{
+			return DeckHeight * m * (u - RampEase * 0.5);
+		}
+		double rest = 1.0 - u;
+		return DeckHeight * (1.0 - m * rest * rest / (2.0 * RampEase));
 	}
 
 	// false when the piece lies inside the circle, else moves the end that does onto its edge
@@ -489,13 +507,13 @@ public sealed class RoadPlan
 					bool onV = Street(district, k, j, 1);
 					if (onU)
 					{
-						StreetPieces(tile, corner, Corner(grid, k + 1, j), grid.U, pieces);
+						StreetPieces(tile, district, corner, Corner(grid, k + 1, j), grid.U, pieces);
 					}
 					if (onV)
 					{
-						StreetPieces(tile, corner, Corner(grid, k, j + 1), grid.V, pieces);
+						StreetPieces(tile, district, corner, Corner(grid, k, j + 1), grid.V, pieces);
 					}
-					if (tile.Contains(corner) && !NearPillar(corner, PillarClearance + StreetWidth) && (onU || onV || Street(district, k - 1, j, 0) || Street(district, k, j - 1, 1)))
+					if (tile.Contains(corner) && !NearPillar(corner, PillarClearance + StreetWidth) && Inside(district, new XZ(corner.X - grid.U.X * StreetWidth * 0.5, corner.Z - grid.U.Z * StreetWidth * 0.5), new XZ(corner.X + grid.U.X * StreetWidth * 0.5, corner.Z + grid.U.Z * StreetWidth * 0.5), grid.U, StreetWidth * 0.5) && (onU || onV || Street(district, k - 1, j, 0) || Street(district, k, j - 1, 1)))
 					{
 						patches.Add(new RoadPatch { Kind = RoadKind.Street, Center = corner, Size = StreetWidth * 0.5, Axis = grid.U });
 					}
@@ -504,8 +522,9 @@ public sealed class RoadPlan
 		}
 	}
 
-	// a straight street between two crossings, stopping at their squares, cut into pieces
-	private void StreetPieces(Rect tile, XZ from, XZ to, XZ dir, List<RoadPiece> pieces)
+	// a straight street between two crossings, stopping at their squares, cut into pieces.
+	// a piece poking out of its district is left out: streets stop at the edge, where another grid starts
+	private void StreetPieces(Rect tile, int district, XZ from, XZ to, XZ dir, List<RoadPiece> pieces)
 	{
 		double half = StreetWidth * 0.5;
 		XZ a = new XZ(from.X + dir.X * half, from.Z + dir.Z * half);
@@ -519,11 +538,19 @@ public sealed class RoadPlan
 			XZ pa = new XZ(a.X + (b.X - a.X) * t0, a.Z + (b.Z - a.Z) * t0);
 			XZ pb = new XZ(a.X + (b.X - a.X) * t1, a.Z + (b.Z - a.Z) * t1);
 			XZ mid = Mid(pa, pb);
-			if (tile.Contains(mid) && !NearPillar(mid, PillarClearance + StreetWidth * 0.5))
+			if (tile.Contains(mid) && !NearPillar(mid, PillarClearance + StreetWidth * 0.5) && Inside(district, pa, pb, dir, half))
 			{
 				pieces.Add(new RoadPiece { Kind = RoadKind.Street, A = pa, B = pb, TangentA = dir, TangentB = dir, Width = StreetWidth, Index = i });
 			}
 		}
+	}
+
+	// the four corners of the strip from a to b, half wide either side, all in the district
+	private bool Inside(int district, XZ a, XZ b, XZ dir, double half)
+	{
+		double sx = -dir.Z * half;
+		double sz = dir.X * half;
+		return plan.DistrictAt(a.X + sx, a.Z + sz) == district && plan.DistrictAt(a.X - sx, a.Z - sz) == district && plan.DistrictAt(b.X + sx, b.Z + sz) == district && plan.DistrictAt(b.X - sx, b.Z - sz) == district;
 	}
 
 	// ---- buried roads
