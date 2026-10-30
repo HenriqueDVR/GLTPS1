@@ -4,7 +4,7 @@ using System.Diagnostics;
 using UnityEngine;
 
 // world gen v2: 128m tiles around both girls, nearest first, a couple of ms a frame, pooled when out of reach.
-// a tile is placeholder flat ground tinted by district, its roads (RoadMesh), its lots' buildings and rubble (LotMesh)
+// a tile is placeholder flat snow ground, its roads (RoadMesh), its lots' buildings and rubble (LotMesh)
 // and its props from the WorldKit: small landmarks, street lamps, item spawners.
 // everything is in layout coords (world + TotalOffset)
 public class TileStreamer : MonoBehaviour
@@ -19,16 +19,6 @@ public class TileStreamer : MonoBehaviour
 	private const float refreshInterval = 0.25f;
 
 	private const float thickness = 2f;
-
-	private static readonly Color[] districtColors =
-	{
-		new Color(0.78f, 0.80f, 0.82f),
-		new Color(0.55f, 0.52f, 0.45f),
-		new Color(0.45f, 0.55f, 0.60f),
-		new Color(0.62f, 0.58f, 0.70f),
-		new Color(0.70f, 0.62f, 0.48f),
-		new Color(0.50f, 0.62f, 0.50f)
-	};
 
 	public LayerPlan Plan { get; private set; }
 
@@ -96,8 +86,6 @@ public class TileStreamer : MonoBehaviour
 
 	private readonly List<RoadPatch> otherPatches = new List<RoadPatch>();
 
-	private MaterialPropertyBlock block;
-
 	// made here at runtime, destroyed with the streamer (never the loaded assets)
 	private readonly List<Material> made = new List<Material>();
 
@@ -147,13 +135,16 @@ public class TileStreamer : MonoBehaviour
 			}
 		}
 		Shader lit = Shader.Find("Universal Render Pipeline/Lit");
-		material = (lit != null) ? Made(new Material(lit)) : floor;
-		if (lit != null)
+		// one snow for every district, Resources/Ground/Snow
+		material = Resources.Load<Material>("Ground/Snow");
+		if (material == null)
 		{
-			// matte, like snow
-			material.SetFloat("_Smoothness", 0.1f);
+			material = (lit != null) ? Made(new Material(lit)) : floor;
+			if (lit != null)
+			{
+				material.SetFloat("_Smoothness", 0.1f);
+			}
 		}
-		block = new MaterialPropertyBlock();
 		roadMaterials = new Material[RoadMesh.SubmeshCount];
 		for (int i = 0; i < roadMaterials.Length; i++)
 		{
@@ -495,11 +486,6 @@ public class TileStreamer : MonoBehaviour
 		tile.transform.SetPositionAndRotation(new Vector3(x * size, groundY, z * size) - Offset(), Quaternion.identity);
 		// active before the collider gets its mesh: a collider in an inactive pooled tile drops it
 		tile.SetActive(true);
-		int district = Plan.DistrictAt((x + 0.5) * Gen2.TileSize, (z + 0.5) * Gen2.TileSize);
-		Color color = districtColors[district % districtColors.Length];
-		block.SetColor("_BaseColor", color);
-		block.SetColor("_Color", color);
-		tile.transform.GetChild(0).GetComponent<Renderer>().SetPropertyBlock(block);
 		GameObject roads = tile.transform.GetChild(1).gameObject;
 		Plan.Roads.Collect(x, z, pieces, patches);
 		Mesh mesh = roads.GetComponent<MeshFilter>().sharedMesh;
