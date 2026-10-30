@@ -616,6 +616,7 @@ public class TileStreamer : MonoBehaviour
 				return false;
 			case 3:
 				lotMesh.Begin();
+				Lanes(x, z);
 				lotMesh.AddLots(lots, 0, lots.Count / 2, Plan.Def.Districts, Plan.Def.Ruin, x * Gen2.TileSize, z * Gen2.TileSize);
 				return false;
 			case 4:
@@ -625,6 +626,7 @@ public class TileStreamer : MonoBehaviour
 				Scatter(x, z);
 				PlaceCables(x, z);
 				PlaceViaducts(x, z);
+				PlaceRaised(x, z);
 				DressVoids(x, z);
 				job.AnyLots = lotMesh.End(tile.transform.GetChild(2).GetComponent<MeshFilter>().sharedMesh);
 				return false;
@@ -942,13 +944,85 @@ public class TileStreamer : MonoBehaviour
 					if (Gen2.Cell(middle.X, size) == x && Gen2.Cell(middle.Z, size) == z)
 					{
 						bool arch = PierStands(pier) && PierStands(viaduct.At((k + 1) * ViaductPlan.Bay));
-						lotMesh.AddBay(new Vector3((float)pier.X, 0f, (float)pier.Z) - corner, along, (float)viaduct.Height, arch);
+						lotMesh.AddBay(new Vector3((float)pier.X, 0f, (float)pier.Z) - corner, along, (float)viaduct.HeightAt(k * ViaductPlan.Bay), (float)viaduct.HeightAt((k + 1) * ViaductPlan.Bay), arch);
 					}
 				}
-				if (Gen2.Cell(pier.X, size) == x && Gen2.Cell(pier.Z, size) == z && PierStands(pier))
+				// up the ramps the deck stands on a wall, not piers
+				float height = (float)viaduct.HeightAt(k * ViaductPlan.Bay);
+				if (Gen2.Cell(pier.X, size) == x && Gen2.Cell(pier.Z, size) == z && height >= RoadPlan.ArchFrom && PierStands(pier))
 				{
-					lotMesh.AddPier(new Vector3((float)pier.X, 0f, (float)pier.Z) - corner, along, (float)viaduct.Height);
+					lotMesh.AddPier(new Vector3((float)pier.X, 0f, (float)pier.Z) - corner, along, height);
 				}
+			}
+		}
+	}
+
+	// the decks round the tile buildings mustn't reach into: raised street pieces and viaducts, tile-local
+	private void Lanes(int x, int z)
+	{
+		lotMesh.Lanes.Clear();
+		Vector3 corner = new Vector3((float)(x * Gen2.TileSize), 0f, (float)(z * Gen2.TileSize));
+		for (int dx = -1; dx <= 1; dx++)
+		{
+			for (int dz = -1; dz <= 1; dz++)
+			{
+				foreach (RoadPiece piece in PiecesOf(x + dx, z + dz))
+				{
+					if (piece.HeightA > 0.3 || piece.HeightB > 0.3)
+					{
+						lotMesh.Lanes.Add(new LotMesh.Lane { A = Local(piece.A, corner), B = Local(piece.B, corner), Half = (float)piece.Width * 0.5f, HA = (float)piece.HeightA, HB = (float)piece.HeightB });
+					}
+				}
+			}
+		}
+		XZ middle = new XZ((x + 0.5) * Gen2.TileSize, (z + 0.5) * Gen2.TileSize);
+		Plan.Viaducts.Near(middle.X, middle.Z, viaducts);
+		foreach (Viaduct viaduct in viaducts)
+		{
+			if (RoadPlan.SegmentDistance(middle, viaduct.A, viaduct.B) > Gen2.TileSize * 1.5)
+			{
+				continue;
+			}
+			for (double s = 0.0; s < viaduct.Length; s += ViaductPlan.Bay * 2.0)
+			{
+				double e = System.Math.Min(viaduct.Length, s + ViaductPlan.Bay * 2.0);
+				XZ a = viaduct.At(s);
+				XZ b = viaduct.At(e);
+				if (RoadPlan.SegmentDistance(middle, a, b) < Gen2.TileSize * 1.2)
+				{
+					lotMesh.Lanes.Add(new LotMesh.Lane { A = Local(a, corner), B = Local(b, corner), Half = (float)ViaductPlan.Width * 0.5f, HA = (float)viaduct.HeightAt(s), HB = (float)viaduct.HeightAt(e) });
+				}
+			}
+		}
+	}
+
+	// arches, piers, girders and walls under the tile's raised street pieces. over a void it's a girder, nothing stands there
+	private void PlaceRaised(int x, int z)
+	{
+		Vector3 corner = new Vector3((float)(x * Gen2.TileSize), 0f, (float)(z * Gen2.TileSize));
+		foreach (RoadPiece piece in pieces)
+		{
+			if (piece.Arch == RoadPlan.ArchNone)
+			{
+				continue;
+			}
+			Vector3 a = Local(piece.A, corner);
+			Vector3 b = Local(piece.B, corner);
+			Vector3 along = (b - a).normalized;
+			float half = (float)piece.Width * 0.5f;
+			int mode = piece.Arch;
+			if (mode != RoadPlan.ArchGirder && (Plan.Chasms.Inside(piece.A.X, piece.A.Z) > -2.0 || Plan.Chasms.Inside(piece.B.X, piece.B.Z) > -2.0))
+			{
+				mode = RoadPlan.ArchGirder;
+			}
+			lotMesh.AddStreetUnder(a, b, (float)piece.HeightA, (float)piece.HeightB, half, mode);
+			if (mode == RoadPlan.ArchPier || mode == RoadPlan.ArchPiers)
+			{
+				lotMesh.AddStreetPier(a, along, (float)piece.HeightA, half);
+			}
+			if (mode == RoadPlan.ArchPiers)
+			{
+				lotMesh.AddStreetPier(b, along, (float)piece.HeightB, half);
 			}
 		}
 	}
@@ -1062,7 +1136,7 @@ public class TileStreamer : MonoBehaviour
 		tall = 0f;
 		bool street = piece.Kind == RoadKind.Street;
 		int every = street ? 3 : 4;
-		if (piece.Kind == RoadKind.Highway || piece.Index % every != 0)
+		if (piece.Kind == RoadKind.Highway || piece.Index % every != 0 || piece.HeightA > 0.3 || piece.HeightB > 0.3)
 		{
 			return false;
 		}
@@ -1158,7 +1232,7 @@ public class TileStreamer : MonoBehaviour
 		}
 		foreach (RoadPiece piece in pieces)
 		{
-			if (piece.Kind != RoadKind.Street || piece.Index % 2 != 0)
+			if (piece.Kind != RoadKind.Street || piece.Index % 2 != 0 || piece.HeightA > 0.3 || piece.HeightB > 0.3)
 			{
 				continue;
 			}

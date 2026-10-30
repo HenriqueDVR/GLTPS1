@@ -17,6 +17,35 @@ public struct Viaduct
 
 	public double Length => A.DistanceTo(B);
 
+	// the ramps at the ends rise this much a metre at most, about what the ket climbs
+	public const double Grade = 0.065;
+
+	// the deck's height s metres from A: ramps down to the deck at both ends, eased like the roads'
+	public double HeightAt(double s)
+	{
+		double ramp = Height / Grade;
+		double u = Math.Min(s, Length - s) / ramp;
+		if (u <= 0.0)
+		{
+			return 0.0;
+		}
+		if (u >= 1.0)
+		{
+			return Height;
+		}
+		double m = 1.0 / (1.0 - RoadPlan.RampEase);
+		if (u < RoadPlan.RampEase)
+		{
+			return Height * m * u * u / (2.0 * RoadPlan.RampEase);
+		}
+		if (u <= 1.0 - RoadPlan.RampEase)
+		{
+			return Height * m * (u - RoadPlan.RampEase * 0.5);
+		}
+		double rest = 1.0 - u;
+		return Height * (1.0 - m * rest * rest / (2.0 * RoadPlan.RampEase));
+	}
+
 	public XZ At(double s)
 	{
 		double t = s / Length;
@@ -24,7 +53,8 @@ public struct Viaduct
 	}
 }
 
-// world gen v2: arched viaducts, aqueduct-like, running high over and between the blocks (13, look of the source).
+// world gen v2: arched viaducts, aqueduct-like, running high over and between the blocks (13, look of the source),
+// ramps at both ends down to the deck so the ket can drive them.
 // at most one per region cell, a district's share of cells (DistrictDef.Viaducts), kept clear of the pillars and
 // the start. lots leave their corridor free; roads pass under the arches. a pure function of (layer seed, cell)
 public sealed class ViaductPlan
@@ -82,6 +112,11 @@ public sealed class ViaductPlan
 		viaduct.CellX = cellX;
 		viaduct.CellZ = cellZ;
 		if (RoadPlan.SegmentDistance(plan.Origin, viaduct.A, viaduct.B) < RoadPlan.StartClearance + Width)
+		{
+			return false;
+		}
+		// its ramps come down on solid deck
+		if (plan.Chasms.Inside(viaduct.A.X, viaduct.A.Z) > -20.0 || plan.Chasms.Inside(viaduct.B.X, viaduct.B.Z) > -20.0)
 		{
 			return false;
 		}

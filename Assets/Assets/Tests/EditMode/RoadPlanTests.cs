@@ -200,6 +200,11 @@ public class RoadPlanTests
 		foreach (RoadPiece p in Area(plan, -30, -30, 60))
 		{
 			Assert.GreaterOrEqual(p.HeightA, 0.0);
+			// raised streets have their own heights and ramps (RaisedStreets)
+			if (p.Kind == RoadKind.Street)
+			{
+				continue;
+			}
 			Assert.LessOrEqual(p.HeightA, RoadPlan.DeckHeight);
 			// ramps no steeper than their steady middle part
 			Assert.LessOrEqual(Math.Abs(p.HeightB - p.HeightA), p.A.DistanceTo(p.B) * RoadPlan.DeckHeight / (RoadPlan.RampLength * (1.0 - RoadPlan.RampEase)) + 1e-9);
@@ -296,8 +301,8 @@ public class RoadPlanTests
 	[Test]
 	public void GoldenValues()
 	{
-		Assert.AreEqual(0x9a01d62f1c4261aauL, Fold(Layer0(), -12, -12, 24), "layer 0 roads");
-		Assert.AreEqual(0x2465049bf4b38e76uL, Fold(Layer1(), 50, -20, 12), "layer 1 roads");
+		Assert.AreEqual(0x37dd66f1c43abf3duL, Fold(Layer0(), -12, -12, 24), "layer 0 roads");
+		Assert.AreEqual(0x3caa433b1191b874uL, Fold(Layer1(), 50, -20, 12), "layer 1 roads");
 		Assert.AreEqual(0x843116a825c27decuL, Layer0().Roads.Hash(new XZ(6000.0, 2500.0), 2));
 	}
 
@@ -311,5 +316,32 @@ public class RoadPlanTests
 			hash = (hash ^ c) * 1099511628211uL;
 		}
 		return hash;
+	}
+
+	// the raised city: whole runs of street on arches in the dense districts, ramps the ket can climb
+	[Test]
+	public void RaisedStreets()
+	{
+		List<RoadPiece> pieces = Area(Layer0(), 20, 12, 16);
+		int high = 0;
+		foreach (RoadPiece piece in pieces)
+		{
+			if (piece.Kind != RoadKind.Street)
+			{
+				continue;
+			}
+			double length = piece.A.DistanceTo(piece.B);
+			Assert.LessOrEqual(System.Math.Abs(piece.HeightB - piece.HeightA) / length, 0.11, "ramp too steep at " + piece.A);
+			if (System.Math.Min(piece.HeightA, piece.HeightB) >= RoadPlan.RaisedMin - 0.01)
+			{
+				high++;
+				Assert.AreNotEqual(RoadPlan.ArchNone, piece.Arch);
+			}
+			if (piece.HeightA < 0.01 && piece.HeightB < 0.01)
+			{
+				Assert.AreEqual(RoadPlan.ArchNone, piece.Arch);
+			}
+		}
+		Assert.Greater(high, 60);
 	}
 }

@@ -38,6 +38,9 @@ public struct RoadPiece
 
 	// sample index along its road, supports go under the even ones
 	public int Index;
+
+	// a raised street's piece (RoadPlan.Arch*): what stands under it
+	public int Arch;
 }
 
 // a flat junction: a square street crossing, or the round apron around a pillar
@@ -202,6 +205,47 @@ public sealed class RoadPlan
 	private readonly Dictionary<(int, int, int, int), Curve> curves = new Dictionary<(int, int, int, int), Curve>();
 
 	private readonly HashSet<int> districts = new HashSet<int>();
+
+	// ---- raised streets (01, the raised city): in a dense district some runs of a U street climb onto arches,
+	// RaisedRamp blocks of ramp at each end and flat in between, cross streets passing under. cached, pure
+	public const int RaisedRun = 12;
+
+	public const int RaisedRamp = 3;
+
+	public const double RaisedMin = 9.0;
+
+	public const double RaisedMax = 13.0;
+
+	// a cross street meeting the raised one where it's lower than this is cut there
+	public const double RaisedClear = 5.5;
+
+	// what stands under a raised piece: nothing (on the ground), a wall (still low), a girder (over a crossing),
+	// an arch from a pier at A, an arch with a pier at each end (the last before a crossing)
+	public const int ArchNone = 0;
+
+	public const int ArchWall = 1;
+
+	public const int ArchGirder = 2;
+
+	public const int ArchPier = 3;
+
+	public const int ArchPiers = 4;
+
+	// under this the deck is walled in, not arched
+	public const double ArchFrom = 6.0;
+
+	private struct RaisedLine
+	{
+		public bool Up;
+
+		public int From;
+
+		public int To;
+
+		public double Height;
+	}
+
+	private readonly Dictionary<(int, int, int), RaisedLine> raised = new Dictionary<(int, int, int), RaisedLine>();
 
 	public RoadPlan(LayerPlan plan)
 	{
@@ -449,6 +493,169 @@ public sealed class RoadPlan
 		return new XZ(grid.Origin.X + grid.U.X * u + grid.V.X * v, grid.Origin.Z + grid.U.Z * u + grid.V.Z * v);
 	}
 
+	// the run of line j that block k is in, raised or not
+	private RaisedLine Raised(int district, int j, int k)
+	{
+		int run = (int)Math.Floor((double)k / RaisedRun);
+		if (raised.TryGetValue((district, j, run), out RaisedLine line))
+		{
+			return line;
+		}
+		if (raised.Count > 8192)
+		{
+			raised.Clear();
+		}
+		DistrictDef def = plan.Def.Districts[district];
+		Grid grid = grids[district];
+		WorldRandom random = new WorldRandom(WorldRandom.Derive(grid.Seed, Gen2.StreamRaised, Gen2.Pack(j, run)));
+		double roll = Gen2.Unit(random.NextULong());
+		int offset = random.Next(3);
+		int length = 2 * RaisedRamp + 2 + random.Next(RaisedRun - offset - 2 * RaisedRamp - 1);
+		line.Height = RaisedMin + Gen2.Unit(random.NextULong()) * (RaisedMax - RaisedMin);
+		line.From = run * RaisedRun + offset;
+		line.To = line.From + length;
+		line.Up = def.Roads == DistrictRoads.Streets && roll < def.Raised;
+		// all of it in the district and clear, or none of it: a raised street never ends in the air
+		double half = def.StreetWidth * 0.5;
+		for (int b = line.From; b < line.To && line.Up; b++)
+		{
+			XZ a = Corner(grid, b, j);
+			XZ c = Corner(grid, b + 1, j);
+			XZ mid = Mid(a, c);
+			line.Up = plan.DistrictAt(mid.X, mid.Z) == district && !NearPillar(mid, PillarClearance + StreetSpacing * 0.5) && !InClearance(mid) && !InClearance(a) && !InClearance(c) && Inside(district, a, c, grid.U, half) && !HighwayInTheWay(line, a, c, b, half) && !ViaductInTheWay(line, a, c, b);
+		}
+		raised[(district, j, run)] = line;
+		return line;
+	}
+
+	// an expressway crossing block b of the line (from a to c) where the two are closer in height than a clear storey:
+	// a raised street goes over a ground one, never through an elevated one or across one on its ramp
+	private bool HighwayInTheWay(RaisedLine line, XZ a, XZ c, int b, double half)
+	{
+		double reach = HighwayWidth * 0.5 + half;
+		Rect around = new Rect { X0 = Math.Min(a.X, c.X) - reach, Z0 = Math.Min(a.Z, c.Z) - reach, X1 = Math.Max(a.X, c.X) + reach, Z1 = Math.Max(a.Z, c.Z) + reach };
+		XZ mid = Mid(a, c);
+		int cx = Gen2.Cell(mid.X, HighwayCell);
+		int cz = Gen2.Cell(mid.Z, HighwayCell);
+		for (int x = cx - 2; x <= cx + 1; x++)
+		{
+			for (int z = cz - 2; z <= cz + 1; z++)
+			{
+				for (int d = 0; d < 2; d++)
+				{
+					if (!Highway(x, z, d == 1, out HighwayLink link) || !CurveTouches(around, link.P0, link.C1, link.C2, link.P1, PillarClearance + HighwayWidth))
+					{
+						continue;
+					}
+					Sample(0, link.CellX, link.CellZ, link.North ? 1 : 0, link.P0, link.C1, link.C2, link.P1, PillarClearance + HighwayWidth * 0.5);
+					double length = along[along.Count - 1];
+					for (int i = 0; i + 1 < points.Count; i++)
+					{
+						// alongside and close counts as in the way too, buildings and arches would meet its deck
+						bool cross = Crossing(a, c, points[i], points[i + 1], out double s, out double t);
+						if (!cross && SegmentDistance(points[i], a, c) > reach)
+						{
+							continue;
+						}
+						double highway = link.Elevated ? Deck(along[i] + (along[i + 1] - along[i]) * t, link.ElevatedFrom * length, link.ElevatedTo * length) : 0.0;
+						double raisedThere = cross ? Height(line, b + s) : Math.Max(Height(line, b), Height(line, b + 1));
+						if (Math.Abs(highway - raisedThere) < RaisedClear + 1.0 || (!cross && highway > 0.3))
+						{
+							return true;
+						}
+					}
+				}
+			}
+		}
+		return false;
+	}
+
+	// a viaduct crossing block b of the line (from a to c) closer in height than a clear storey
+	private bool ViaductInTheWay(RaisedLine line, XZ a, XZ c, int b)
+	{
+		plan.Viaducts.Near((a.X + c.X) * 0.5, (a.Z + c.Z) * 0.5, viaducts);
+		foreach (Viaduct viaduct in viaducts)
+		{
+			if (!Crossing(a, c, viaduct.A, viaduct.B, out double s, out double t))
+			{
+				continue;
+			}
+			double raisedThere = Height(line, b + s);
+			if (Math.Abs(viaduct.HeightAt(t * viaduct.Length) - raisedThere) < RaisedClear + ViaductPlan.Width * 0.5)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private readonly List<Viaduct> viaducts = new List<Viaduct>();
+
+	// where segments p0-p1 and q0-q1 cross, as shares along each
+	private static bool Crossing(XZ p0, XZ p1, XZ q0, XZ q1, out double s, out double t)
+	{
+		double rx = p1.X - p0.X;
+		double rz = p1.Z - p0.Z;
+		double qx = q1.X - q0.X;
+		double qz = q1.Z - q0.Z;
+		double d = rx * qz - rz * qx;
+		s = t = 0.0;
+		if (Math.Abs(d) < 1e-9)
+		{
+			return false;
+		}
+		double wx = q0.X - p0.X;
+		double wz = q0.Z - p0.Z;
+		s = (wx * qz - wz * qx) / d;
+		t = (wx * rz - wz * rx) / d;
+		return s >= -0.05 && s <= 1.05 && t >= 0.0 && t <= 1.0;
+	}
+
+	// deck height of line j at t blocks along it (t = k + share of block k), 0 where it's on the ground
+	public double RaisedHeight(int district, int j, double t)
+	{
+		RaisedLine line = Raised(district, j, (int)Math.Floor(t));
+		return line.Up ? Height(line, t) : 0.0;
+	}
+
+	private static double Height(RaisedLine line, double t)
+	{
+		if (t <= line.From || t >= line.To)
+		{
+			return 0.0;
+		}
+		double u = Math.Min(t - line.From, line.To - t) / RaisedRamp;
+		if (u >= 1.0)
+		{
+			return line.Height;
+		}
+		// eased like the expressway ramps: the slope builds up, holds, eases off at the top
+		double m = 1.0 / (1.0 - RampEase);
+		if (u < RampEase)
+		{
+			return line.Height * m * u * u / (2.0 * RampEase);
+		}
+		if (u <= 1.0 - RampEase)
+		{
+			return line.Height * m * (u - RampEase * 0.5);
+		}
+		double rest = 1.0 - u;
+		return line.Height * (1.0 - m * rest * rest / (2.0 * RampEase));
+	}
+
+	private bool RaisedBlock(int district, int j, int k)
+	{
+		RaisedLine line = Raised(district, j, k);
+		return line.Up && k >= line.From && k < line.To;
+	}
+
+	// the raised street passes corner (k, j) too low to go under
+	private bool LowCorner(int district, int k, int j)
+	{
+		double h = RaisedHeight(district, j, k);
+		return h > 0.3 && h < RaisedClear;
+	}
+
 	// the street from corner (k, j) to (k + 1, j) for axis 0, to (k, j + 1) for axis 1
 	public bool Street(int district, int k, int j, int axis)
 	{
@@ -458,6 +665,14 @@ public sealed class RoadPlan
 			return false;
 		}
 		Grid grid = grids[district];
+		if (axis == 0 && RaisedBlock(district, j, k))
+		{
+			return true;
+		}
+		if (axis == 1 && (LowCorner(district, k, j) || LowCorner(district, k, j + 1)))
+		{
+			return false;
+		}
 		if (Gen2.Unit(WorldRandom.Derive(grid.Seed, Gen2.StreamStreetKeep + (ulong)axis, Gen2.Pack(k, j))) >= def.StreetKeep)
 		{
 			return false;
@@ -517,7 +732,11 @@ public sealed class RoadPlan
 					double width = plan.Def.Districts[district].StreetWidth;
 					bool onU = Street(district, k, j, 0);
 					bool onV = Street(district, k, j, 1);
-					if (onU)
+					if (onU && RaisedBlock(district, j, k))
+					{
+						RaisedPieces(tile, district, k, j, corner, Corner(grid, k + 1, j), grid.U, width, pieces);
+					}
+					else if (onU)
 					{
 						StreetPieces(tile, district, corner, Corner(grid, k + 1, j), grid.U, width, pieces);
 					}
@@ -554,6 +773,39 @@ public sealed class RoadPlan
 			{
 				pieces.Add(new RoadPiece { Kind = RoadKind.Street, A = pa, B = pb, TangentA = dir, TangentB = dir, Width = width, Index = i });
 			}
+		}
+	}
+
+	// a block of raised street: on from crossing to crossing where it's off the ground, so the deck runs on over
+	// them; stopping at the square like any street where it's still on the ground
+	private void RaisedPieces(Rect tile, int district, int k, int j, XZ from, XZ to, XZ dir, double width, List<RoadPiece> pieces)
+	{
+		double half = width * 0.5;
+		double block = from.DistanceTo(to);
+		bool groundA = RaisedHeight(district, j, k) < 0.3;
+		bool groundB = RaisedHeight(district, j, k + 1) < 0.3;
+		double s0 = groundA ? half : 0.0;
+		double s1 = groundB ? block - half : block;
+		int n = Math.Max(1, (int)Math.Ceiling((s1 - s0) / PieceLength));
+		for (int i = 0; i < n; i++)
+		{
+			double sa = s0 + (s1 - s0) * i / n;
+			double sb = s0 + (s1 - s0) * (i + 1) / n;
+			XZ pa = new XZ(from.X + dir.X * sa, from.Z + dir.Z * sa);
+			XZ pb = new XZ(from.X + dir.X * sb, from.Z + dir.Z * sb);
+			if (!tile.Contains(Mid(pa, pb)))
+			{
+				continue;
+			}
+			double ha = RaisedHeight(district, j, k + sa / block);
+			double hb = RaisedHeight(district, j, k + sb / block);
+			int arch = ArchNone;
+			if (Math.Max(ha, hb) > 0.5)
+			{
+				// the first and last piece of a block span the crossings, on girders
+				arch = (Math.Min(ha, hb) < ArchFrom) ? ArchWall : (i == 0 && !groundA) ? ArchGirder : (i == n - 1 && !groundB) ? ArchGirder : (i == n - 2) ? ArchPiers : ArchPier;
+			}
+			pieces.Add(new RoadPiece { Kind = RoadKind.Street, A = pa, B = pb, TangentA = dir, TangentB = dir, Width = width, HeightA = ha, HeightB = hb, Index = i, Arch = arch });
 		}
 	}
 

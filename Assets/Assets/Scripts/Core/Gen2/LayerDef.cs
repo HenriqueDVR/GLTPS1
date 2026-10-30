@@ -102,4 +102,7 @@ public sealed class DistrictDef
 	public double StreetWidth = 10.0;
 
 	public double Sidewalk = 3.0;
+
+	// share of runs of a street line lifted onto arches (raised city, RoadPlan)
+	public double Raised;
 }

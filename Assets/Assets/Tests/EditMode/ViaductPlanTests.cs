@@ -130,4 +130,20 @@ public class ViaductPlanTests
 		}
 		Assert.AreEqual(0x8e90dcf141939a6buL, hash, "layer 0 viaducts");
 	}
+
+	// ramps at both ends land on the deck, no steeper than the ket climbs
+	[Test]
+	public void RampsToTheDeck()
+	{
+		foreach (Viaduct viaduct in All(Layer0(), 6))
+		{
+			Assert.AreEqual(0.0, viaduct.HeightAt(0.0), 1e-9);
+			Assert.AreEqual(0.0, viaduct.HeightAt(viaduct.Length), 1e-9);
+			Assert.AreEqual(viaduct.Height, viaduct.HeightAt(viaduct.Length * 0.5), 1e-9);
+			for (double s = 0.0; s + 1.0 <= viaduct.Length; s += 1.0)
+			{
+				Assert.LessOrEqual(System.Math.Abs(viaduct.HeightAt(s + 1.0) - viaduct.HeightAt(s)), Viaduct.Grade * 1.4);
+			}
+		}
+	}
 }

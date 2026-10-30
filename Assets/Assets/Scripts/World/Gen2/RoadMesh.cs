@@ -196,7 +196,8 @@ public class RoadMesh
 			Quad(concrete, topA - la * inner, topA - la * inner + Vector3.up * rise, topB - lb * inner + Vector3.up * rise, topB - lb * inner);
 			Quad(concrete, topA - la * inner + Vector3.up * rise, topA - la * half + Vector3.up * rise, topB - lb * half + Vector3.up * rise, topB - lb * inner + Vector3.up * rise);
 		}
-		if (!span && piece.Index % 2 == 0 && piece.HeightA > supportFrom)
+		// raised streets stand on arches (TileStreamer), not columns
+		if (!span && piece.Kind != RoadKind.Street && piece.Index % 2 == 0 && piece.HeightA > supportFrom)
 		{
 			Box(a + Vector3.up * (ba * 0.5f), ta, new Vector3(supportSize, ba, supportSize) * 0.5f);
 		}

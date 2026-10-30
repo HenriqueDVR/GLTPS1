@@ -119,9 +119,27 @@ public class LotMesh
 			BuildingStyle style = districts[lot.District].Style;
 			float share = (style == BuildingStyle.Ruin) ? 0.25f : (style == BuildingStyle.Industrial) ? 0f : 0.35f;
 			int first = vertices.Count;
-			if (!(Unit() < share && Harvested(Buildings, centre, u, hu, hv, concrete, 0.6f)))
+			// on a podium the building stands on the plate, clear of the strip its stairs go up
+			float side = (Unit() < 0.5f) ? 1f : -1f;
+			Vector3 at = centre;
+			float bu = hu;
+			float bv = hv;
+			if (lot.Base > 0.0)
 			{
-				Building(style, centre, u, hu, hv, lot.Floors, ruin);
+				Vector3 across = Left((hu >= hv) ? u : Left(u)) * side;
+				at = centre - across * 1.3f;
+				if (hu >= hv)
+				{
+					bv -= 1.3f;
+				}
+				else
+				{
+					bu -= 1.3f;
+				}
+			}
+			if (!(Unit() < share && Harvested(Buildings, at, u, bu, bv, concrete, 0.6f)))
+			{
+				Building(style, at, u, bu, bv, lot.Floors, ruin);
 			}
 			if (lot.Base > 0.0)
 			{
@@ -131,7 +149,7 @@ public class LotMesh
 			float roof = Top(first);
 			if (lot.Base > 0.0)
 			{
-				Podium(centre, u, hu, hv, (float)lot.Base);
+				Podium(centre, u, hu, hv, (float)lot.Base, side);
 			}
 			double stacking = districts[lot.District].Stacking;
 			if (style != BuildingStyle.Industrial && Unit() < stacking)
@@ -144,6 +162,53 @@ public class LotMesh
 		{
 			Bridges();
 		}
+	}
+
+	// decks near the tile, tile-local (raised streets, viaducts): nothing of a building reaches into the space over
+	// them. set by the streamer before AddLots
+	public struct Lane
+	{
+		public Vector3 A;
+
+		public Vector3 B;
+
+		public float Half;
+
+		// deck heights at A and B
+		public float HA;
+
+		public float HB;
+	}
+
+	public readonly List<Lane> Lanes = new List<Lane>();
+
+	// whether a box (centre, axis, half sizes, y0..y1) gets into a lane's space: its deck and a storey over it
+	private bool InLane(Vector3 centre, Vector3 u, float hu, float hv, float y0, float y1)
+	{
+		Vector3 v = Left(u);
+		foreach (Lane lane in Lanes)
+		{
+			float length = Vector3.Distance(lane.A, lane.B);
+			int steps = Mathf.Max(1, Mathf.CeilToInt(length / 2f));
+			for (int i = 0; i <= steps; i++)
+			{
+				float t = (float)i / steps;
+				float deck = Mathf.Lerp(lane.HA, lane.HB, t);
+				if (y1 < deck - 2f || y0 > deck + 6f)
+				{
+					continue;
+				}
+				Vector3 p = Vector3.Lerp(lane.A, lane.B, t) - centre;
+				float du = Mathf.Abs(p.x * u.x + p.z * u.z) - hu;
+				float dv = Mathf.Abs(p.x * v.x + p.z * v.z) - hv;
+				float outside = new Vector2(Mathf.Max(du, 0f), Mathf.Max(dv, 0f)).magnitude;
+				if (outside < lane.Half + 0.5f)
+				{
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	// building lots of the tile so far: middle (x, z), roof (y), the district's stacking (w)
@@ -161,7 +226,8 @@ public class LotMesh
 	}
 
 	// blocks piled on the roof, each smaller or bigger than the one under it, shifted, sometimes turned a little or
-	// hanging out over the street: the city builds on itself for want of room (13, look of the source).
+	// hanging out over the street, cantilevered (no legs: they'd stand in the alley): the city builds on itself for
+	// want of room (13, look of the source).
 	// gives the new roof
 	private float Stack(Vector3 centre, Vector3 u, float hu, float hv, float roof, int count)
 	{
@@ -173,6 +239,14 @@ public class LotMesh
 			float sv = Mathf.Clamp(hv * Range(0.45f, 1.15f), 4f, hv + 5f);
 			Vector3 at = centre + u * (Range(-0.35f, 0.35f) * hu) + Left(u) * (Range(-0.35f, 0.35f) * hv);
 			int floors = 2 + random.Next(6);
+			if (InLane(at, axis, su + 1f, sv + 1f, roof - 1f, roof + floors * FloorHeight + 6f))
+			{
+				// over a deck: it stays on its own roof, square with the one under it
+				axis = u;
+				at = centre;
+				su = Mathf.Min(su, hu * 0.9f);
+				sv = Mathf.Min(sv, hv * 0.9f);
+			}
 			// a slab under it, so where it hangs out it has an underside
 			Box(at, axis, su, sv, roof - 0.6f, roof + 0.3f, concrete, concrete, true);
 			int first = vertices.Count;
@@ -185,13 +259,6 @@ public class LotMesh
 				Slab(at, axis, su, sv, floors);
 			}
 			Raise(first, roof);
-			// a big overhang gets a leg or two down to the ground
-			if (su > hu + 2f || sv > hv + 2f)
-			{
-				Vector3 corner = at + axis * su * 0.9f + Left(axis) * sv * 0.9f;
-				Box(corner, axis, 0.7f, 0.7f, -sink, roof, concrete, concrete, false);
-				Box(at - axis * su * 0.9f + Left(axis) * sv * 0.9f, axis, 0.7f, 0.7f, -sink, roof, concrete, concrete, false);
-			}
 			roof = Mathf.Max(roof, Top(first));
 		}
 		return roof;
@@ -235,6 +302,10 @@ public class LotMesh
 			Vector3 along = (to - from).normalized;
 			Vector3 mid = (from + to) * 0.5f;
 			float width = 1.4f + (float)Gen2.Unit(roll >> 15) * 1.4f;
+			if (InLane(mid, along, near * 0.5f, width, y, y + 3.4f))
+			{
+				continue;
+			}
 			Box(mid, along, near * 0.5f, width, y, y + 3.4f, concrete, concrete, true);
 			Box(mid, along, near * 0.5f - 0.2f, width + 0.05f, y + 1.3f, y + 2.3f, dark, dark, false);
 		}
@@ -279,15 +350,17 @@ public class LotMesh
 	}
 
 	// the raised plate a podium lot stands on, its cornice, and stairs up one long side, on the sidewalk
-	private void Podium(Vector3 centre, Vector3 u, float hu, float hv, float height)
+	private void Podium(Vector3 centre, Vector3 u, float hu, float hv, float height, float side)
 	{
-		Box(centre, u, hu, hv, -sink, height, concrete, concrete, false);
-		Box(centre, u, hu + 0.3f, hv + 0.3f, height - 0.8f, height, concrete, concrete, false);
 		Vector3 along = (hu >= hv) ? u : Left(u);
 		float length = Mathf.Max(hu, hv);
 		float depth = Mathf.Min(hu, hv);
-		float side = (Unit() < 0.5f) ? 1f : -1f;
-		Vector3 out_ = Left(along) * side * (depth + 1.3f);
+		// the plate leaves a strip of the lot for the stairs, so they never stand in the street
+		Vector3 across = Left(along) * side;
+		Vector3 plate = centre - across * 1.3f;
+		Box(plate, along, length, depth - 1.3f, -sink, height, concrete, concrete, false);
+		Box(plate, along, length + 0.3f, depth - 1.0f, height - 0.8f, height, concrete, concrete, false);
+		Vector3 out_ = across * (depth - 1.2f);
 		int steps = Mathf.CeilToInt(height / stairRise);
 		for (int k = 0; k < steps; k++)
 		{
@@ -305,6 +378,10 @@ public class LotMesh
 	// a block on a stilt standing up out of a void: its body from top down, the stilt on down into the dark
 	public void AddStiltTower(Vector3 centre, Vector3 u, float half, float top, float body, ulong seed)
 	{
+		if (InLane(centre, u, half, half, top - body - 4f, top + 6f))
+		{
+			return;
+		}
 		random = new WorldRandom(seed);
 		int floors = Mathf.Max(4, Mathf.RoundToInt(body / FloorHeight));
 		int first = vertices.Count;
@@ -524,7 +601,11 @@ public class LotMesh
 			float d = Range(2f, 5f);
 			float y = Range(height * 0.35f, height - 4f);
 			float x = Range(-half + w * 0.5f, half - w * 0.5f);
-			Box(face + along * x + normal * (d * 0.5f), along, w * 0.5f, d * 0.5f, y, y + Range(3f, 7f), concrete, concrete, true);
+			float top = y + Range(3f, 7f);
+			if (!InLane(face + along * x + normal * (d * 0.5f), along, w * 0.5f, d * 0.5f, y, top))
+			{
+				Box(face + along * x + normal * (d * 0.5f), along, w * 0.5f, d * 0.5f, y, top, concrete, concrete, true);
+			}
 		}
 	}
 
@@ -746,13 +827,16 @@ public class LotMesh
 		}
 	}
 
-	// ---- viaducts (ViaductPlan)
+	// ---- viaducts (ViaductPlan) and raised streets (RoadPlan)
 
 	private const float deckThickness = 1.5f;
 
+	// RoadMesh's deck slab
+	private const float roadDeck = 1.2f;
+
 	private const int archSteps = 8;
 
-	// a pier standing on the ground under the deck, centred on at
+	// a viaduct pier standing on the ground under the deck, centred on at
 	public void AddPier(Vector3 at, Vector3 along, float height)
 	{
 		float half = (float)ViaductPlan.PierWidth * 0.5f;
@@ -762,46 +846,111 @@ public class LotMesh
 		Box(at, along, half + 0.25f, w + 0.25f, -sink, 1f, concrete, concrete, false);
 	}
 
-	// one bay of deck from start along the viaduct, its parapets, and under it a semicircular arch between the piers,
-	// or a plain girder if a pier's missing (a road runs there)
-	public void AddBay(Vector3 start, Vector3 along, float height, bool arch)
+	// one bay of viaduct deck from start along it, rising from hA to hB (its ramps), cornice and parapets, and under
+	// it an arch between the piers, a girder where a pier's missing, or a wall where the ramp is still low
+	public void AddBay(Vector3 start, Vector3 along, float hA, float hB, bool arch)
 	{
 		float bay = (float)ViaductPlan.Bay;
 		float w = (float)ViaductPlan.Width * 0.5f;
 		Vector3 v = Left(along);
-		Vector3 mid = start + along * (bay * 0.5f);
-		float bottom = height - deckThickness;
-		Box(mid, along, bay * 0.5f, w, bottom, height, concrete, concrete, true);
-		// cornice under the deck's edge, parapets on top
-		Box(mid, along, bay * 0.5f, w + 0.35f, bottom - 0.5f, bottom, concrete, concrete, true);
-		Box(mid + v * (w - 0.25f), along, bay * 0.5f, 0.25f, height, height + 1.1f, concrete, concrete, false);
-		Box(mid - v * (w - 0.25f), along, bay * 0.5f, 0.25f, height, height + 1.1f, concrete, concrete, false);
+		Vector3 end = start + along * bay;
+		Sloped(concrete, start, end, w, hA - deckThickness, hA, hB - deckThickness, hB);
+		Sloped(concrete, start, end, w + 0.35f, hA - deckThickness - 0.5f, hA - deckThickness, hB - deckThickness - 0.5f, hB - deckThickness);
+		Sloped(concrete, start + v * (w - 0.25f), end + v * (w - 0.25f), 0.25f, hA, hA + 1.1f, hB, hB + 1.1f);
+		Sloped(concrete, start - v * (w - 0.25f), end - v * (w - 0.25f), 0.25f, hA, hA + 1.1f, hB, hB + 1.1f);
+		float underA = hA - deckThickness - 0.5f;
+		float underB = hB - deckThickness - 0.5f;
 		float pier = (float)ViaductPlan.PierWidth * 0.5f;
-		float from = pier;
-		float to = bay - pier;
-		float crown = bottom - 0.5f;
-		if (!arch)
+		int mode = (Mathf.Max(hA, hB) < 0.3f) ? RoadPlan.ArchNone : (Mathf.Min(hA, hB) < (float)RoadPlan.ArchFrom) ? RoadPlan.ArchWall : arch ? RoadPlan.ArchPier : RoadPlan.ArchGirder;
+		AddUnder(start, end, underA, underB, w, mode, pier, pier);
+	}
+
+	// a raised street's pier at a, up to under the deck, half as wide as the street
+	public void AddStreetPier(Vector3 at, Vector3 along, float deck, float half)
+	{
+		Box(at, along, 1f, half - 0.2f, -sink, deck - roadDeck, concrete, concrete, false);
+	}
+
+	// what stands under a raised street's piece from a to b, its deck at hA and hB (RoadPlan.Arch*)
+	public void AddStreetUnder(Vector3 a, Vector3 b, float hA, float hB, float half, int mode)
+	{
+		AddUnder(a, b, hA - roadDeck, hB - roadDeck, half - 0.2f, mode, 1f, 1f);
+	}
+
+	// under a deck from a to b whose underside is at underA and underB: a wall down to the ground, a girder, or an
+	// arch between piers inset from the ends
+	private void AddUnder(Vector3 a, Vector3 b, float underA, float underB, float half, int mode, float insetA, float insetB)
+	{
+		Vector3 along = b - a;
+		along.y = 0f;
+		float length = along.magnitude;
+		along /= Mathf.Max(length, 0.001f);
+		Vector3 v = Left(along);
+		switch (mode)
 		{
-			Box(mid, along, (to - from) * 0.5f, w, crown - 2.5f, crown, concrete, concrete, true);
-			return;
+			case RoadPlan.ArchWall:
+				if (Mathf.Max(underA, underB) > 0.2f)
+				{
+					Sloped(concrete, a, b, half, -sink, Mathf.Max(underA, 0.1f), -sink, Mathf.Max(underB, 0.1f));
+				}
+				return;
+			case RoadPlan.ArchGirder:
+				Sloped(concrete, a, b, half * 0.8f, underA - 1.4f, underA, underB - 1.4f, underB);
+				return;
+			case RoadPlan.ArchPier:
+			case RoadPlan.ArchPiers:
+				break;
+			default:
+				return;
 		}
+		float from = insetA;
+		float to = length - insetB;
 		float radius = (to - from) * 0.5f;
-		float spring = crown - 1f - radius;
+		float low = Mathf.Min(underA, underB) - 0.8f;
+		float spring = Mathf.Max(1f, low - radius);
+		// a flatter arch where there isn't room for a round one
+		float rise = Mathf.Max(0.5f, Mathf.Min(radius, low - spring));
 		for (int i = 0; i < archSteps; i++)
 		{
 			float a0 = Mathf.PI * i / archSteps;
 			float a1 = Mathf.PI * (i + 1) / archSteps;
-			Vector3 p0 = start + along * (from + radius * (1f - Mathf.Cos(a0))) + Vector3.up * (spring + radius * Mathf.Sin(a0));
-			Vector3 p1 = start + along * (from + radius * (1f - Mathf.Cos(a1))) + Vector3.up * (spring + radius * Mathf.Sin(a1));
-			Vector3 q0 = new Vector3(p0.x, crown, p0.z);
-			Vector3 q1 = new Vector3(p1.x, crown, p1.z);
-			// the spandrel walls on both faces, the arch's underside between them
-			Quad(concrete, p0 + v * w, p1 + v * w, q1 + v * w, q0 + v * w, v);
-			Quad(concrete, p0 - v * w, p1 - v * w, q1 - v * w, q0 - v * w, -v);
-			Vector3 middle = start + along * (from + radius) + Vector3.up * spring;
-			Vector3 inward = ((middle - (p0 + p1) * 0.5f).normalized);
-			Quad(concrete, p0 + v * w, p1 + v * w, p1 - v * w, p0 - v * w, inward);
+			float s0 = from + radius * (1f - Mathf.Cos(a0));
+			float s1 = from + radius * (1f - Mathf.Cos(a1));
+			Vector3 p0 = a + along * s0 + Vector3.up * (spring + rise * Mathf.Sin(a0));
+			Vector3 p1 = a + along * s1 + Vector3.up * (spring + rise * Mathf.Sin(a1));
+			Vector3 q0 = new Vector3(p0.x, Mathf.Lerp(underA, underB, s0 / length), p0.z);
+			Vector3 q1 = new Vector3(p1.x, Mathf.Lerp(underA, underB, s1 / length), p1.z);
+			Quad(concrete, p0 + v * half, p1 + v * half, q1 + v * half, q0 + v * half, v);
+			Quad(concrete, p0 - v * half, p1 - v * half, q1 - v * half, q0 - v * half, -v);
+			Vector3 middle = a + along * (from + radius) + Vector3.up * spring;
+			Quad(concrete, p0 + v * half, p1 + v * half, p1 - v * half, p0 - v * half, (middle - (p0 + p1) * 0.5f).normalized);
 		}
+	}
+
+	// a slab from a to b (their y ignored), half wide, underside and top sloping from the a end to the b end
+	private void Sloped(int submesh, Vector3 a, Vector3 b, float half, float bottomA, float topA, float bottomB, float topB)
+	{
+		Vector3 along = b - a;
+		along.y = 0f;
+		along.Normalize();
+		Vector3 v = Left(along) * half;
+		Vector3 a0 = new Vector3(a.x, 0f, a.z);
+		Vector3 b0 = new Vector3(b.x, 0f, b.z);
+		Vector3 aLB = a0 - v + Vector3.up * bottomA;
+		Vector3 aRB = a0 + v + Vector3.up * bottomA;
+		Vector3 aLT = a0 - v + Vector3.up * topA;
+		Vector3 aRT = a0 + v + Vector3.up * topA;
+		Vector3 bLB = b0 - v + Vector3.up * bottomB;
+		Vector3 bRB = b0 + v + Vector3.up * bottomB;
+		Vector3 bLT = b0 - v + Vector3.up * topB;
+		Vector3 bRT = b0 + v + Vector3.up * topB;
+		Vector3 side = v.normalized;
+		Quad(submesh, aRB, bRB, bRT, aRT, side);
+		Quad(submesh, aLB, bLB, bLT, aLT, -side);
+		Quad(submesh, aLT, aRT, bRT, bLT, Vector3.up);
+		Quad(submesh, aLB, aRB, bRB, bLB, Vector3.down);
+		Quad(submesh, aLB, aRB, aRT, aLT, -along);
+		Quad(submesh, bLB, bRB, bRT, bLT, along);
 	}
 
 	// ---- harvested pieces
