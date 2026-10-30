@@ -70,6 +70,7 @@ public class GameSession : MonoBehaviour
 				Add<PillarStreamer>().Init(world.Plan, tiles, floatingOrigin, world.PillarPrefab);
 				gameObject.AddComponent<DistantPillar>();
 			}
+			Add<SafeGround>().Init(world.Plan, tiles, floatingOrigin);
 			// an endless world needs it, v1 never goes far enough
 			if (floatingOrigin != null)
 			{
