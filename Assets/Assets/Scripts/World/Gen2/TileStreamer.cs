@@ -86,6 +86,16 @@ public class TileStreamer : MonoBehaviour
 
 	private readonly List<RoadPatch> patches = new List<RoadPatch>();
 
+	// road pieces by tile, so a wire can reach the next pole in the neighbouring tile (pure data, cleared when big)
+	private readonly Dictionary<long, RoadPiece[]> pieceCache = new Dictionary<long, RoadPiece[]>();
+
+	// street and buried-road pieces around the tile by their start, to walk along a road
+	private readonly Dictionary<XZ, RoadPiece> chain = new Dictionary<XZ, RoadPiece>();
+
+	private readonly List<RoadPiece> otherPieces = new List<RoadPiece>();
+
+	private readonly List<RoadPatch> otherPatches = new List<RoadPatch>();
+
 	private MaterialPropertyBlock block;
 
 	// made here at runtime, destroyed with the streamer (never the loaded assets)
@@ -530,6 +540,7 @@ public class TileStreamer : MonoBehaviour
 		lotMesh.Begin();
 		lotMesh.AddLots(lots, Plan.Def.Districts, Plan.Def.Ruin, x * Gen2.TileSize, z * Gen2.TileSize);
 		Scatter(x, z);
+		PlaceCables(x, z);
 		bool anyLots = lotMesh.End(lotsMesh);
 		built.SetActive(anyLots);
 		MeshCollider lotsCollider = built.GetComponent<MeshCollider>();
@@ -728,6 +739,88 @@ public class TileStreamer : MonoBehaviour
 			}
 			lotMesh.AddDebris(kind, new Vector3((float)(at.X - x * size), 0f, (float)(at.Z - z * size)), seed);
 		}
+	}
+
+	// utility poles along streets (sides taking turns, so the wires cross the street) and along buried roads,
+	// each with a wire to the next pole down the road
+	private void PlaceCables(int x, int z)
+	{
+		if (pieceCache.Count > 4096)
+		{
+			pieceCache.Clear();
+		}
+		pieceCache[Key(x, z)] = pieces.ToArray();
+		chain.Clear();
+		for (int dx = -1; dx <= 1; dx++)
+		{
+			for (int dz = -1; dz <= 1; dz++)
+			{
+				foreach (RoadPiece other in PiecesOf(x + dx, z + dz))
+				{
+					if (other.Kind != RoadKind.Highway)
+					{
+						chain[other.A] = other;
+					}
+				}
+			}
+		}
+		Vector3 corner = new Vector3((float)(x * Gen2.TileSize), 0f, (float)(z * Gen2.TileSize));
+		foreach (RoadPiece piece in pieces)
+		{
+			if (!PoleAt(piece, out Vector3 at, out Vector3 across, out float tall))
+			{
+				continue;
+			}
+			lotMesh.AddPole(at - corner, tall, across);
+			RoadPiece next = piece;
+			bool found = true;
+			int every = (piece.Kind == RoadKind.Street) ? 3 : 4;
+			for (int k = 0; k < every && found; k++)
+			{
+				found = chain.TryGetValue(next.B, out next);
+			}
+			if (found && PoleAt(next, out Vector3 to, out _, out float nextTall))
+			{
+				float sag = 0.6f + 0.6f * (float)Gen2.Unit(WorldRandom.Derive(Plan.LayerSeed, Gen2.StreamLot + 7, Gen2.Pack((int)System.Math.Round(piece.A.X * 10.0), (int)System.Math.Round(piece.A.Z * 10.0))));
+				lotMesh.AddCable(at - corner + Vector3.up * (tall - 0.5f), to - corner + Vector3.up * (nextTall - 0.5f), sag);
+			}
+		}
+	}
+
+	private RoadPiece[] PiecesOf(int x, int z)
+	{
+		long key = Key(x, z);
+		if (!pieceCache.TryGetValue(key, out RoadPiece[] found))
+		{
+			Plan.Roads.Collect(x, z, otherPieces, otherPatches);
+			found = otherPieces.ToArray();
+			pieceCache[key] = found;
+		}
+		return found;
+	}
+
+	// whether a pole stands by this piece: every third street piece, every fourth on a buried road, a district's share
+	private bool PoleAt(RoadPiece piece, out Vector3 at, out Vector3 across, out float tall)
+	{
+		at = across = Vector3.zero;
+		tall = 0f;
+		bool street = piece.Kind == RoadKind.Street;
+		int every = street ? 3 : 4;
+		if (piece.Kind == RoadKind.Highway || piece.Index % every != 0)
+		{
+			return false;
+		}
+		XZ mid = new XZ((piece.A.X + piece.B.X) * 0.5, (piece.A.Z + piece.B.Z) * 0.5);
+		ulong roll = WorldRandom.Derive(Plan.LayerSeed, Gen2.StreamLot + 6, Gen2.Pack((int)System.Math.Round(mid.X * 10.0), (int)System.Math.Round(mid.Z * 10.0)));
+		if (Gen2.Unit(roll) >= Plan.Def.Districts[Plan.DistrictAt(mid.X, mid.Z)].Cables)
+		{
+			return false;
+		}
+		float side = (!street || (piece.Index / every) % 2 == 0) ? 1f : -1f;
+		across = new Vector3((float)-piece.TangentA.Z, 0f, (float)piece.TangentA.X);
+		at = new Vector3((float)mid.X, 0f, (float)mid.Z) + across * (side * ((float)piece.Width * 0.5f + (street ? 2.5f : 3f)));
+		tall = street ? 8.5f : 7f;
+		return true;
 	}
 
 	private bool Blocked(XZ p, double clear)

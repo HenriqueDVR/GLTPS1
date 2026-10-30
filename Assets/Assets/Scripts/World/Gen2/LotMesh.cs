@@ -138,6 +138,26 @@ public class LotMesh
 		}
 	}
 
+	// a utility pole with a crossbar along across, its wires hang from top
+	public void AddPole(Vector3 at, float tall, Vector3 across)
+	{
+		Beam(at - Vector3.up * sink, at + Vector3.up * tall, 0.12f, dark);
+		Beam(at + Vector3.up * (tall - 0.5f) - across * 1.1f, at + Vector3.up * (tall - 0.5f) + across * 1.1f, 0.07f, dark);
+	}
+
+	// a wire sagging between two points
+	public void AddCable(Vector3 a, Vector3 b, float sag)
+	{
+		Vector3 previous = a;
+		for (int i = 1; i <= 6; i++)
+		{
+			float t = i / 6f;
+			Vector3 p = Vector3.Lerp(a, b, t) - Vector3.up * (sag * 4f * t * (1f - t));
+			Beam(previous, p, 0.035f, dark);
+			previous = p;
+		}
+	}
+
 	public bool End(Mesh mesh)
 	{
 		mesh.Clear();

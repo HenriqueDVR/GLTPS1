@@ -79,4 +79,7 @@ public sealed class DistrictDef
 	public double Lamps;
 
 	public BuildingStyle Style;
+
+	// share of street and buried-road stretches with utility poles and wires
+	public double Cables = 0.5;
 }
