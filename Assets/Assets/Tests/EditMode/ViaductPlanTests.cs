@@ -128,6 +128,6 @@ public class ViaductPlanTests
 		{
 			hash = (hash ^ c) * 1099511628211uL;
 		}
-		Assert.AreEqual(0xaf091f7065950cc2uL, hash, "layer 0 viaducts");
+		Assert.AreEqual(0x8e90dcf141939a6buL, hash, "layer 0 viaducts");
 	}
 }

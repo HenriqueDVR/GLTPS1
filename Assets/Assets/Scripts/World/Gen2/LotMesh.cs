@@ -646,8 +646,8 @@ public class LotMesh
 		float half = (float)ViaductPlan.PierWidth * 0.5f;
 		float w = (float)ViaductPlan.Width * 0.5f;
 		Box(at, along, half, w, -sink, height - deckThickness, concrete, concrete, false);
-		// a plinth, and an impost where the arches spring
-		Box(at, along, half + 0.4f, w + 0.4f, -sink, 1.2f, concrete, concrete, false);
+		// a plinth
+		Box(at, along, half + 0.25f, w + 0.25f, -sink, 1f, concrete, concrete, false);
 	}
 
 	// one bay of deck from start along the viaduct, its parapets, and under it a semicircular arch between the piers,

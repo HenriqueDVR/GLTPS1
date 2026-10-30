@@ -31,13 +31,15 @@ public sealed class ViaductPlan
 {
 	public const double Width = 8.0;
 
-	public const double Bay = 24.0;
+	// narrow bays on slim piers, so the openings stand tall like the source's, not squat like a roman aqueduct
+	public const double Bay = 13.0;
 
-	public const double PierWidth = 4.0;
+	public const double PierWidth = 2.4;
 
-	public const double MinLength = 700.0;
+	// longer than a region cell, but under two so the 3x3 round a point still finds every one
+	public const double MinLength = 1000.0;
 
-	public const double MaxLength = 1600.0;
+	public const double MaxLength = 2600.0;
 
 	public const double MinHeight = 16.0;
 
