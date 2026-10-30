@@ -127,8 +127,8 @@ public sealed class RoadPlan
 	// junctions and sites stay this far from pillars, so a detour never moves a road's ends
 	public const double PillarGap = 300.0;
 
-	// nothing around the layer origin, the start room stands there
-	public const double StartClearance = 50.0;
+	// nothing around the layer origin, the start tunnel's embankment stands there (OriginTunnel, about 120 by 160 m)
+	public const double StartClearance = 110.0;
 
 	// streets: blocks of 64-128 m, the grid tilted up to about 20 degrees per district
 	public const double StreetSpacing = 96.0;

@@ -77,8 +77,12 @@ public class WorldGenerator : MonoBehaviour
 		GenVersion = ChooseGenVersion();
 		if (GenVersion == 2)
 		{
-			// the start node stays as the starting room, layer 0's origin is where it stands
-			Plan = new LayerPlan(Seed, 0, new XZ(rootPose.position.x, rootPose.position.z), null);
+			// the girls start in the episode 01 tunnel, built where they stand in the scene. layer 0's origin is
+			// the middle of its embankment. the start node stays for its scripts, its walkway goes
+			Vector3 girls = (Girls.Chito != null) ? Girls.Chito.transform.position : node.transform.position;
+			girls.y = node.transform.position.y;
+			Vector3 centre = OriginTunnel.Centre(girls + Offset(), node.transform.rotation);
+			Plan = new LayerPlan(Seed, 0, new XZ(centre.x, centre.z), null);
 			// roads too, so peers on different road code see the mismatch warning
 			ulong planHash = Plan.PlanHash(Plan.Origin, 1) ^ Plan.Roads.Hash(Plan.Origin, 1);
 			LayoutHash = (uint)(planHash ^ (planHash >> 32));
@@ -88,6 +92,7 @@ public class WorldGenerator : MonoBehaviour
 #endif
 			SeedItemSpawners(node.gameObject, 0uL);
 			node.MarkPlaced();
+			OriginTunnel.Build(node, girls, node.transform.rotation);
 			return;
 		}
 		Layout = BuildLayout(node, nodeData, rootPose, Seed);
