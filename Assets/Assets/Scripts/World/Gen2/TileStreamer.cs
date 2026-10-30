@@ -4,7 +4,8 @@ using System.Diagnostics;
 using UnityEngine;
 
 // world gen v2: 128m tiles around both girls, nearest first, a couple of ms a frame, pooled when out of reach.
-// a tile is placeholder flat ground tinted by district, its roads (RoadMesh) and its lots' buildings and rubble (LotMesh).
+// a tile is placeholder flat ground tinted by district, its roads (RoadMesh), its lots' buildings and rubble (LotMesh)
+// and the small landmarks from the WorldKit.
 // everything is in layout coords (world + TotalOffset)
 public class TileStreamer : MonoBehaviour
 {
@@ -62,6 +63,17 @@ public class TileStreamer : MonoBehaviour
 	private readonly LotMesh lotMesh = new LotMesh();
 
 	private readonly List<Lot> lots = new List<Lot>();
+
+	private WorldKit kit;
+
+	// each landmark's size in its own orientation, and from its pivot to the middle of its base
+	private Vector3[] landmarkSizes;
+
+	private Vector3[] landmarkBases;
+
+	private readonly List<int> placed = new List<int>();
+
+	private readonly List<int> pieceOf = new List<int>();
 
 	private readonly List<RoadPiece> pieces = new List<RoadPiece>();
 
@@ -149,6 +161,7 @@ public class TileStreamer : MonoBehaviour
 			wall.SetFloat("_Smoothness", 0.1f);
 		}
 		lotMaterials = new[] { (wall != null) ? wall : floor, roadMaterials[2] };
+		MeasureLandmarks();
 #if DUMP_WORLDGEN
 		string[] args = System.Environment.GetCommandLineArgs();
 		int at = System.Array.IndexOf(args, "-gen2run");
@@ -469,10 +482,22 @@ public class TileStreamer : MonoBehaviour
 		}
 		GameObject built = tile.transform.GetChild(2).gameObject;
 		Plan.Lots.Collect(x, z, lots);
-		// no landmarks yet: their lots are open ground
+		// a landmark lot with no landmark that fits is open ground
+		placed.Clear();
+		pieceOf.Clear();
 		for (int i = 0; i < lots.Count; i++)
 		{
-			if (lots[i].Kind == LotKind.Landmark)
+			if (lots[i].Kind != LotKind.Landmark)
+			{
+				continue;
+			}
+			int piece = PickLandmark(lots[i]);
+			if (piece >= 0)
+			{
+				placed.Add(i);
+				pieceOf.Add(piece);
+			}
+			else
 			{
 				Lot open = lots[i];
 				open.Kind = LotKind.Open;
@@ -488,6 +513,15 @@ public class TileStreamer : MonoBehaviour
 		{
 			lotsCollider.sharedMesh = lotsMesh;
 		}
+		Transform props = tile.transform.GetChild(3);
+		for (int i = props.childCount - 1; i >= 0; i--)
+		{
+			Destroy(props.GetChild(i).gameObject);
+		}
+		for (int i = 0; i < placed.Count; i++)
+		{
+			PlaceLandmark(lots[placed[i]], pieceOf[i], props);
+		}
 #if DUMP_WORLDGEN
 		builtTiles++;
 		roadTriangles += roadMesh.Triangles;
@@ -497,7 +531,7 @@ public class TileStreamer : MonoBehaviour
 		return tile;
 	}
 
-	// root at the tile's corner on the deck: child 0 the ground slab, child 1 the roads, child 2 the lots
+	// root at the tile's corner on the deck: child 0 the ground slab, child 1 the roads, child 2 the lots, child 3 the props
 	private GameObject NewTile()
 	{
 		float size = (float)Gen2.TileSize;
@@ -524,6 +558,122 @@ public class TileStreamer : MonoBehaviour
 		lotsMesh.MarkDynamic();
 		built.GetComponent<MeshFilter>().sharedMesh = lotsMesh;
 		built.GetComponent<MeshRenderer>().sharedMaterials = lotMaterials;
+		new GameObject("props").transform.SetParent(tile.transform, false);
 		return tile;
+	}
+
+	// once at the start: how big each landmark is, standing as its model stands
+	private void MeasureLandmarks()
+	{
+		kit = WorldKit.Load();
+		int count = (kit != null && kit.Landmarks != null) ? kit.Landmarks.Length : 0;
+		landmarkSizes = new Vector3[count];
+		landmarkBases = new Vector3[count];
+		for (int i = 0; i < count; i++)
+		{
+			GameObject model = kit.Landmarks[i].Model;
+			if (model == null)
+			{
+				continue;
+			}
+			GameObject probe = Instantiate(model, Vector3.zero, model.transform.rotation);
+			probe.transform.localScale = model.transform.lossyScale;
+			Bounds bounds = new Bounds(Vector3.zero, Vector3.zero);
+			bool any = false;
+			foreach (Renderer renderer in probe.GetComponentsInChildren<Renderer>())
+			{
+				if (any)
+				{
+					bounds.Encapsulate(renderer.bounds);
+				}
+				else
+				{
+					bounds = renderer.bounds;
+					any = true;
+				}
+			}
+			landmarkSizes[i] = bounds.size;
+			landmarkBases[i] = new Vector3(bounds.center.x, bounds.min.y, bounds.center.z);
+			probe.SetActive(false);
+			Destroy(probe);
+		}
+	}
+
+	// a landmark allowed in the lot's district that fits it either way round, weighted, from the lot's seed. -1 if none
+	private int PickLandmark(Lot lot)
+	{
+		if (kit == null || landmarkSizes.Length == 0)
+		{
+			return -1;
+		}
+		string district = Plan.Def.Districts[lot.District].Id;
+		float total = 0f;
+		for (int i = 0; i < landmarkSizes.Length; i++)
+		{
+			total += Fits(lot, i, district) ? kit.Landmarks[i].Weight : 0f;
+		}
+		if (total <= 0f)
+		{
+			return -1;
+		}
+		float pick = (float)Gen2.Unit(WorldRandom.Derive(lot.Seed, Gen2.StreamLot, 8uL)) * total;
+		for (int i = 0; i < landmarkSizes.Length; i++)
+		{
+			if (!Fits(lot, i, district))
+			{
+				continue;
+			}
+			pick -= kit.Landmarks[i].Weight;
+			if (pick < 0f)
+			{
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	private bool Fits(Lot lot, int i, string district)
+	{
+		WorldKit.Landmark landmark = kit.Landmarks[i];
+		if (landmark.Model == null || !landmark.Allows(district))
+		{
+			return false;
+		}
+		float u = (float)lot.HalfU * 2f - 2f;
+		float v = (float)lot.HalfV * 2f - 2f;
+		Vector3 size = landmarkSizes[i];
+		return (size.x <= u && size.z <= v) || (size.z <= u && size.x <= v);
+	}
+
+	// in the middle of the lot on the deck, along the lot's axis (turned a quarter if it only fits that way, else either way round)
+	private void PlaceLandmark(Lot lot, int i, Transform props)
+	{
+		WorldKit.Landmark landmark = kit.Landmarks[i];
+		Vector3 size = landmarkSizes[i];
+		float u = (float)lot.HalfU * 2f - 2f;
+		float v = (float)lot.HalfV * 2f - 2f;
+		bool straight = size.x <= u && size.z <= v;
+		bool turned = size.z <= u && size.x <= v;
+		ulong choice = WorldRandom.Derive(lot.Seed, Gen2.StreamLot, 9uL);
+		float yaw = Mathf.Atan2((float)lot.Axis.Z, (float)lot.Axis.X) * -Mathf.Rad2Deg;
+		yaw += (straight && turned) ? (choice % 4uL) * 90f : straight ? (choice % 2uL) * 180f : 90f + (choice % 2uL) * 180f;
+		Quaternion turn = Quaternion.Euler(0f, yaw, 0f);
+		Vector3 centre = new Vector3((float)lot.Center.X, groundY, (float)lot.Center.Z) - Offset();
+		GameObject instance = Instantiate(landmark.Model, props);
+		instance.transform.localScale = landmark.Model.transform.lossyScale;
+		instance.transform.SetPositionAndRotation(centre - turn * landmarkBases[i], turn * landmark.Model.transform.rotation);
+		foreach (MeshFilter filter in instance.GetComponentsInChildren<MeshFilter>())
+		{
+			if (filter.GetComponent<Collider>() == null && filter.sharedMesh != null)
+			{
+				filter.gameObject.AddComponent<MeshCollider>().sharedMesh = filter.sharedMesh;
+			}
+			filter.gameObject.layer = groundLayer;
+		}
+		if (landmark.Extra != null)
+		{
+			Instantiate(landmark.Extra, instance.transform.TransformPoint(landmark.ExtraPosition), instance.transform.rotation * landmark.ExtraRotation, props);
+		}
+		GraphicsTuning.Adopt(instance);
 	}
 }

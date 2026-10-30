@@ -1,0 +1,67 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5eea94eac9bfdbe44ab110c41b8fb78a, type: 3}
+  m_Name: WorldKit
+  m_EditorClassIdentifier: 
+  Landmarks:
+  - Id: tank
+    Model: {fileID: 919132149155446097, guid: b379992ab87d90b419351e5ee929f31a, type: 3}
+    Districts:
+    - war
+    - fields
+    - breakdown
+    Weight: 2
+    Extra: {fileID: 0}
+    ExtraPosition: {x: 0, y: 0, z: 0}
+    ExtraRotation: {x: 0, y: 0, z: 0, w: 1}
+  - Id: fuel_station
+    Model: {fileID: 144858924214827908, guid: 79469148192924f4cbb95d03841c529f, type: 3}
+    Districts:
+    - laundry
+    - kanazawa
+    - city
+    - streetlights
+    - photo
+    - dwelling
+    - rain
+    Weight: 1
+    Extra: {fileID: 1519434099505275005, guid: 592d59c9ae869a346a33128aecbb0deb, type: 3}
+    ExtraPosition: {x: -24.158005, y: 13.975002, z: -6.2619987}
+    ExtraRotation: {x: -0.0000001109862, y: 0.70710707, z: 0.00000011098628, w: -0.7071066}
+  - Id: crane
+    Model: {fileID: -5023694379553316422, guid: f9c91ae519c53c5489ea41b496746aaf,
+      type: 3}
+    Districts:
+    - pipes
+    - laundry
+    - kanazawa
+    - city
+    - technology
+    - temple
+    Weight: 1
+    Extra: {fileID: 0}
+    ExtraPosition: {x: 0, y: 0, z: 0}
+    ExtraRotation: {x: 0, y: 0, z: 0, w: 1}
+  - Id: pipe_frame
+    Model: {fileID: 8393997531462662198, guid: f9c91ae519c53c5489ea41b496746aaf, type: 3}
+    Districts:
+    - pipes
+    - technology
+    Weight: 2
+    Extra: {fileID: 0}
+    ExtraPosition: {x: 0, y: 0, z: 0}
+    ExtraRotation: {x: 0, y: 0, z: 0, w: 1}
+  Lamps:
+  - {fileID: 555396389904504815, guid: 1cc79b0780aed4d418ee33431718b144, type: 3}
+  - {fileID: 9085532534757251729, guid: 9b0a3e9f661042a4db520cb1cb5bef66, type: 3}
+  ItemSpawner: {fileID: 783493968140054564, guid: 0df527907ddd96a4282fda96be80192a,
+    type: 3}
