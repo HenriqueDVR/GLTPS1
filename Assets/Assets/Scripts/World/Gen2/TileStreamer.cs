@@ -42,8 +42,10 @@ public class TileStreamer : MonoBehaviour
 
 	private Material material;
 
-	// asphalt, buried road, concrete
+	// asphalt, buried road, concrete: the game's own textures (Resources/Roads), flat colours if those are missing
 	private Material[] roadMaterials;
+
+	private static readonly string[] roadMaterialNames = { "Asphalt", "Buried", "Concrete" };
 
 	private static readonly Color[] roadColors =
 	{
@@ -59,6 +61,9 @@ public class TileStreamer : MonoBehaviour
 	private readonly List<RoadPatch> patches = new List<RoadPatch>();
 
 	private MaterialPropertyBlock block;
+
+	// made here at runtime, destroyed with the streamer (never the loaded assets)
+	private readonly List<Material> made = new List<Material>();
 
 	private readonly Dictionary<long, GameObject> tiles = new Dictionary<long, GameObject>();
 
@@ -106,17 +111,27 @@ public class TileStreamer : MonoBehaviour
 			}
 		}
 		Shader lit = Shader.Find("Universal Render Pipeline/Lit");
-		material = (lit != null) ? new Material(lit) : floor;
+		material = (lit != null) ? Made(new Material(lit)) : floor;
+		if (lit != null)
+		{
+			// matte, like snow
+			material.SetFloat("_Smoothness", 0.1f);
+		}
 		block = new MaterialPropertyBlock();
 		roadMaterials = new Material[RoadMesh.SubmeshCount];
 		for (int i = 0; i < roadMaterials.Length; i++)
 		{
-			roadMaterials[i] = (lit != null) ? new Material(lit) : floor;
-			if (lit != null)
+			roadMaterials[i] = Resources.Load<Material>("Roads/" + roadMaterialNames[i]);
+			if (roadMaterials[i] == null && lit != null)
 			{
+				roadMaterials[i] = Made(new Material(lit));
 				roadMaterials[i].SetColor("_BaseColor", roadColors[i]);
 				roadMaterials[i].SetColor("_Color", roadColors[i]);
 				roadMaterials[i].SetFloat("_Smoothness", 0.1f);
+			}
+			else if (roadMaterials[i] == null)
+			{
+				roadMaterials[i] = floor;
 			}
 		}
 #if DUMP_WORLDGEN
@@ -135,23 +150,16 @@ public class TileStreamer : MonoBehaviour
 
 	private void OnDestroy()
 	{
-		DestroyOwn(material);
-		if (roadMaterials != null)
+		foreach (Material m in made)
 		{
-			foreach (Material road in roadMaterials)
-			{
-				DestroyOwn(road);
-			}
+			Destroy(m);
 		}
 	}
 
-	// only the ones made here, not the floor's own material borrowed as a fallback
-	private static void DestroyOwn(Material made)
+	private Material Made(Material m)
 	{
-		if (made != null && made.shader != null && made.shader.name == "Universal Render Pipeline/Lit")
-		{
-			Destroy(made);
-		}
+		made.Add(m);
+		return m;
 	}
 
 	private static Transform Girl(string name)
