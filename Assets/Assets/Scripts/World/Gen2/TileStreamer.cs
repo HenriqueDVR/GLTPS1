@@ -1,9 +1,11 @@
 using System.Linq;
 using System.Collections.Generic;
 using System.Diagnostics;
+using Unity.Collections;
+using Unity.Jobs;
 using UnityEngine;
 
-// world gen v2: 128m tiles around both girls, nearest first, a couple of ms a frame, pooled when out of reach.
+// world gen v2: 128m tiles around both girls, nearest first, built in stages a couple of ms a frame, pooled when out of reach.
 // a tile is its deck with the voids cut out (DeckMesh), its roads (RoadMesh), its lots' buildings and rubble (LotMesh)
 // and its props from the WorldKit: small landmarks, street lamps, item spawners.
 // everything is in layout coords (world + TotalOffset)
@@ -196,6 +198,11 @@ public class TileStreamer : MonoBehaviour
 
 	private void OnDestroy()
 	{
+		if (job != null && job.Stage == baking)
+		{
+			job.Bake.Complete();
+			job.Meshes.Dispose();
+		}
 		foreach (Material m in made)
 		{
 			Destroy(m);
@@ -470,108 +477,219 @@ public class TileStreamer : MonoBehaviour
 		return best;
 	}
 
+	// tiles go one at a time, a stage or more a frame while the budget lasts. budget MaxValue (the first frame, a debug
+	// teleport) finishes everything now
 	private void BuildMissing(double budget)
 	{
 		stopwatch.Restart();
-		while (missing.Count > 0 && stopwatch.Elapsed.TotalMilliseconds < budget)
+		bool now = budget == double.MaxValue;
+		while (stopwatch.Elapsed.TotalMilliseconds < budget)
 		{
-			long key = missing[missing.Count - 1];
-			missing.RemoveAt(missing.Count - 1);
-			if (!tiles.ContainsKey(key))
+			if (job == null)
 			{
-				tiles.Add(key, Build(KeyX(key), KeyZ(key)));
+				if (missing.Count == 0)
+				{
+					return;
+				}
+				long key = missing[missing.Count - 1];
+				missing.RemoveAt(missing.Count - 1);
+				if (tiles.ContainsKey(key))
+				{
+					continue;
+				}
+				job = new Job { Key = key, X = KeyX(key), Z = KeyZ(key) };
+			}
+			if (job.Stage == baking && !now && !job.Bake.IsCompleted)
+			{
+				return;
+			}
+#if DUMP_WORLDGEN
+			buildWatch.Restart();
+			int stage = job.Stage;
+#endif
+			bool done = Step(job);
+#if DUMP_WORLDGEN
+			double took = buildWatch.Elapsed.TotalMilliseconds;
+			slowestBuild = System.Math.Max(slowestBuild, took);
+			if (took > 4.0)
+			{
+				UnityEngine.Debug.Log("TileStreamer: slow stage " + stage + " " + took.ToString("F1") + "ms tile " + job.X + "," + job.Z + " district " + Plan.Def.Districts[Plan.DistrictAt((job.X + 0.5) * Gen2.TileSize, (job.Z + 0.5) * Gen2.TileSize)].Id + " lot tris " + lotMesh.Triangles);
+			}
+#endif
+			if (done)
+			{
+				tiles[job.Key] = job.Tile;
+				job = null;
 			}
 		}
 	}
 
-	// a pure function of (plan, x, z) so co-op peers get the same tile
-	private GameObject Build(int x, int z)
+	// a tile being built over several frames, so no frame pays for a whole tile (dense districts took up to ~37 ms).
+	// it stays switched off until it's done; its mesh colliders are cooked on worker threads meanwhile
+	private sealed class Job
 	{
+		public long Key;
+
+		public int X;
+
+		public int Z;
+
+		public GameObject Tile;
+
+		public int Stage;
+
+		public bool AnyRoads;
+
+		public bool AnyLots;
+
+		public NativeArray<int> Meshes;
+
+		public JobHandle Bake;
+	}
+
+	private struct BakeColliders : IJobParallelFor
+	{
+		[ReadOnly]
+		public NativeArray<int> Meshes;
+
+		public void Execute(int i)
+		{
+			Physics.BakeMesh(Meshes[i], false, Cooking);
+		}
+	}
+
+	private Job job;
+
+	private const int baking = 7;
+
+	// the colliders are given the same, or they'd cook the mesh again on the main thread
+	private const MeshColliderCookingOptions Cooking = MeshColliderCookingOptions.CookForFasterSimulation | MeshColliderCookingOptions.EnableMeshCleaning | MeshColliderCookingOptions.WeldColocatedVertices | MeshColliderCookingOptions.UseFastMidphase;
+
+	// one stage of a tile, a pure function of (plan, x, z) all told, so co-op peers get the same tile. true when done
+	private bool Step(Job job)
+	{
+		int x = job.X;
+		int z = job.Z;
+		GameObject tile = job.Tile;
+		switch (job.Stage++)
+		{
+			case 0:
+			{
+				tile = job.Tile = (pool.Count > 0) ? pool.Pop() : NewTile();
+				tile.SetActive(false);
+				tile.name = "tile " + x + "," + z;
+				float size = (float)Gen2.TileSize;
+				tile.transform.SetPositionAndRotation(new Vector3(x * size, groundY, z * size) - Offset(), Quaternion.identity);
+				ClearProps(tile);
+				deckMesh.Build(tile.transform.GetChild(0).GetComponent<MeshFilter>().sharedMesh, Plan.Chasms, x, z);
+				return false;
+			}
+			case 1:
+				Plan.Roads.Collect(x, z, pieces, patches);
+				roadMesh.Voids = Plan.Chasms;
+				job.AnyRoads = roadMesh.Build(tile.transform.GetChild(1).GetComponent<MeshFilter>().sharedMesh, pieces, patches, x * Gen2.TileSize, z * Gen2.TileSize);
+				return false;
+			case 2:
+				Plan.Lots.Collect(x, z, lots);
+				// a landmark lot with no landmark that fits is open ground
+				placed.Clear();
+				pieceOf.Clear();
+				for (int i = 0; i < lots.Count; i++)
+				{
+					if (lots[i].Kind != LotKind.Landmark)
+					{
+						continue;
+					}
+					int piece = PickLandmark(lots[i]);
+					if (piece >= 0)
+					{
+						placed.Add(i);
+						pieceOf.Add(piece);
+					}
+					else
+					{
+						Lot open = lots[i];
+						open.Kind = LotKind.Open;
+						lots[i] = open;
+					}
+				}
+				return false;
+			case 3:
+				lotMesh.Begin();
+				lotMesh.AddLots(lots, 0, lots.Count / 2, Plan.Def.Districts, Plan.Def.Ruin, x * Gen2.TileSize, z * Gen2.TileSize);
+				return false;
+			case 4:
+				lotMesh.AddLots(lots, lots.Count / 2, lots.Count, Plan.Def.Districts, Plan.Def.Ruin, x * Gen2.TileSize, z * Gen2.TileSize);
+				return false;
+			case 5:
+				Scatter(x, z);
+				PlaceCables(x, z);
+				PlaceViaducts(x, z);
+				DressVoids(x, z);
+				job.AnyLots = lotMesh.End(tile.transform.GetChild(2).GetComponent<MeshFilter>().sharedMesh);
+				return false;
+			case 6:
+			{
+				// cooked off the main thread; the colliders pick the cooked data up when they get the mesh
+				List<int> ids = new List<int> { tile.transform.GetChild(0).GetComponent<MeshFilter>().sharedMesh.GetInstanceID() };
+				if (job.AnyRoads)
+				{
+					ids.Add(tile.transform.GetChild(1).GetComponent<MeshFilter>().sharedMesh.GetInstanceID());
+				}
+				if (job.AnyLots)
+				{
+					ids.Add(tile.transform.GetChild(2).GetComponent<MeshFilter>().sharedMesh.GetInstanceID());
+				}
+				job.Meshes = new NativeArray<int>(ids.ToArray(), Allocator.Persistent);
+				job.Bake = new BakeColliders { Meshes = job.Meshes }.Schedule(job.Meshes.Length, 1);
+				JobHandle.ScheduleBatchedJobs();
+				return false;
+			}
+			case baking:
+			{
+				job.Bake.Complete();
+				job.Meshes.Dispose();
+				// active before the colliders get their meshes: a collider in an inactive pooled tile drops it
+				tile.SetActive(true);
+				Collide(tile.transform.GetChild(0).gameObject, true);
+				Collide(tile.transform.GetChild(1).gameObject, job.AnyRoads);
+				Collide(tile.transform.GetChild(2).gameObject, job.AnyLots);
+				return false;
+			}
+			default:
+			{
+				Transform props = tile.transform.GetChild(3);
+				for (int i = 0; i < placed.Count; i++)
+				{
+					PlaceLandmark(lots[placed[i]], pieceOf[i], props);
+				}
+				int items = 0;
+				foreach (Lot lot in lots)
+				{
+					PlaceItems(lot, x, z, ref items, props);
+				}
+				PlaceLamps(props);
 #if DUMP_WORLDGEN
-		buildWatch.Restart();
+				builtTiles++;
+				roadTriangles += roadMesh.Triangles;
+				lotTriangles += job.AnyLots ? lotMesh.Triangles : 0;
 #endif
-		GameObject tile = (pool.Count > 0) ? pool.Pop() : NewTile();
-		tile.name = "tile " + x + "," + z;
-		float size = (float)Gen2.TileSize;
-		tile.transform.SetPositionAndRotation(new Vector3(x * size, groundY, z * size) - Offset(), Quaternion.identity);
-		// active before the collider gets its mesh: a collider in an inactive pooled tile drops it
-		tile.SetActive(true);
-		GameObject ground = tile.transform.GetChild(0).gameObject;
-		Mesh groundMesh = ground.GetComponent<MeshFilter>().sharedMesh;
-		deckMesh.Build(groundMesh, Plan.Chasms, x, z);
-		MeshCollider groundCollider = ground.GetComponent<MeshCollider>();
-		groundCollider.sharedMesh = null;
-		groundCollider.sharedMesh = groundMesh;
-		GameObject roads = tile.transform.GetChild(1).gameObject;
-		Plan.Roads.Collect(x, z, pieces, patches);
-		Mesh mesh = roads.GetComponent<MeshFilter>().sharedMesh;
-		roadMesh.Voids = Plan.Chasms;
-		bool any = roadMesh.Build(mesh, pieces, patches, x * Gen2.TileSize, z * Gen2.TileSize);
-		// set again so the collider cooks the new shape
-		roads.SetActive(any);
-		MeshCollider collider = roads.GetComponent<MeshCollider>();
+				return true;
+			}
+		}
+	}
+
+	// set again so the collider takes the new shape
+	private static void Collide(GameObject part, bool any)
+	{
+		part.SetActive(any);
+		MeshCollider collider = part.GetComponent<MeshCollider>();
+		collider.cookingOptions = Cooking;
 		collider.sharedMesh = null;
 		if (any)
 		{
-			collider.sharedMesh = mesh;
+			collider.sharedMesh = part.GetComponent<MeshFilter>().sharedMesh;
 		}
-		GameObject built = tile.transform.GetChild(2).gameObject;
-		Plan.Lots.Collect(x, z, lots);
-		// a landmark lot with no landmark that fits is open ground
-		placed.Clear();
-		pieceOf.Clear();
-		for (int i = 0; i < lots.Count; i++)
-		{
-			if (lots[i].Kind != LotKind.Landmark)
-			{
-				continue;
-			}
-			int piece = PickLandmark(lots[i]);
-			if (piece >= 0)
-			{
-				placed.Add(i);
-				pieceOf.Add(piece);
-			}
-			else
-			{
-				Lot open = lots[i];
-				open.Kind = LotKind.Open;
-				lots[i] = open;
-			}
-		}
-		Mesh lotsMesh = built.GetComponent<MeshFilter>().sharedMesh;
-		lotMesh.Begin();
-		lotMesh.AddLots(lots, Plan.Def.Districts, Plan.Def.Ruin, x * Gen2.TileSize, z * Gen2.TileSize);
-		Scatter(x, z);
-		PlaceCables(x, z);
-		PlaceViaducts(x, z);
-		DressVoids(x, z);
-		bool anyLots = lotMesh.End(lotsMesh);
-		built.SetActive(anyLots);
-		MeshCollider lotsCollider = built.GetComponent<MeshCollider>();
-		lotsCollider.sharedMesh = null;
-		if (anyLots)
-		{
-			lotsCollider.sharedMesh = lotsMesh;
-		}
-		Transform props = ClearProps(tile);
-		for (int i = 0; i < placed.Count; i++)
-		{
-			PlaceLandmark(lots[placed[i]], pieceOf[i], props);
-		}
-		int items = 0;
-		foreach (Lot lot in lots)
-		{
-			PlaceItems(lot, x, z, ref items, props);
-		}
-		PlaceLamps(props);
-#if DUMP_WORLDGEN
-		builtTiles++;
-		roadTriangles += roadMesh.Triangles;
-		lotTriangles += anyLots ? lotMesh.Triangles : 0;
-		slowestBuild = System.Math.Max(slowestBuild, buildWatch.Elapsed.TotalMilliseconds);
-#endif
-		return tile;
 	}
 
 	// root at the tile's corner on the deck: child 0 the deck, child 1 the roads, child 2 the lots, child 3 the props

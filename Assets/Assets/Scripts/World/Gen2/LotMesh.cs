@@ -77,6 +77,7 @@ public class LotMesh
 
 	public void Begin()
 	{
+		roofs.Clear();
 		vertices.Clear();
 		uvs.Clear();
 		foreach (List<int> list in triangles)
@@ -85,11 +86,13 @@ public class LotMesh
 		}
 	}
 
-	// lots as they'll be drawn: a landmark lot that got no landmark comes in as Open
-	public void AddLots(List<Lot> lots, DistrictDef[] districts, double ruin, double originX, double originZ)
+	// lots from..to as they'll be drawn: a landmark lot that got no landmark comes in as Open. the sky-bridges go in
+	// with the last lot, so a tile can be added over several calls
+	public void AddLots(List<Lot> lots, int from, int to, DistrictDef[] districts, double ruin, double originX, double originZ)
 	{
-		foreach (Lot lot in lots)
+		for (int n = from; n < to; n++)
 		{
+			Lot lot = lots[n];
 			random = new WorldRandom(lot.Seed);
 			Vector3 centre = new Vector3((float)(lot.Center.X - originX), 0f, (float)(lot.Center.Z - originZ));
 			Vector3 u = new Vector3((float)lot.Axis.X, 0f, (float)lot.Axis.Z);
@@ -137,7 +140,10 @@ public class LotMesh
 			}
 			roofs.Add(new Vector4(centre.x, roof, centre.z, (float)stacking));
 		}
-		Bridges();
+		if (to == lots.Count)
+		{
+			Bridges();
+		}
 	}
 
 	// building lots of the tile so far: middle (x, z), roof (y), the district's stacking (w)
