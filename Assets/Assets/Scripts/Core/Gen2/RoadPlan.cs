@@ -118,8 +118,8 @@ public sealed class RoadPlan
 
 	public const double GapLength = 24.0;
 
-	// kept clear around each pillar for the column (GEN2-6 sizes it)
-	public const double PillarClearance = 60.0;
+	// kept clear around each pillar: the tower is 112 m across (nodeCOLUMN's Cylinder), plus room to pass
+	public const double PillarClearance = 72.0;
 
 	// a road passing a pillar shifts sideways over this distance either side
 	public const double Detour = 200.0;

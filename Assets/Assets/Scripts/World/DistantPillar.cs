@@ -4,7 +4,8 @@ using UnityEngine;
 using UnityEngine.Rendering;
 
 // far view of the elevator towers and the level above. meshes-only copies of the pillar pieces in thin fog
-// and a broken ceiling
+// and a broken ceiling. legacy: the layout's pillars. v2: PillarStreamer's grid round the eye, each copy with a
+// piece of deck round its top so a tower always meets the level above
 public class DistantPillar : MonoBehaviour
 {
 	// tower parts in nodeCOLUMN
@@ -100,7 +101,17 @@ public class DistantPillar : MonoBehaviour
 
 		public Material Material;
 
+		// legacy
 		public WorldLayout.PlacedNode Node;
+
+		// v2, with its piece of deck
+		public PillarStreamer.Spot Spot;
+
+		public Transform Collar;
+
+		public Pose Pose => (Node != null) ? Node.Pose : Spot.Pose;
+
+		public GameObject Instance => (Node != null) ? Node.Instance : Spot.Instance;
 
 		// the real one's tower meshes, off while the copy stands in
 		public GameObject RealInstance;
@@ -113,6 +124,29 @@ public class DistantPillar : MonoBehaviour
 	private WorldGenerator world;
 
 	private WorldLayout.PlacedNode pillar;
+
+	// the tower piece, and where the ceiling's tiling and the clouds are pinned (layout)
+	private GameObject prefab;
+
+	private Vector3 anchor;
+
+	private Shader silhouette;
+
+	// v2
+	private PillarStreamer streamer;
+
+	private int streamerVersion = -1;
+
+	private readonly List<Mesh> collars = new List<Mesh>();
+
+	// copies of towers that went out of range, for the next ones
+	private readonly Stack<Distant> spare = new Stack<Distant>();
+
+	// v2's deck round a tower sits this much under the ceiling's, so where both are solid they don't fight
+	private const float collarDrop = 3f;
+
+	// how far the deck reaches round a v2 tower, before its ragged edge
+	private const float collarReach = 470f;
 
 	// nearest nine tiles round the eye
 	private readonly List<Transform> ceilings = new List<Transform>();
@@ -144,6 +178,9 @@ public class DistantPillar : MonoBehaviour
 
 	// widest the column gets from its middle
 	private float girth;
+
+	// from the piece's root to the middle of the tower, flat
+	private Vector3 towerMiddle;
 
 	// copies are drawn this much taller so they reach the lifted ceiling
 	private float stretch = 1f;
@@ -248,27 +285,50 @@ public class DistantPillar : MonoBehaviour
 	private void Start()
 	{
 		world = GetComponent<WorldGenerator>();
+		streamer = GetComponent<PillarStreamer>();
 		pillar = world.Layout != null ? world.Pillar() : null;
-		if (pillar == null)
+		if (pillar == null && (streamer == null || streamer.Prefab == null))
 		{
 			Destroy(this);
 			return;
 		}
 		instance = this;
-		Shader shader = Resources.Load<Shader>("DistantSilhouette");
-		albedo = TowerAlbedo(pillar.Def.Prefab);
+		silhouette = Resources.Load<Shader>("DistantSilhouette");
+		prefab = (pillar != null) ? pillar.Def.Prefab : streamer.Prefab;
+		albedo = TowerAlbedo(prefab);
 		// every real pillar gets the same treatment, not just the one the map points at
 		List<Vector3> towers = new List<Vector3>();
-		foreach (WorldLayout.PlacedNode node in world.Pillars())
+		if (pillar != null)
 		{
-			pillars.Add(Make(shader, node));
-			towers.Add(node.Pose.position - pillar.Pose.position);
+			anchor = pillar.Pose.position;
+			foreach (WorldLayout.PlacedNode node in world.Pillars())
+			{
+				pillars.Add(Make(silhouette, node));
+				towers.Add(node.Pose.position - pillar.Pose.position);
+			}
+		}
+		else
+		{
+			// the grid never repeats, so the tiled ceiling knows no towers. each copy brings its own deck instead
+			anchor = new Vector3((float)world.Plan.Origin.X, streamer.GroundY, (float)world.Plan.Origin.Z);
+			// measures the piece (foot, height, slab) before the levels are worked out
+			Distant measure = new Distant { Material = new Material(silhouette) };
+			measure.Copy = Copy(prefab, measure.Material).transform;
+			measure.Copy.gameObject.SetActive(false);
+			spare.Push(measure);
 		}
 		stretch = Level() / BaseLevel();
 		// same holes every time for a seed
 		System.Random random = new System.Random((int)(world.Seed & 0x7fffffff));
 		ceilingMaterial = new Material(Resources.Load<Shader>("DistantCeiling"));
 		Mesh ceilingMesh = Ceiling(towers, random);
+		if (pillar == null)
+		{
+			for (int i = 0; i < 4; i++)
+			{
+				collars.Add(Collar(random));
+			}
+		}
 		for (int i = 0; i < 9; i++)
 		{
 			GameObject tile = new GameObject("DistantCeiling", typeof(MeshFilter), typeof(MeshRenderer));
@@ -322,9 +382,99 @@ public class DistantPillar : MonoBehaviour
 			Material = new Material(shader),
 			Node = node
 		};
-		distant.Copy = Copy(pillar.Def.Prefab, distant.Material).transform;
+		distant.Copy = Copy(prefab, distant.Material).transform;
 		distant.Material.SetColor("_Albedo", albedo);
 		return distant;
+	}
+
+	// v2: copies for the streamer's towers, reusing the ones that went out of range
+	private void Follow()
+	{
+		if (streamer == null)
+		{
+			return;
+		}
+		// the deck's height is only known once the tiles have looked at the floor
+		anchor = new Vector3((float)world.Plan.Origin.X, streamer.GroundY, (float)world.Plan.Origin.Z);
+		if (streamer.Version == streamerVersion)
+		{
+			return;
+		}
+		streamerVersion = streamer.Version;
+		for (int i = pillars.Count - 1; i >= 0; i--)
+		{
+			if (!streamer.Spots.Contains(pillars[i].Spot))
+			{
+				Distant gone = pillars[i];
+				pillars.RemoveAt(i);
+				gone.Spot = null;
+				gone.RealInstance = null;
+				gone.RealParts.Clear();
+				gone.Copy.gameObject.SetActive(false);
+				gone.Collar.gameObject.SetActive(false);
+				spare.Push(gone);
+			}
+		}
+		foreach (PillarStreamer.Spot spot in streamer.Spots)
+		{
+			if (pillars.Exists(d => d.Spot == spot))
+			{
+				continue;
+			}
+			Distant distant = (spare.Count > 0) ? spare.Pop() : new Distant { Material = new Material(silhouette) };
+			if (distant.Copy == null)
+			{
+				distant.Copy = Copy(prefab, distant.Material).transform;
+			}
+			distant.Material.SetColor("_Albedo", albedo);
+			if (distant.Collar == null)
+			{
+				GameObject collar = new GameObject("DistantCollar", typeof(MeshFilter), typeof(MeshRenderer));
+				MeshRenderer collarRenderer = collar.GetComponent<MeshRenderer>();
+				collarRenderer.sharedMaterial = ceilingMaterial;
+				collarRenderer.shadowCastingMode = ShadowCastingMode.Off;
+				collarRenderer.receiveShadows = false;
+				distant.Collar = collar.transform;
+			}
+			distant.Collar.GetComponent<MeshFilter>().sharedMesh = collars[(int)((uint)(spot.CellX * 7 + spot.CellZ * 13) % (uint)collars.Count)];
+			distant.Spot = spot;
+			distant.Copy.gameObject.SetActive(!hidden);
+			distant.Collar.gameObject.SetActive(!hidden);
+			pillars.Add(distant);
+		}
+	}
+
+	// deck round a v2 tower: both storeys and their broken edges like the ceiling's, solid over the tower, ragged out
+	// to about collarReach
+	private Mesh Collar(System.Random random)
+	{
+		int count = Mathf.CeilToInt(2f * (collarReach + 250f) / ceilingCell / ceilingBlock) * ceilingBlock;
+		float half = count * ceilingCell * 0.5f;
+		int seed = random.Next();
+		float[,] field = new float[count + 1, count + 1];
+		for (int x = 0; x <= count; x++)
+		{
+			for (int y = 0; y <= count; y++)
+			{
+				float dx = x * ceilingCell - half;
+				float dy = y * ceilingCell - half;
+				float ragged = Wrapped(x * 8f / count, y * 8f / count, 8, seed) * 160f + Wrapped(x * 24f / count, y * 24f / count, 24, seed + 1) * 50f;
+				field[x, y] = (collarReach + ragged - Mathf.Sqrt(dx * dx + dy * dy)) / 100f;
+			}
+		}
+		field = Wear(Wear(field, count, true), count, false);
+		DropIslands(field, count, 0f);
+		Slabs slabs = new Slabs(field, count, ceilingCell, half, random.Next());
+		// the slab under the deck is a little smaller, so the deck reaches out past it
+		slabs.Storey(0, 0.4f, true);
+		slabs.Storey(1, 0f, true);
+		Chunks(slabs, random);
+		Mesh mesh = new Mesh { name = "DistantCollar", indexFormat = IndexFormat.UInt32 };
+		mesh.SetVertices(slabs.Vertices);
+		mesh.SetColors(slabs.Colours);
+		mesh.SetTriangles(slabs.Triangles, 0);
+		mesh.RecalculateBounds();
+		return mesh;
 	}
 
 	// the tower's base colour times its texture's average, so the copy is the colour of the real one
@@ -392,6 +542,25 @@ public class DistantPillar : MonoBehaviour
 			{
 				Destroy(distant.Copy.gameObject);
 			}
+			if (distant.Collar != null)
+			{
+				Destroy(distant.Collar.gameObject);
+			}
+		}
+		foreach (Distant distant in spare)
+		{
+			if (distant.Copy != null)
+			{
+				Destroy(distant.Copy.gameObject);
+			}
+			if (distant.Collar != null)
+			{
+				Destroy(distant.Collar.gameObject);
+			}
+		}
+		foreach (Mesh mesh in collars)
+		{
+			Destroy(mesh);
 		}
 		foreach (Transform tile in ceilings)
 		{
@@ -429,6 +598,10 @@ public class DistantPillar : MonoBehaviour
 		foreach (Distant distant in instance.pillars)
 		{
 			distant.Copy.gameObject.SetActive(!hide && distant.Copy.gameObject.activeSelf);
+			if (distant.Collar != null)
+			{
+				distant.Collar.gameObject.SetActive(!hide);
+			}
 		}
 		foreach (Transform tile in instance.ceilings)
 		{
@@ -475,9 +648,9 @@ public class DistantPillar : MonoBehaviour
 
 	private static void ShowReal(Distant distant, bool show)
 	{
-		if (distant.Node.Instance != distant.RealInstance)
+		if (distant.Instance != distant.RealInstance)
 		{
-			distant.RealInstance = distant.Node.Instance;
+			distant.RealInstance = distant.Instance;
 			distant.RealParts.Clear();
 			if (distant.RealInstance != null)
 			{
@@ -629,6 +802,7 @@ public class DistantPillar : MonoBehaviour
 		foot = bounds.min.y;
 		slab = lowest - foot;
 		girth = Mathf.Max(Mathf.Max(-bounds.min.x, bounds.max.x), Mathf.Max(-bounds.min.z, bounds.max.z));
+		towerMiddle = new Vector3(bounds.center.x, 0f, bounds.center.z);
 		height = Mathf.Max(1f, bounds.size.y);
 		holder.SetActive(true);
 		return holder;
@@ -1254,8 +1428,9 @@ public class DistantPillar : MonoBehaviour
 		{
 			return;
 		}
+		Follow();
 		Vector3 eye = camera.transform.position;
-		Vector3 goal = world.ToWorld(pillar.Pose.position);
+		Vector3 goal = world.ToWorld(anchor);
 		float density = RenderSettings.fog ? RenderSettings.fogDensity : 0f;
 		Color fog = RenderSettings.fogColor;
 		Vector3 centre = goal + Vector3.up * (foot + Level());
@@ -1282,12 +1457,12 @@ public class DistantPillar : MonoBehaviour
 		gaps.Clear();
 		foreach (Distant distant in pillars)
 		{
-			Vector3 real = world.ToWorld(distant.Node.Pose.position);
-			Quaternion turn = distant.Node.Pose.rotation;
+			Vector3 real = world.ToWorld(distant.Pose.position);
+			Quaternion turn = distant.Pose.rotation;
 			float distance = Vector3.Distance(eye, real);
 			// flat, so riding the elevator up never swaps the real one out from under her
 			float flat = new Vector2(real.x - eye.x, real.z - eye.z).magnitude;
-			bool near = distant.Node.Instance != null && distant.Node.Instance.activeInHierarchy && flat < swapDistance;
+			bool near = distant.Instance != null && distant.Instance.activeInHierarchy && flat < swapDistance;
 			// up close the real tower stops short of the lifted ceiling, the copy only fills in above it
 			float realTop = real.y + foot + height;
 			float ceilingY = real.y + foot + Level();
@@ -1302,6 +1477,13 @@ public class DistantPillar : MonoBehaviour
 			// taller from its foot, the foot stays where it was
 			distant.Copy.SetPositionAndRotation(eye + (real - eye) * pull + Vector3.up * foot * shrink * (1f - stretch), turn);
 			distant.Copy.localScale = new Vector3(shrink, shrink * stretch, shrink);
+			if (distant.Collar != null)
+			{
+				// the deck round it, pulled in and shrunk with it, centred on the tower
+				Vector3 top = real + turn * towerMiddle + Vector3.up * (foot + Level() - collarDrop);
+				distant.Collar.SetPositionAndRotation(eye + (top - eye) * pull, Quaternion.identity);
+				distant.Collar.localScale = Vector3.one * shrink;
+			}
 			if (gaps.Count < cloudGaps)
 			{
 				gaps.Add(new Vector4(distant.Copy.position.x, distant.Copy.position.z, girth * shrink, (girth + cloudClearing) * shrink));

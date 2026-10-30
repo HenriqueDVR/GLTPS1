@@ -69,6 +69,9 @@ public static class Gen2
 
 	public const ulong StreamUp = 0x5550uL;
 
+	// which way the tower stands, same on every layer like its position
+	public const ulong StreamPillarYaw = 0x50494C4C59uL;
+
 	public const ulong StreamWarp = 0x57415250uL;
 
 	public const ulong StreamTile = 0x54494C45uL;

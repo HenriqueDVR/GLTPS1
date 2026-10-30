@@ -130,6 +130,12 @@ public sealed class LayerPlan
 		return new XZ(x, z);
 	}
 
+	// degrees, a quarter turn steps so the elevator faces along the grid
+	public static double PillarYaw(ulong worldSeed, int cellX, int cellZ)
+	{
+		return (WorldRandom.Derive(worldSeed, Gen2.StreamPillarYaw, Gen2.Pack(cellX, cellZ)) % 4uL) * 90.0;
+	}
+
 	public bool IsUp(int cellX, int cellZ)
 	{
 		if (Def.IsLast)

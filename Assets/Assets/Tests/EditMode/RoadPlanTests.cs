@@ -296,8 +296,8 @@ public class RoadPlanTests
 	[Test]
 	public void GoldenValues()
 	{
-		Assert.AreEqual(0x7e9988be1bf0d720uL, Fold(Layer0(), -12, -12, 24), "layer 0 roads");
-		Assert.AreEqual(0xe1ad0c110a791f3duL, Fold(Layer1(), 50, -20, 12), "layer 1 roads");
+		Assert.AreEqual(0x9a01d62f1c4261aauL, Fold(Layer0(), -12, -12, 24), "layer 0 roads");
+		Assert.AreEqual(0xd994467ccdaec45buL, Fold(Layer1(), 50, -20, 12), "layer 1 roads");
 		Assert.AreEqual(0x843116a825c27decuL, Layer0().Roads.Hash(new XZ(6000.0, 2500.0), 2));
 	}
 

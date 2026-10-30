@@ -63,7 +63,13 @@ public class GameSession : MonoBehaviour
 		}
 		if (WorldGenerator.GenVersion == 2)
 		{
-			Add<TileStreamer>().Init(world.Plan, floatingOrigin);
+			TileStreamer tiles = Add<TileStreamer>();
+			tiles.Init(world.Plan, floatingOrigin);
+			if (world.PillarPrefab != null)
+			{
+				Add<PillarStreamer>().Init(world.Plan, tiles, floatingOrigin, world.PillarPrefab);
+				gameObject.AddComponent<DistantPillar>();
+			}
 			// an endless world needs it, v1 never goes far enough
 			if (floatingOrigin != null)
 			{

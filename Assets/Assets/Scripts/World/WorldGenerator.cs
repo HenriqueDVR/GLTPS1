@@ -56,6 +56,9 @@ public class WorldGenerator : MonoBehaviour
 
 	public uint LayoutHash { get; private set; }
 
+	// nodeCOLUMN, the tower piece
+	public GameObject PillarPrefab => (nodeData != null) ? nodeData.pillarEdge : null;
+
 	private void Awake()
 	{
 		Active = true;

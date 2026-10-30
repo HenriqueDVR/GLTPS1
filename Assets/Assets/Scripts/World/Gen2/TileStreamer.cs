@@ -24,6 +24,12 @@ public class TileStreamer : MonoBehaviour
 
 	public int TileCount => tiles.Count;
 
+	// layout y of the deck
+	public float GroundY => groundY;
+
+	// both girls in layout coords, as of the last refresh
+	public List<Vector3> Points => points;
+
 	private FloatingOrigin floatingOrigin;
 
 	// layout y of the deck surface, taken from the floor under Chito at the start
