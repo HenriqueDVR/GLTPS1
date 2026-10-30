@@ -61,4 +61,7 @@ public sealed class DistrictDef
 	public int FloorsMin = 1;
 
 	public int FloorsMax = 1;
+
+	// share of street pieces with a lamp on the sidewalk
+	public double Lamps;
 }

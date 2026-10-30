@@ -12,6 +12,9 @@ public class ItemSpawnManager : MonoBehaviour
     [System.NonSerialized] public WorldRandom random;
     [System.NonSerialized] public ulong itemId;
 
+    // what it spawned, so a v2 tile can take it away again when it unloads
+    [System.NonSerialized] public GameObject spawned;
+
     void Start()
     {
         save = save.LoadData("difficultySetting");
@@ -31,6 +34,7 @@ public class ItemSpawnManager : MonoBehaviour
         if (item[randomIndex] != null && !(itemId != 0 && CoopItem.IsTaken(itemId)))
         {
             GameObject newItem = Instantiate(item[randomIndex], transform.position, transform.rotation);
+            spawned = newItem;
             if (itemId != 0)
             {
                 CoopItem.Track(newItem, itemId);

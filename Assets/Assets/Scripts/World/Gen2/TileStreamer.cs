@@ -5,7 +5,7 @@ using UnityEngine;
 
 // world gen v2: 128m tiles around both girls, nearest first, a couple of ms a frame, pooled when out of reach.
 // a tile is placeholder flat ground tinted by district, its roads (RoadMesh), its lots' buildings and rubble (LotMesh)
-// and the small landmarks from the WorldKit.
+// and its props from the WorldKit: small landmarks, street lamps, item spawners.
 // everything is in layout coords (world + TotalOffset)
 public class TileStreamer : MonoBehaviour
 {
@@ -74,6 +74,13 @@ public class TileStreamer : MonoBehaviour
 	private readonly List<int> placed = new List<int>();
 
 	private readonly List<int> pieceOf = new List<int>();
+
+	// share of lots with an item spawner, about one per city tile like the legacy nodes (tuned with SURV-4)
+	private const float itemOnLandmark = 0.5f;
+
+	private const float itemOnOpen = 0.1f;
+
+	private const float itemOnBuilding = 0.03f;
 
 	private readonly List<RoadPiece> pieces = new List<RoadPiece>();
 
@@ -403,6 +410,7 @@ public class TileStreamer : MonoBehaviour
 		{
 			GameObject tile = tiles[key];
 			tiles.Remove(key);
+			ClearProps(tile);
 			tile.SetActive(false);
 			pool.Push(tile);
 		}
@@ -513,15 +521,17 @@ public class TileStreamer : MonoBehaviour
 		{
 			lotsCollider.sharedMesh = lotsMesh;
 		}
-		Transform props = tile.transform.GetChild(3);
-		for (int i = props.childCount - 1; i >= 0; i--)
-		{
-			Destroy(props.GetChild(i).gameObject);
-		}
+		Transform props = ClearProps(tile);
 		for (int i = 0; i < placed.Count; i++)
 		{
 			PlaceLandmark(lots[placed[i]], pieceOf[i], props);
 		}
+		int items = 0;
+		foreach (Lot lot in lots)
+		{
+			PlaceItems(lot, x, z, ref items, props);
+		}
+		PlaceLamps(props);
 #if DUMP_WORLDGEN
 		builtTiles++;
 		roadTriangles += roadMesh.Triangles;
@@ -675,5 +685,75 @@ public class TileStreamer : MonoBehaviour
 			Instantiate(landmark.Extra, instance.transform.TransformPoint(landmark.ExtraPosition), instance.transform.rotation * landmark.ExtraRotation, props);
 		}
 		GraphicsTuning.Adopt(instance);
+	}
+
+	// the tile's props and the items its spawners put out (taken ones are gone already, and stay taken by id)
+	private static Transform ClearProps(GameObject tile)
+	{
+		Transform props = tile.transform.GetChild(3);
+		foreach (ItemSpawnManager spawner in props.GetComponentsInChildren<ItemSpawnManager>(true))
+		{
+			if (spawner.spawned != null)
+			{
+				Destroy(spawner.spawned);
+			}
+		}
+		for (int i = props.childCount - 1; i >= 0; i--)
+		{
+			Destroy(props.GetChild(i).gameObject);
+		}
+		return props;
+	}
+
+	// a spawner by one of the lot's long edges, clear of its building or rubble; ids from the tile and a running index
+	private void PlaceItems(Lot lot, int x, int z, ref int index, Transform props)
+	{
+		float chance = (lot.Kind == LotKind.Landmark) ? itemOnLandmark : (lot.Kind == LotKind.Open) ? itemOnOpen : itemOnBuilding;
+		ulong roll = WorldRandom.Derive(lot.Seed, Gen2.StreamLot, 10uL);
+		if (kit == null || kit.ItemSpawner == null || Gen2.Unit(roll) >= chance)
+		{
+			return;
+		}
+		Vector3 u = new Vector3((float)lot.Axis.X, 0f, (float)lot.Axis.Z);
+		Vector3 v = new Vector3(-u.z, 0f, u.x);
+		float side = ((roll & 1uL) == 0uL) ? 1f : -1f;
+		float along = (float)Gen2.Unit(WorldRandom.Derive(lot.Seed, Gen2.StreamLot, 11uL)) * 2f - 1f;
+		Vector3 at = new Vector3((float)lot.Center.X, groundY + 0.1f, (float)lot.Center.Z) + v * (side * ((float)lot.HalfV - 0.5f)) + u * (along * (float)lot.HalfU * 0.5f);
+		GameObject spawner = Instantiate(kit.ItemSpawner, at - Offset(), Quaternion.identity, props);
+		ulong tileSeed = Gen2.TileSeed(Plan.LayerSeed, x, z);
+		foreach (ItemSpawnManager manager in spawner.GetComponentsInChildren<ItemSpawnManager>(true))
+		{
+			manager.random = new WorldRandom(WorldRandom.Derive(tileSeed, Gen2.StreamLot + 3, (ulong)index));
+			manager.itemId = Gen2.ItemId(Plan.Layer, x, z, index);
+			index++;
+		}
+	}
+
+	// on the sidewalk by every other street piece, sides taking turns, a district's share of them
+	private void PlaceLamps(Transform props)
+	{
+		if (kit == null || kit.Lamps == null || kit.Lamps.Length == 0)
+		{
+			return;
+		}
+		foreach (RoadPiece piece in pieces)
+		{
+			if (piece.Kind != RoadKind.Street || piece.Index % 2 != 0)
+			{
+				continue;
+			}
+			XZ mid = new XZ((piece.A.X + piece.B.X) * 0.5, (piece.A.Z + piece.B.Z) * 0.5);
+			ulong roll = WorldRandom.Derive(Plan.LayerSeed, Gen2.StreamLot + 4, Gen2.Pack((int)System.Math.Round(mid.X * 10.0), (int)System.Math.Round(mid.Z * 10.0)));
+			if (Gen2.Unit(roll) >= Plan.Def.Districts[Plan.DistrictAt(mid.X, mid.Z)].Lamps)
+			{
+				continue;
+			}
+			Vector3 left = new Vector3((float)-piece.TangentA.Z, 0f, (float)piece.TangentA.X);
+			float side = ((piece.Index / 2) % 2 == 0) ? 1f : -1f;
+			Vector3 at = new Vector3((float)mid.X, groundY, (float)mid.Z) + left * (side * ((float)RoadPlan.StreetWidth * 0.5f + 1.5f));
+			GameObject prefab = kit.Lamps[(int)(roll % (ulong)kit.Lamps.Length)];
+			GameObject lamp = Instantiate(prefab, at - Offset(), Quaternion.LookRotation(-left * side) * prefab.transform.rotation, props);
+			GraphicsTuning.Adopt(lamp);
+		}
 	}
 }

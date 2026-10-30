@@ -242,6 +242,30 @@ public class LotPlanTests
 		Assert.Greater(landmarks, 0);
 	}
 
+	// tile item ids: unique per (layer, tile, index), and never a legacy, scene pickup or runtime id
+	[Test]
+	public void ItemIdsDontClash()
+	{
+		HashSet<ulong> seen = new HashSet<ulong>();
+		foreach (int layer in new[] { 0, 1, 2 })
+		{
+			foreach (int x in new[] { -524288, -3, 0, 7, 524287 })
+			{
+				foreach (int z in new[] { -524288, -1, 0, 5, 524287 })
+				{
+					foreach (int i in new[] { 0, 1, 4095 })
+					{
+						ulong id = Gen2.ItemId(layer, x, z, i);
+						Assert.IsTrue(seen.Add(id), layer + " " + x + "," + z + " " + i);
+						Assert.AreEqual(Gen2.TileItemTag, id & 0x6000000000000000uL, "bit 61 only, never bit 62");
+					}
+				}
+			}
+		}
+		// the legacy generator's biggest ids: edges at stream 1000000 + id, shifted by 16
+		Assert.Less((1000000uL + 100000uL) << 16 | 0xFFFFuL, Gen2.TileItemTag);
+	}
+
 	// frozen genVersion 2 output. a failure here means v2 saves or mixed-version co-op would break: bump genVersion instead
 	[Test]
 	public void GoldenValues()
