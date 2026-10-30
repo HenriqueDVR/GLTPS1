@@ -554,6 +554,64 @@ public class LotMesh
 		}
 	}
 
+	// ---- viaducts (ViaductPlan)
+
+	private const float deckThickness = 1.5f;
+
+	private const int archSteps = 8;
+
+	// a pier standing on the ground under the deck, centred on at
+	public void AddPier(Vector3 at, Vector3 along, float height)
+	{
+		float half = (float)ViaductPlan.PierWidth * 0.5f;
+		float w = (float)ViaductPlan.Width * 0.5f;
+		Box(at, along, half, w, -sink, height - deckThickness, concrete, concrete, false);
+		// a plinth, and an impost where the arches spring
+		Box(at, along, half + 0.4f, w + 0.4f, -sink, 1.2f, concrete, concrete, false);
+	}
+
+	// one bay of deck from start along the viaduct, its parapets, and under it a semicircular arch between the piers,
+	// or a plain girder if a pier's missing (a road runs there)
+	public void AddBay(Vector3 start, Vector3 along, float height, bool arch)
+	{
+		float bay = (float)ViaductPlan.Bay;
+		float w = (float)ViaductPlan.Width * 0.5f;
+		Vector3 v = Left(along);
+		Vector3 mid = start + along * (bay * 0.5f);
+		float bottom = height - deckThickness;
+		Box(mid, along, bay * 0.5f, w, bottom, height, concrete, concrete, true);
+		// cornice under the deck's edge, parapets on top
+		Box(mid, along, bay * 0.5f, w + 0.35f, bottom - 0.5f, bottom, concrete, concrete, true);
+		Box(mid + v * (w - 0.25f), along, bay * 0.5f, 0.25f, height, height + 1.1f, concrete, concrete, false);
+		Box(mid - v * (w - 0.25f), along, bay * 0.5f, 0.25f, height, height + 1.1f, concrete, concrete, false);
+		float pier = (float)ViaductPlan.PierWidth * 0.5f;
+		float from = pier;
+		float to = bay - pier;
+		float crown = bottom - 0.5f;
+		if (!arch)
+		{
+			Box(mid, along, (to - from) * 0.5f, w, crown - 2.5f, crown, concrete, concrete, true);
+			return;
+		}
+		float radius = (to - from) * 0.5f;
+		float spring = crown - 1f - radius;
+		for (int i = 0; i < archSteps; i++)
+		{
+			float a0 = Mathf.PI * i / archSteps;
+			float a1 = Mathf.PI * (i + 1) / archSteps;
+			Vector3 p0 = start + along * (from + radius * (1f - Mathf.Cos(a0))) + Vector3.up * (spring + radius * Mathf.Sin(a0));
+			Vector3 p1 = start + along * (from + radius * (1f - Mathf.Cos(a1))) + Vector3.up * (spring + radius * Mathf.Sin(a1));
+			Vector3 q0 = new Vector3(p0.x, crown, p0.z);
+			Vector3 q1 = new Vector3(p1.x, crown, p1.z);
+			// the spandrel walls on both faces, the arch's underside between them
+			Quad(concrete, p0 + v * w, p1 + v * w, q1 + v * w, q0 + v * w, v);
+			Quad(concrete, p0 - v * w, p1 - v * w, q1 - v * w, q0 - v * w, -v);
+			Vector3 middle = start + along * (from + radius) + Vector3.up * spring;
+			Vector3 inward = ((middle - (p0 + p1) * 0.5f).normalized);
+			Quad(concrete, p0 + v * w, p1 + v * w, p1 - v * w, p0 - v * w, inward);
+		}
+	}
+
 	// ---- harvested pieces
 
 	// a piece from the list that fits the lot either way round (scaled down to no less than minScale), turned to

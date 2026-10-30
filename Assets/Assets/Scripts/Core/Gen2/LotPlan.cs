@@ -74,6 +74,9 @@ public sealed class LotPlan
 	// expressway segments around the tile being collected
 	private readonly List<XZ> highway = new List<XZ>();
 
+	// and the viaducts, whose corridors stay free
+	private readonly List<Viaduct> viaducts = new List<Viaduct>();
+
 	public LotPlan(LayerPlan plan)
 	{
 		this.plan = plan;
@@ -92,6 +95,7 @@ public sealed class LotPlan
 		// a block's lots reach about half a block out of the tile, a site's lot SiteLot
 		double reach = RoadPlan.StreetSpacing + RoadPlan.StreetJitter + SiteLot * 1.42 + HighwayGap + RoadPlan.HighwayWidth;
 		plan.Roads.HighwaySegments(tile.X0 - reach, tile.Z0 - reach, tile.X1 + reach, tile.Z1 + reach, highway);
+		plan.Viaducts.Near((tile.X0 + tile.X1) * 0.5, (tile.Z0 + tile.Z1) * 0.5, viaducts);
 		CollectBlocks(tile, lots);
 		CollectSites(tile, lots);
 	}
@@ -228,7 +232,7 @@ public sealed class LotPlan
 
 	private void AddLot(int district, XZ centre, XZ axis, double hu, double hv, ulong seed, List<Lot> lots)
 	{
-		if (HighwayNear(centre, Math.Sqrt(hu * hu + hv * hv) + HighwayGap))
+		if (HighwayNear(centre, Math.Sqrt(hu * hu + hv * hv) + HighwayGap) || plan.Viaducts.Blocks(centre, Math.Sqrt(hu * hu + hv * hv), viaducts))
 		{
 			return;
 		}
@@ -276,7 +280,7 @@ public sealed class LotPlan
 				ulong seed = WorldRandom.Derive(plan.LayerSeed, Gen2.StreamLot + 1, Gen2.Pack(cx, cz));
 				double pick = Gen2.Unit(WorldRandom.Derive(seed, Gen2.StreamLot, 4uL));
 				// the rest of the sites stay empty snow
-				if (pick >= def.LotLandmark + def.LotOpen || HighwayNear(site, SiteLot * 1.42 + HighwayGap))
+				if (pick >= def.LotLandmark + def.LotOpen || HighwayNear(site, SiteLot * 1.42 + HighwayGap) || plan.Viaducts.Blocks(site, SiteLot * 1.42, viaducts))
 				{
 					continue;
 				}

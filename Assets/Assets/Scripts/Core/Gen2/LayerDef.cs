@@ -82,4 +82,7 @@ public sealed class DistrictDef
 
 	// share of street and buried-road stretches with utility poles and wires
 	public double Cables = 0.5;
+
+	// share of region cells centred here with an arched viaduct (ViaductPlan)
+	public double Viaducts;
 }

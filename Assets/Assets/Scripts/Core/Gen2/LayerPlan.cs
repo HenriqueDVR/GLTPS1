@@ -53,6 +53,8 @@ public sealed class LayerPlan
 
 	public readonly LotPlan Lots;
 
+	public readonly ViaductPlan Viaducts;
+
 	public LayerPlan(ulong worldSeed, int layer, XZ origin, LayerPlan below)
 	{
 		if (layer > 0 && (below == null || below.Layer != layer - 1 || below.WorldSeed != worldSeed))
@@ -66,6 +68,7 @@ public sealed class LayerPlan
 		LayerSeed = Gen2.LayerSeed(worldSeed, layer);
 		Below = (layer > 0) ? below : null;
 		Roads = new RoadPlan(this);
+		Viaducts = new ViaductPlan(this);
 		Lots = new LotPlan(this);
 	}
 

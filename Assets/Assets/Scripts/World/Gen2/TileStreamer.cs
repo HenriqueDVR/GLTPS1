@@ -90,6 +90,8 @@ public class TileStreamer : MonoBehaviour
 
 	private readonly List<RoadPiece> otherPieces = new List<RoadPiece>();
 
+	private readonly List<Viaduct> viaducts = new List<Viaduct>();
+
 	private readonly List<RoadPatch> otherPatches = new List<RoadPatch>();
 
 	// made here at runtime, destroyed with the streamer (never the loaded assets)
@@ -533,6 +535,7 @@ public class TileStreamer : MonoBehaviour
 		lotMesh.AddLots(lots, Plan.Def.Districts, Plan.Def.Ruin, x * Gen2.TileSize, z * Gen2.TileSize);
 		Scatter(x, z);
 		PlaceCables(x, z);
+		PlaceViaducts(x, z);
 		bool anyLots = lotMesh.End(lotsMesh);
 		built.SetActive(anyLots);
 		MeshCollider lotsCollider = built.GetComponent<MeshCollider>();
@@ -783,6 +786,54 @@ public class TileStreamer : MonoBehaviour
 				lotMesh.AddCable(at - corner + Vector3.up * (tall - 0.5f), to - corner + Vector3.up * (nextTall - 0.5f), sag);
 			}
 		}
+	}
+
+	// the bays of every viaduct whose middle is in this tile, and the piers that stand in it. a pier is left out
+	// where a road runs, the bays either side of it get a girder instead of an arch
+	private void PlaceViaducts(int x, int z)
+	{
+		double size = Gen2.TileSize;
+		Plan.Viaducts.Near((x + 0.5) * size, (z + 0.5) * size, viaducts);
+		Vector3 corner = new Vector3((float)(x * size), 0f, (float)(z * size));
+		foreach (Viaduct viaduct in viaducts)
+		{
+			double length = viaduct.Length;
+			if (RoadPlan.SegmentDistance(new XZ((x + 0.5) * size, (z + 0.5) * size), viaduct.A, viaduct.B) > size)
+			{
+				continue;
+			}
+			Vector3 along = new Vector3((float)((viaduct.B.X - viaduct.A.X) / length), 0f, (float)((viaduct.B.Z - viaduct.A.Z) / length));
+			int bays = (int)System.Math.Round(length / ViaductPlan.Bay);
+			for (int k = 0; k <= bays; k++)
+			{
+				XZ pier = viaduct.At(k * ViaductPlan.Bay);
+				if (k < bays)
+				{
+					XZ middle = viaduct.At((k + 0.5) * ViaductPlan.Bay);
+					if (Gen2.Cell(middle.X, size) == x && Gen2.Cell(middle.Z, size) == z)
+					{
+						bool arch = PierStands(pier) && PierStands(viaduct.At((k + 1) * ViaductPlan.Bay));
+						lotMesh.AddBay(new Vector3((float)pier.X, 0f, (float)pier.Z) - corner, along, (float)viaduct.Height, arch);
+					}
+				}
+				if (Gen2.Cell(pier.X, size) == x && Gen2.Cell(pier.Z, size) == z && PierStands(pier))
+				{
+					lotMesh.AddPier(new Vector3((float)pier.X, 0f, (float)pier.Z) - corner, along, (float)viaduct.Height);
+				}
+			}
+		}
+	}
+
+	private bool PierStands(XZ p)
+	{
+		foreach (RoadPiece piece in PiecesOf(Gen2.Cell(p.X, Gen2.TileSize), Gen2.Cell(p.Z, Gen2.TileSize)))
+		{
+			if (RoadPlan.SegmentDistance(p, piece.A, piece.B) < piece.Width * 0.5 + ViaductPlan.PierWidth)
+			{
+				return false;
+			}
+		}
+		return true;
 	}
 
 	private RoadPiece[] PiecesOf(int x, int z)

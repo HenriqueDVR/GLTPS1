@@ -94,6 +94,9 @@ public static class Gen2
 	// lots (LotPlan)
 	public const ulong StreamLot = 0x4C4F54uL;
 
+	// arched viaducts (ViaductPlan)
+	public const ulong StreamViaduct = 0x56494144uL;
+
 	// world items spawned by v2 tiles: bit 61, then (layer:8)(tileX:20)(tileZ:20)(index:12) as in 01-world-layers.
 	// legacy spawner ids are small, scene pickups use bit 62, items made at runtime will use bit 62 with a peer (03)
 	public const ulong TileItemTag = 0x2000000000000000uL;
