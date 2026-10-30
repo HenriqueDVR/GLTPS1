@@ -96,4 +96,10 @@ public sealed class DistrictDef
 
 	// share of building lots with more blocks piled on their roof, and sky-bridges to a neighbour (LotMesh)
 	public double Stacking;
+
+	// street width and the strip between street and buildings, metres. the old dense districts are narrow alleys
+	// with the buildings right up to them, not a modern city's wide roads
+	public double StreetWidth = 10.0;
+
+	public double Sidewalk = 3.0;
 }

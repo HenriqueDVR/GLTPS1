@@ -41,7 +41,6 @@ public struct Lot
 public sealed class LotPlan
 {
 	// kept clear between a street's edge and the block
-	public const double Sidewalk = 3.0;
 
 	public const double MinLot = 14.0;
 
@@ -183,7 +182,7 @@ public sealed class LotPlan
 		{
 			return;
 		}
-		double inset = RoadPlan.StreetWidth * 0.5 + Sidewalk;
+		double inset = plan.Def.Districts[district].StreetWidth * 0.5 + plan.Def.Districts[district].Sidewalk;
 		double hu = (bu1 - bu0) * 0.5 - inset;
 		double hv = (bv1 - bv0) * 0.5 - inset;
 		if (hu * 2.0 < MinLot || hv * 2.0 < MinLot)

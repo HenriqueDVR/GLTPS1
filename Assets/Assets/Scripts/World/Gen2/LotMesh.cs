@@ -432,7 +432,7 @@ public class LotMesh
 	// boxes jutting out higher up, something on the roof. a ruin loses part of its top
 	private void Monolith(Vector3 centre, Vector3 u, float hu, float hv, int floors, double ruin)
 	{
-		float margin = Range(1f, 4f);
+		float margin = Range(0.2f, 1.5f);
 		hu = Mathf.Max(3f, hu - margin);
 		hv = Mathf.Max(3f, hv - margin);
 		Vector3 v = Left(u);

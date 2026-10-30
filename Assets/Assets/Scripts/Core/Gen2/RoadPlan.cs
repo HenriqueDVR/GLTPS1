@@ -94,7 +94,8 @@ public sealed class RoadPlan
 
 	public const double HighwayWidth = 14.0;
 
-	public const double StreetWidth = 10.0;
+	// a district's own is DistrictDef.StreetWidth, this is the widest
+	public const double StreetWidth = 11.0;
 
 	public const double TrackWidth = 5.0;
 
@@ -513,19 +514,20 @@ public sealed class RoadPlan
 				for (int j = j0; j <= j1; j++)
 				{
 					XZ corner = Corner(grid, k, j);
+					double width = plan.Def.Districts[district].StreetWidth;
 					bool onU = Street(district, k, j, 0);
 					bool onV = Street(district, k, j, 1);
 					if (onU)
 					{
-						StreetPieces(tile, district, corner, Corner(grid, k + 1, j), grid.U, pieces);
+						StreetPieces(tile, district, corner, Corner(grid, k + 1, j), grid.U, width, pieces);
 					}
 					if (onV)
 					{
-						StreetPieces(tile, district, corner, Corner(grid, k, j + 1), grid.V, pieces);
+						StreetPieces(tile, district, corner, Corner(grid, k, j + 1), grid.V, width, pieces);
 					}
-					if (tile.Contains(corner) && !NearPillar(corner, PillarClearance + StreetWidth) && Inside(district, new XZ(corner.X - grid.U.X * StreetWidth * 0.5, corner.Z - grid.U.Z * StreetWidth * 0.5), new XZ(corner.X + grid.U.X * StreetWidth * 0.5, corner.Z + grid.U.Z * StreetWidth * 0.5), grid.U, StreetWidth * 0.5) && (onU || onV || Street(district, k - 1, j, 0) || Street(district, k, j - 1, 1)))
+					if (tile.Contains(corner) && !NearPillar(corner, PillarClearance + width) && Inside(district, new XZ(corner.X - grid.U.X * width * 0.5, corner.Z - grid.U.Z * width * 0.5), new XZ(corner.X + grid.U.X * width * 0.5, corner.Z + grid.U.Z * width * 0.5), grid.U, width * 0.5) && (onU || onV || Street(district, k - 1, j, 0) || Street(district, k, j - 1, 1)))
 					{
-						patches.Add(new RoadPatch { Kind = RoadKind.Street, Center = corner, Size = StreetWidth * 0.5, Axis = grid.U });
+						patches.Add(new RoadPatch { Kind = RoadKind.Street, Center = corner, Size = width * 0.5, Axis = grid.U });
 					}
 				}
 			}
@@ -534,9 +536,9 @@ public sealed class RoadPlan
 
 	// a straight street between two crossings, stopping at their squares, cut into pieces.
 	// a piece poking out of its district is left out: streets stop at the edge, where another grid starts
-	private void StreetPieces(Rect tile, int district, XZ from, XZ to, XZ dir, List<RoadPiece> pieces)
+	private void StreetPieces(Rect tile, int district, XZ from, XZ to, XZ dir, double width, List<RoadPiece> pieces)
 	{
-		double half = StreetWidth * 0.5;
+		double half = width * 0.5;
 		XZ a = new XZ(from.X + dir.X * half, from.Z + dir.Z * half);
 		XZ b = new XZ(to.X - dir.X * half, to.Z - dir.Z * half);
 		double length = a.DistanceTo(b);
@@ -548,9 +550,9 @@ public sealed class RoadPlan
 			XZ pa = new XZ(a.X + (b.X - a.X) * t0, a.Z + (b.Z - a.Z) * t0);
 			XZ pb = new XZ(a.X + (b.X - a.X) * t1, a.Z + (b.Z - a.Z) * t1);
 			XZ mid = Mid(pa, pb);
-			if (tile.Contains(mid) && !NearPillar(mid, PillarClearance + StreetWidth * 0.5) && Inside(district, pa, pb, dir, half))
+			if (tile.Contains(mid) && !NearPillar(mid, PillarClearance + width * 0.5) && Inside(district, pa, pb, dir, half))
 			{
-				pieces.Add(new RoadPiece { Kind = RoadKind.Street, A = pa, B = pb, TangentA = dir, TangentB = dir, Width = StreetWidth, Index = i });
+				pieces.Add(new RoadPiece { Kind = RoadKind.Street, A = pa, B = pb, TangentA = dir, TangentB = dir, Width = width, Index = i });
 			}
 		}
 	}

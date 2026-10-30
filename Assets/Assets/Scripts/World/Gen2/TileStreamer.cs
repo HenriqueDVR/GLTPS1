@@ -1074,7 +1074,8 @@ public class TileStreamer : MonoBehaviour
 		}
 		float side = (!street || (piece.Index / every) % 2 == 0) ? 1f : -1f;
 		across = new Vector3((float)-piece.TangentA.Z, 0f, (float)piece.TangentA.X);
-		at = new Vector3((float)mid.X, 0f, (float)mid.Z) + across * (side * ((float)piece.Width * 0.5f + (street ? 2.5f : 3f)));
+		float edge = street ? Mathf.Min(2.5f, (float)Plan.Def.Districts[Plan.DistrictAt(mid.X, mid.Z)].Sidewalk * 0.5f) : 3f;
+		at = new Vector3((float)mid.X, 0f, (float)mid.Z) + across * (side * ((float)piece.Width * 0.5f + edge));
 		tall = street ? 8.5f : 7f;
 		return Plan.Chasms.Inside(at.x, at.z) < -1.0;
 	}
@@ -1169,7 +1170,9 @@ public class TileStreamer : MonoBehaviour
 			}
 			Vector3 left = new Vector3((float)-piece.TangentA.Z, 0f, (float)piece.TangentA.X);
 			float side = ((piece.Index / 2) % 2 == 0) ? 1f : -1f;
-			Vector3 at = new Vector3((float)mid.X, groundY, (float)mid.Z) + left * (side * ((float)RoadPlan.StreetWidth * 0.5f + 1.5f));
+			// on the sidewalk, or against the wall where there's hardly one
+			float sidewalk = (float)Plan.Def.Districts[Plan.DistrictAt(mid.X, mid.Z)].Sidewalk;
+			Vector3 at = new Vector3((float)mid.X, groundY, (float)mid.Z) + left * (side * ((float)piece.Width * 0.5f + Mathf.Min(1.5f, sidewalk * 0.5f)));
 			if (Plan.Chasms.Inside(at.x, at.z) > -1.0)
 			{
 				continue;
