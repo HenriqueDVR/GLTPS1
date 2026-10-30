@@ -93,4 +93,7 @@ public sealed class DistrictDef
 
 	// share of building lots standing on a raised plate with stairs up (Lot.Base)
 	public double Podiums;
+
+	// share of building lots with more blocks piled on their roof, and sky-bridges to a neighbour (LotMesh)
+	public double Stacking;
 }

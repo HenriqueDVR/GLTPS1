@@ -124,9 +124,115 @@ public class LotMesh
 			{
 				// the building goes up onto its plate
 				Raise(first, (float)lot.Base);
+			}
+			float roof = Top(first);
+			if (lot.Base > 0.0)
+			{
 				Podium(centre, u, hu, hv, (float)lot.Base);
 			}
+			double stacking = districts[lot.District].Stacking;
+			if (style != BuildingStyle.Industrial && Unit() < stacking)
+			{
+				roof = Stack(centre, u, hu, hv, roof, 1 + random.Next(3));
+			}
+			roofs.Add(new Vector4(centre.x, roof, centre.z, (float)stacking));
 		}
+		Bridges();
+	}
+
+	// building lots of the tile so far: middle (x, z), roof (y), the district's stacking (w)
+	private readonly List<Vector4> roofs = new List<Vector4>();
+
+	// the highest point added since first
+	private float Top(int first)
+	{
+		float top = 0f;
+		for (int i = first; i < vertices.Count; i++)
+		{
+			top = Mathf.Max(top, vertices[i].y);
+		}
+		return top;
+	}
+
+	// blocks piled on the roof, each smaller or bigger than the one under it, shifted, sometimes turned a little or
+	// hanging out over the street: the city builds on itself for want of room (13, look of the source).
+	// gives the new roof
+	private float Stack(Vector3 centre, Vector3 u, float hu, float hv, float roof, int count)
+	{
+		for (int k = 0; k < count && roof < 160f; k++)
+		{
+			float turn = (Unit() < 0.3f) ? Range(-12f, 12f) : ((Unit() < 0.5f) ? 90f : 0f);
+			Vector3 axis = Quaternion.Euler(0f, turn, 0f) * u;
+			float su = Mathf.Clamp(hu * Range(0.45f, 1.15f), 4f, hu + 5f);
+			float sv = Mathf.Clamp(hv * Range(0.45f, 1.15f), 4f, hv + 5f);
+			Vector3 at = centre + u * (Range(-0.35f, 0.35f) * hu) + Left(u) * (Range(-0.35f, 0.35f) * hv);
+			int floors = 2 + random.Next(6);
+			// a slab under it, so where it hangs out it has an underside
+			Box(at, axis, su, sv, roof - 0.6f, roof + 0.3f, concrete, concrete, true);
+			int first = vertices.Count;
+			if (Unit() < 0.6f)
+			{
+				Monolith(at, axis, su, sv, floors, 0.0);
+			}
+			else
+			{
+				Slab(at, axis, su, sv, floors);
+			}
+			Raise(first, roof);
+			// a big overhang gets a leg or two down to the ground
+			if (su > hu + 2f || sv > hv + 2f)
+			{
+				Vector3 corner = at + axis * su * 0.9f + Left(axis) * sv * 0.9f;
+				Box(corner, axis, 0.7f, 0.7f, -sink, roof, concrete, concrete, false);
+				Box(at - axis * su * 0.9f + Left(axis) * sv * 0.9f, axis, 0.7f, 0.7f, -sink, roof, concrete, concrete, false);
+			}
+			roof = Mathf.Max(roof, Top(first));
+		}
+		return roof;
+	}
+
+	// sky-bridges between neighbouring buildings, part way up the lower one, a band of windows along them
+	private void Bridges()
+	{
+		for (int i = 0; i < roofs.Count; i++)
+		{
+			Vector4 a = roofs[i];
+			ulong roll = WorldRandom.Derive((ulong)(uint)Mathf.RoundToInt(a.x * 10f), Gen2.StreamLot + 9, (ulong)(uint)Mathf.RoundToInt(a.z * 10f));
+			if (Gen2.Unit(roll) >= a.w * 0.5)
+			{
+				continue;
+			}
+			int best = -1;
+			float near = 60f;
+			for (int j = 0; j < roofs.Count; j++)
+			{
+				float d = new Vector2(roofs[j].x - a.x, roofs[j].z - a.z).magnitude;
+				if (j != i && d > 14f && d < near)
+				{
+					near = d;
+					best = j;
+				}
+			}
+			if (best < 0)
+			{
+				continue;
+			}
+			Vector4 b = roofs[best];
+			float low = Mathf.Min(a.y, b.y);
+			if (low < 12f)
+			{
+				continue;
+			}
+			float y = low * (0.35f + 0.4f * (float)Gen2.Unit(roll >> 7));
+			Vector3 from = new Vector3(a.x, 0f, a.z);
+			Vector3 to = new Vector3(b.x, 0f, b.z);
+			Vector3 along = (to - from).normalized;
+			Vector3 mid = (from + to) * 0.5f;
+			float width = 1.4f + (float)Gen2.Unit(roll >> 15) * 1.4f;
+			Box(mid, along, near * 0.5f, width, y, y + 3.4f, concrete, concrete, true);
+			Box(mid, along, near * 0.5f - 0.2f, width + 0.05f, y + 1.3f, y + 2.3f, dark, dark, false);
+		}
+		roofs.Clear();
 	}
 
 	private void Building(BuildingStyle style, Vector3 centre, Vector3 u, float hu, float hv, int floors, double ruin)
