@@ -38,6 +38,20 @@ public class WorldKit : ScriptableObject
 
 	public GameObject ItemSpawner;
 
+	// pieces harvested out of the old node models (Models/Kit/Harvest, from Art/Harvest in Blender), merged into a
+	// tile's lot mesh. pivot at the middle of the base, y up, metres
+	public Mesh[] Buildings;
+
+	public Mesh[] Tanks;
+
+	public Mesh[] Props;
+
+	public Mesh[] Pipes;
+
+	public Mesh[] Panels;
+
+	public Mesh[] Railings;
+
 	public static WorldKit Load()
 	{
 		return Resources.Load<WorldKit>("WorldKit");

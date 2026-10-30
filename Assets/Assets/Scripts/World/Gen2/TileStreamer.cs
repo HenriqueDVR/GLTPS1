@@ -604,6 +604,12 @@ public class TileStreamer : MonoBehaviour
 	private void MeasureLandmarks()
 	{
 		kit = WorldKit.Load();
+		if (kit != null)
+		{
+			lotMesh.Buildings = kit.Buildings;
+			lotMesh.Tanks = kit.Tanks;
+			lotMesh.Props = kit.Props;
+		}
 		int count = (kit != null && kit.Landmarks != null) ? kit.Landmarks.Length : 0;
 		landmarkSizes = new Vector3[count];
 		landmarkBases = new Vector3[count];

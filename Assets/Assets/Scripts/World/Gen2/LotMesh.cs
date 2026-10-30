@@ -35,6 +35,27 @@ public class LotMesh
 
 	private WorldRandom random;
 
+	// pieces harvested from the old node models (WorldKit), set by the streamer
+	public Mesh[] Buildings;
+
+	public Mesh[] Tanks;
+
+	public Mesh[] Props;
+
+	// a harvested mesh's geometry, read once
+	private struct Piece
+	{
+		public Vector3[] Vertices;
+
+		public Vector2[] Uvs;
+
+		public int[] Triangles;
+
+		public Vector3 Size;
+	}
+
+	private static readonly Dictionary<Mesh, Piece> pieces = new Dictionary<Mesh, Piece>();
+
 	public int Triangles { get; private set; }
 
 	public enum Debris
@@ -73,6 +94,15 @@ public class LotMesh
 			float hv = (float)lot.HalfV;
 			if (lot.Kind == LotKind.Open)
 			{
+				// a big site in the fields can hold a whole ruined block, smaller open lots a harvested prop
+				if (hu >= 25f && Unit() < 0.4f && Harvested(Buildings, centre, u, hu, hv, concrete, 0.6f))
+				{
+					continue;
+				}
+				if (Unit() < 0.3f && Harvested(Props, centre, u, Mathf.Min(hu, 6f), Mathf.Min(hv, 6f), concrete, 0.8f))
+				{
+					continue;
+				}
 				Rubble(centre, u, hu, hv);
 				continue;
 			}
@@ -80,7 +110,13 @@ public class LotMesh
 			{
 				continue;
 			}
-			switch (districts[lot.District].Style)
+			BuildingStyle style = districts[lot.District].Style;
+			float share = (style == BuildingStyle.Ruin) ? 0.25f : (style == BuildingStyle.Industrial) ? 0f : 0.35f;
+			if (Unit() < share && Harvested(Buildings, centre, u, hu, hv, concrete, 0.6f))
+			{
+				continue;
+			}
+			switch (style)
 			{
 				case BuildingStyle.Slab:
 					Slab(centre, u, hu, hv, lot.Floors);
@@ -407,6 +443,11 @@ public class LotMesh
 	// one to three tanks on a concrete pad, banded, a pipe from each down to the ground and between neighbours
 	private void Industrial(Vector3 centre, Vector3 u, float hu, float hv, int floors)
 	{
+		// a harvested silo now and then
+		if (Unit() < 0.4f && Harvested(Tanks, centre, u, hu, hv, metal, 0.5f))
+		{
+			return;
+		}
 		// not every lot is a tank farm: sheds and blocks between them
 		if (Unit() < 0.4f)
 		{
@@ -507,6 +548,70 @@ public class LotMesh
 			Vector3 at = centre + u * (Range(-1f, 1f) * hu * 0.7f) + v * (Range(-1f, 1f) * hv * 0.7f);
 			Vector3 axis = new Vector3(1f, 0f, Range(-1f, 1f)).normalized;
 			Box(at, axis, Range(1f, 4f), Range(1f, 4f), -sink, Range(0.4f, 1.8f), concrete, concrete, false);
+		}
+	}
+
+	// ---- harvested pieces
+
+	// a piece from the list that fits the lot either way round (scaled down to no less than minScale), turned to
+	// the lot's axis, merged into the mesh. false if none of a few tries fits
+	private bool Harvested(Mesh[] from, Vector3 centre, Vector3 u, float hu, float hv, int submesh, float minScale)
+	{
+		if (from == null || from.Length == 0)
+		{
+			return false;
+		}
+		int start = random.Next(from.Length);
+		float lu = hu * 2f - 2f;
+		float lv = hv * 2f - 2f;
+		for (int k = 0; k < Mathf.Min(4, from.Length); k++)
+		{
+			Mesh mesh = from[(start + k) % from.Length];
+			if (mesh == null)
+			{
+				continue;
+			}
+			Piece piece = Read(mesh);
+			float straight = Mathf.Min(1f, Mathf.Min(lu / piece.Size.x, lv / piece.Size.z));
+			float turned = Mathf.Min(1f, Mathf.Min(lu / piece.Size.z, lv / piece.Size.x));
+			float scale = Mathf.Max(straight, turned);
+			if (scale < minScale)
+			{
+				continue;
+			}
+			float yaw = Mathf.Atan2(u.z, u.x) * -Mathf.Rad2Deg + ((turned > straight) ? 90f : 0f) + ((Unit() < 0.5f) ? 180f : 0f);
+			AddPiece(piece, Matrix4x4.TRS(centre, Quaternion.Euler(0f, yaw, 0f), Vector3.one * scale), submesh);
+			return true;
+		}
+		return false;
+	}
+
+	private static Piece Read(Mesh mesh)
+	{
+		if (!pieces.TryGetValue(mesh, out Piece piece))
+		{
+			piece.Vertices = mesh.vertices;
+			piece.Uvs = mesh.uv;
+			piece.Triangles = mesh.triangles;
+			piece.Size = mesh.bounds.size;
+			pieces[mesh] = piece;
+		}
+		return piece;
+	}
+
+	private void AddPiece(Piece piece, Matrix4x4 place, int submesh)
+	{
+		int first = vertices.Count;
+		bool uv = piece.Uvs != null && piece.Uvs.Length == piece.Vertices.Length;
+		for (int i = 0; i < piece.Vertices.Length; i++)
+		{
+			vertices.Add(place.MultiplyPoint3x4(piece.Vertices[i]));
+			uvs.Add(uv ? piece.Uvs[i] : Vector2.zero);
+		}
+		List<int> list = triangles[submesh];
+		foreach (int index in piece.Triangles)
+		{
+			list.Add(first + index);
 		}
 	}
 
