@@ -1248,6 +1248,46 @@ public class LotMesh
 		return floor - deckDrop * (floor - Level) / -Level;
 	}
 
+	// the round chamber at the foot of the start tunnel's way down (UndergroundPlan.Start): the tunnel comes in from
+	// back, the gallery leaves along out_. a round room so any angle meets the grid. floor, slab, walls, pipes
+	public void AddChamber(Vector3 centre, Vector3 back, Vector3 out_)
+	{
+		float r = (float)UndergroundPlan.ChamberRadius;
+		float wall = (float)UndergroundPlan.Wall;
+		float mouth = (float)UndergroundPlan.GalleryWidth * 0.5f + 0.6f;
+		Box(centre, Vector3.right, r + wall, r + wall, Level - 1f, Level, concrete, concrete, false);
+		Box(centre, Vector3.right, r + wall, r + wall, Ceiling, -0.1f, concrete, concrete, true);
+		const int segments = 24;
+		for (int i = 0; i < segments; i++)
+		{
+			float angle = (i + 0.5f) * Mathf.PI * 2f / segments;
+			Vector3 dir = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+			// left open where the tunnel and the gallery come in
+			if (Opening(dir, back, r, mouth) || Opening(dir, out_, r, mouth))
+			{
+				continue;
+			}
+			Box(centre + dir * (r + wall * 0.5f), Left(dir), r * Mathf.PI / segments + 0.05f, wall * 0.5f, Level, Ceiling, concrete, concrete, false);
+		}
+		for (int i = 0; i < 3; i++)
+		{
+			float angle = i * 2.1f + 0.4f;
+			Vector3 dir = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
+			if (Opening(dir, back, r, mouth + 1.5f) || Opening(dir, out_, r, mouth + 1.5f))
+			{
+				continue;
+			}
+			Vector3 at = centre + dir * (r - 1.2f);
+			Tube(at + Vector3.up * Level, at + Vector3.up * Ceiling, 0.5f, metal);
+		}
+	}
+
+	// whether the wall towards dir is in the mouth of an opening towards towards
+	private static bool Opening(Vector3 dir, Vector3 towards, float radius, float mouth)
+	{
+		return Vector3.Dot(dir, towards) > 0f && Vector3.Cross(towards, dir).magnitude * radius < mouth;
+	}
+
 	// an open steel tower, square, legs half apart either way, x-braced
 	private void Lattice(Vector3 at, float half, float y0, float y1)
 	{

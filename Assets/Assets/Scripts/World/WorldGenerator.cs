@@ -82,7 +82,8 @@ public class WorldGenerator : MonoBehaviour
 			Vector3 girls = (Girls.Chito != null) ? Girls.Chito.transform.position : node.transform.position;
 			girls.y = node.transform.position.y;
 			Vector3 centre = OriginTunnel.Centre(girls + Offset(), node.transform.rotation);
-			Plan = new LayerPlan(Seed, 0, new XZ(centre.x, centre.z), null);
+			Vector3 facing = node.transform.rotation * Vector3.forward;
+			Plan = new LayerPlan(Seed, 0, new XZ(centre.x, centre.z), null, new XZ(facing.x, facing.z));
 			// roads, voids, viaducts and the underground too, so peers on different world code see the mismatch warning
 			ulong planHash = Plan.PlanHash(Plan.Origin, 1) ^ Plan.Roads.Hash(Plan.Origin, 1) ^ Plan.Chasms.Hash(Plan.Origin, 1) ^ Plan.Underground.Hash(Plan.Origin, 3);
 			LayoutHash = (uint)(planHash ^ (planHash >> 32));
@@ -92,7 +93,7 @@ public class WorldGenerator : MonoBehaviour
 #endif
 			SeedItemSpawners(node.gameObject, 0uL);
 			node.MarkPlaced();
-			OriginTunnel.Build(node, girls, node.transform.rotation);
+			OriginTunnel.Build(node, girls, node.transform.rotation, Plan.Underground.Start(out _));
 			return;
 		}
 		Layout = BuildLayout(node, nodeData, rootPose, Seed);

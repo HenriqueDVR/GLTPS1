@@ -43,8 +43,9 @@ public static class OriginTunnel
 		return ahead + behind + backSlope;
 	}
 
-	// hides the node's walkway and its compound, builds the tunnel in their place. world coords
-	public static GameObject Build(Node start, Vector3 girls, Quaternion facing)
+	// hides the node's walkway and its compound, builds the tunnel in their place. world coords. open: the dead end
+	// goes on down into the underground (UndergroundPlan.Start), the fallen roof pushed to the walls
+	public static GameObject Build(Node start, Vector3 girls, Quaternion facing, bool open)
 	{
 		int layer = 0;
 		for (int i = 0; i < start.transform.childCount; i++)
@@ -65,7 +66,7 @@ public static class OriginTunnel
 		tunnel.layer = layer;
 		tunnel.transform.SetPositionAndRotation(girls, facing);
 		Builder b = new Builder();
-		b.Make();
+		b.Make(open);
 		Mesh mesh = b.ToMesh();
 		tunnel.GetComponent<MeshFilter>().sharedMesh = mesh;
 		tunnel.GetComponent<MeshRenderer>().sharedMaterials = new[] { Load("Roads/Concrete"), Load("Ground/Snow"), Load("Buildings/Dark") };
@@ -97,7 +98,7 @@ public static class OriginTunnel
 
 		private readonly List<int>[] triangles = { new List<int>(), new List<int>(), new List<int>() };
 
-		public void Make()
+		public void Make(bool open)
 		{
 			float w = width * 0.5f;
 			float front = ahead;
@@ -120,14 +121,21 @@ public static class OriginTunnel
 			Box(new Vector3(-w + 1.2f, height - 2.2f, (front + back) * 0.5f), new Vector3(0.8f, 0.8f, front - back - 2f), dark);
 			Box(new Vector3(-w + 1.2f, height - 3.4f, (front + back) * 0.5f), new Vector3(0.6f, 0.6f, front - back - 2f), dark);
 			Box(new Vector3(w - 0.9f, height - 2.6f, (front + back) * 0.5f), new Vector3(0.6f, 0.25f, front - back - 2f), dark);
-			// the dead end: the roof came down
-			Quad(dark, new Vector3(-w, 0f, back), new Vector3(w, 0f, back), new Vector3(w, height, back), new Vector3(-w, height, back), Vector3.forward);
+			// the dead end: the roof came down. open, the rubble's pushed to the walls and the tunnel goes on down
 			WorldRandom random = new WorldRandom(0x54554E4E454CuL);
+			if (open)
+			{
+				Down(w, back);
+			}
+			else
+			{
+				Quad(dark, new Vector3(-w, 0f, back), new Vector3(w, 0f, back), new Vector3(w, height, back), new Vector3(-w, height, back), Vector3.forward);
+			}
 			for (int i = 0; i < 14; i++)
 			{
-				float x = Range(random, -w + 1.5f, w - 1.5f);
+				float x = open ? ((i % 2 == 0) ? 1f : -1f) * Range(random, w - 3f, w - 1.5f) : Range(random, -w + 1.5f, w - 1.5f);
 				float z = back + Range(random, 1f, 9f);
-				float s = Range(random, 1.5f, 4f);
+				float s = open ? Range(random, 1.5f, 3f) : Range(random, 1.5f, 4f);
 				Box(new Vector3(x, s * 0.35f, z), new Vector3(s, s * 0.7f, s * 0.8f), concrete);
 			}
 			// the retaining wall the portal is in: the embankment's end, cut straight, the portal a hole in it
@@ -166,6 +174,30 @@ public static class OriginTunnel
 			Tri(snow, b0, t0, t3, Vector3.left);
 			Tri(snow, b0, t3, b3, Vector3.left);
 			Quad(snow, t2, t3, b3, b2, Vector3.back + Vector3.up);
+		}
+
+		// on from the dead end and down (UndergroundPlan.StartFloor/StartRoof) to the underground's level, a little way
+		// into the chamber at the bottom. the floor sits as the tunnel's, 2 cm over the deck
+		private void Down(float w, float back)
+		{
+			float end = (float)(UndergroundPlan.RampLength + UndergroundPlan.StartFlat) + 2f;
+			const float step = 4f;
+			for (float s = 0f; s < end - 0.01f; s += step)
+			{
+				float e = Mathf.Min(s + step, end);
+				float fa = (float)UndergroundPlan.StartFloor(s) + 0.02f;
+				float fb = (float)UndergroundPlan.StartFloor(e) + 0.02f;
+				float ra = (float)UndergroundPlan.StartRoof(s) + 0.02f;
+				float rb = (float)UndergroundPlan.StartRoof(e) + 0.02f;
+				float za = back - s;
+				float zb = back - e;
+				Quad(concrete, new Vector3(-w, fa, za), new Vector3(w, fa, za), new Vector3(w, fb, zb), new Vector3(-w, fb, zb), Vector3.up);
+				Quad(concrete, new Vector3(-w, fa, za), new Vector3(-w, fb, zb), new Vector3(-w, rb, zb), new Vector3(-w, ra, za), Vector3.right);
+				Quad(concrete, new Vector3(w, fa, za), new Vector3(w, fb, zb), new Vector3(w, rb, zb), new Vector3(w, ra, za), Vector3.left);
+				Quad(dark, new Vector3(-w, ra, za), new Vector3(w, ra, za), new Vector3(w, rb, zb), new Vector3(-w, rb, zb), Vector3.down);
+				// a pipe on along the wall, just under the roof
+				Box(new Vector3(-w + 1.2f, (ra + rb) * 0.5f - 1.4f, (za + zb) * 0.5f), new Vector3(0.6f, 0.6f, e - s), dark);
+			}
 		}
 
 		private static float Range(WorldRandom random, float a, float b)

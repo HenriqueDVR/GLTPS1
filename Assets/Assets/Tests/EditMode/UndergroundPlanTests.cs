@@ -235,6 +235,63 @@ public class UndergroundPlanTests
 		Assert.Greater(ways, 3);
 	}
 
+	// the start tunnel's dead end goes on down: whichever way the tunnel faces, the ramp, the chamber and the gallery
+	// reach a hall with its mouth on the side facing them, and no other hall or gallery gets in the way
+	[Test]
+	public void StartTunnelGoesDown()
+	{
+		Assert.IsFalse(Layer0().Underground.Start(out _), "no facing, no way down");
+		foreach (XZ facing in new[] { new XZ(0.0, 1.0), new XZ(0.6, 0.8), new XZ(-1.0, 0.0), new XZ(-0.3, -0.954), new XZ(0.707, -0.707) })
+		{
+			LayerPlan plan = new LayerPlan(seed, 0, new XZ(0.0, 0.0), null, facing);
+			Assert.IsTrue(plan.Underground.Start(out StartWay way), "facing " + facing);
+			Assert.AreEqual(0.0, UndergroundPlan.StartFloor(0.0), 1e-9);
+			Assert.AreEqual(-UndergroundPlan.Level, UndergroundPlan.StartFloor(UndergroundPlan.RampLength + 1.0), 1e-9);
+			Assert.Greater(UndergroundPlan.StartRoof(UndergroundPlan.StartCover + 1.0), UndergroundPlan.StartFloor(UndergroundPlan.StartCover + 1.0) + UndergroundPlan.Headroom);
+			Assert.Less(UndergroundPlan.StartRoof(UndergroundPlan.StartCover + 1.0), 0.0, "under the deck past the embankment");
+			// the line runs down to the chamber, the gallery meets the hall's wall in its span
+			for (double s = 0.0; s <= UndergroundPlan.RampLength + UndergroundPlan.StartFlat; s += 4.0)
+			{
+				XZ p = way.Point(s, 0.0);
+				Assert.IsTrue(plan.Underground.Under(p.X, p.Z));
+			}
+			Assert.IsTrue(plan.Underground.Under(way.Chamber.X, way.Chamber.Z));
+			Assert.IsTrue(plan.Underground.Under((way.GalleryA.X + way.GalleryB.X) * 0.5, (way.GalleryA.Z + way.GalleryB.Z) * 0.5));
+			Assert.IsTrue(plan.Underground.HallAt(way.Hall.CellX, way.Hall.CellZ, out Hall hall));
+			Assert.AreEqual(way.Hall.Center.X, hall.Center.X);
+			Area inner = hall.Inner.Grown(UndergroundPlan.Wall);
+			Assert.AreEqual(0.0, inner.Distance(way.GalleryB.X, way.GalleryB.Z), 1e-6);
+			double mouth = (System.Math.Abs(way.Out.X) > 0.5) ? way.GalleryB.Z : way.GalleryB.X;
+			double gap = (way.Out.X > 0.5) ? hall.GalleryNX : (way.Out.X < -0.5) ? hall.GalleryPX : (way.Out.Z > 0.5) ? hall.GalleryNZ : hall.GalleryPZ;
+			Assert.AreEqual(mouth, gap, 1e-9);
+			Assert.GreaterOrEqual(hall.Inner.Distance(plan.Origin.X, plan.Origin.Z), RoadPlan.StartClearance);
+			// nothing else down there in its way
+			for (int x = -6; x <= 6; x++)
+			{
+				for (int z = -6; z <= 6; z++)
+				{
+					if (plan.Underground.HallAt(x, z, out Hall other) && (other.CellX != hall.CellX || other.CellZ != hall.CellZ))
+					{
+						Assert.IsFalse(other.Inner.Grown(UndergroundPlan.Wall).Overlaps(way.Keep), "hall in the start's way");
+						Assert.IsFalse(other.Inner.Overlaps(hall.Inner.Grown(UndergroundPlan.Wall)), "hall in the start's hall");
+					}
+					for (int d = 0; d < 2; d++)
+					{
+						if (plan.Underground.Gallery(x, z, d == 1, out GalleryPiece g))
+						{
+							Assert.IsFalse(UndergroundPlan.GalleryArea(g).Overlaps(way.Keep), "gallery in the start's way");
+						}
+					}
+				}
+			}
+			// the deck's open over the top of the ramp
+			List<Area> holes = new List<Area>();
+			XZ top = way.Point(UndergroundPlan.StartHole * 0.5, 0.0);
+			plan.Underground.Holes(Gen2.Cell(top.X, Gen2.TileSize), Gen2.Cell(top.Z, Gen2.TileSize), holes);
+			Assert.IsTrue(holes.Exists(h => h.Contains(top.X, top.Z)));
+		}
+	}
+
 	[Test]
 	public void NothingUnderTheStart()
 	{

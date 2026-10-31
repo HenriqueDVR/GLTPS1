@@ -106,6 +106,77 @@ public struct GalleryPiece
 	public XZ B;
 }
 
+// layer 0's start tunnel going on down (UndergroundPlan.Start), layout coords: from the dead end Back along Dir down a
+// ramp to the round chamber, then along Out (x or z) a gallery from the chamber's edge (A) to its hall's wall (B)
+public struct StartWay
+{
+	public XZ Back;
+
+	public XZ Dir;
+
+	public XZ Chamber;
+
+	public XZ Out;
+
+	public XZ GalleryA;
+
+	public XZ GalleryB;
+
+	public Hall Hall;
+
+	public XZ Point(double s, double across)
+	{
+		return new XZ(Back.X + Dir.X * s - Dir.Z * across, Back.Z + Dir.Z * s + Dir.X * across);
+	}
+
+	public GalleryPiece Gallery => new GalleryPiece { A = GalleryA, B = GalleryB };
+
+	// the box round the ramp, the chamber and the gallery, kept clear of every other hall and gallery
+	public Area Keep
+	{
+		get
+		{
+			Area area = Box(0.0, UndergroundPlan.RampLength + UndergroundPlan.StartFlat, UndergroundPlan.GalleryWidth * 0.5 + UndergroundPlan.Wall);
+			double r = UndergroundPlan.ChamberRadius + UndergroundPlan.Wall;
+			area = Union(area, new Area { X0 = Chamber.X - r, Z0 = Chamber.Z - r, X1 = Chamber.X + r, Z1 = Chamber.Z + r });
+			return Union(area, UndergroundPlan.GalleryArea(Gallery).Grown(UndergroundPlan.Wall));
+		}
+	}
+
+	// the box round the top of the ramp, where the deck's cut open under the embankment
+	public Area Hole => Box(0.0, UndergroundPlan.StartHole, UndergroundPlan.GalleryWidth * 0.5 + UndergroundPlan.Wall);
+
+	public bool Contains(double x, double z)
+	{
+		double dx = x - Back.X;
+		double dz = z - Back.Z;
+		double s = dx * Dir.X + dz * Dir.Z;
+		double a = -dx * Dir.Z + dz * Dir.X;
+		if (s >= 0.0 && s <= UndergroundPlan.RampLength + UndergroundPlan.StartFlat && Math.Abs(a) <= UndergroundPlan.GalleryWidth * 0.5 + UndergroundPlan.Wall)
+		{
+			return true;
+		}
+		double cx = x - Chamber.X;
+		double cz = z - Chamber.Z;
+		double r = UndergroundPlan.ChamberRadius + UndergroundPlan.Wall;
+		return cx * cx + cz * cz <= r * r || UndergroundPlan.GalleryArea(Gallery).Contains(x, z);
+	}
+
+	private Area Box(double s0, double s1, double half)
+	{
+		XZ a = Point(s0, -half);
+		XZ b = Point(s0, half);
+		XZ c = Point(s1, -half);
+		XZ d = Point(s1, half);
+		return new Area { X0 = Math.Min(Math.Min(a.X, b.X), Math.Min(c.X, d.X)), Z0 = Math.Min(Math.Min(a.Z, b.Z), Math.Min(c.Z, d.Z)), X1 = Math.Max(Math.Max(a.X, b.X), Math.Max(c.X, d.X)), Z1 = Math.Max(Math.Max(a.Z, b.Z), Math.Max(c.Z, d.Z)) };
+	}
+
+	private static Area Union(Area a, Area b)
+	{
+		return new Area { X0 = Math.Min(a.X0, b.X0), Z0 = Math.Min(a.Z0, b.Z0), X1 = Math.Max(a.X1, b.X1), Z1 = Math.Max(a.Z1, b.Z1) };
+	}
+}
+
 // world gen v2: the underground (01, the raised city and the underground; episode 1's dark industrial interior:
 // Yuuri wants to go into a building, they get lost inside, and leave by a doorway at the end of a passage).
 // one level Level under the deck: halls on a coarse grid of cells, a district's share of cells
@@ -277,6 +348,25 @@ public sealed class UndergroundPlan
 			hall.GalleryNX = Gallery(cellX - 1, cellZ, false, out GalleryPiece west) ? west.A.Z : double.NaN;
 			hall.GalleryPZ = Gallery(cellX, cellZ, true, out GalleryPiece north) ? north.A.X : double.NaN;
 			hall.GalleryNZ = Gallery(cellX, cellZ - 1, true, out GalleryPiece south) ? south.A.X : double.NaN;
+			if (Start(out StartWay start) && start.Hall.CellX == cellX && start.Hall.CellZ == cellZ)
+			{
+				if (start.Out.X > 0.5)
+				{
+					hall.GalleryNX = start.GalleryB.Z;
+				}
+				else if (start.Out.X < -0.5)
+				{
+					hall.GalleryPX = start.GalleryB.Z;
+				}
+				else if (start.Out.Z > 0.5)
+				{
+					hall.GalleryNZ = start.GalleryB.X;
+				}
+				else
+				{
+					hall.GalleryPZ = start.GalleryB.X;
+				}
+			}
 			EntranceFor(ref hall);
 			halls[key] = hall;
 		}
@@ -291,6 +381,11 @@ public sealed class UndergroundPlan
 	// the room alone, no galleries or way in yet
 	private bool Room(int cellX, int cellZ, out Hall hall)
 	{
+		if (Start(out StartWay start) && start.Hall.CellX == cellX && start.Hall.CellZ == cellZ)
+		{
+			hall = start.Hall;
+			return true;
+		}
 		hall = default(Hall);
 		ulong seed = WorldRandom.Derive(plan.LayerSeed, Gen2.StreamUnder, Gen2.Pack(cellX, cellZ));
 		WorldRandom random = new WorldRandom(seed);
@@ -304,6 +399,11 @@ public sealed class UndergroundPlan
 		double roomZ = Cell - 2.0 * (CellMargin + Wall + hall.HalfZ);
 		hall.Center = new XZ(cellX * Cell + CellMargin + Wall + hall.HalfX + Gen2.Unit(random.NextULong()) * roomX, cellZ * Cell + CellMargin + Wall + hall.HalfZ + Gen2.Unit(random.NextULong()) * roomZ);
 		if (roll >= plan.Def.Districts[plan.DistrictAt(hall.Center.X, hall.Center.Z)].Underground)
+		{
+			return false;
+		}
+		Area room = hall.Inner.Grown(Wall + CellMargin);
+		if (Start(out start) && (room.Overlaps(start.Keep) || room.Overlaps(start.Hall.Inner.Grown(Wall))))
 		{
 			return false;
 		}
@@ -389,6 +489,21 @@ public sealed class UndergroundPlan
 			double z = (z0 + z1) * 0.5;
 			gallery.A = new XZ(a.Center.X + a.HalfX + Wall, z);
 			gallery.B = new XZ(b.Center.X - b.HalfX - Wall, z);
+		}
+		if (Start(out StartWay start))
+		{
+			if (GalleryArea(gallery).Overlaps(start.Keep))
+			{
+				return false;
+			}
+			// the start's hall takes its way in on the side facing the chamber
+			XZ into = new XZ(-start.Out.X, -start.Out.Z);
+			bool fromStart = a.CellX == start.Hall.CellX && a.CellZ == start.Hall.CellZ && (north ? into.Z > 0.5 : into.X > 0.5);
+			bool toStart = b.CellX == start.Hall.CellX && b.CellZ == start.Hall.CellZ && (north ? into.Z < -0.5 : into.X < -0.5);
+			if (fromStart || toStart)
+			{
+				return false;
+			}
 		}
 		return Clear(GalleryArea(gallery), VoidGap + Wall);
 	}
@@ -631,6 +746,100 @@ public sealed class UndergroundPlan
 
 	private readonly List<Viaduct> viaducts = new List<Viaduct>();
 
+	// ---- the start (layer 0): the origin tunnel's dead end goes on down, the way they came in episode 1
+
+	// from layer 0's origin back to the tunnel's dead end (OriginTunnel: the girls 48.5 m in front of the origin, the
+	// dead end 90 m behind them), the stretch of the embankment over its ramp, the ramp's flat foot, the round chamber
+	// at the bottom that turns it onto the grid, the gallery from there to its hall, how far the deck's open over it
+	public const double StartBack = 41.5;
+
+	public const double StartCover = 40.0;
+
+	public const double StartFlat = 8.0;
+
+	public const double ChamberRadius = 12.0;
+
+	public const double StartGallery = 24.0;
+
+	public const double StartHole = 32.0;
+
+	// the floor s metres down from the dead end: the passage's ramp the other way round
+	public static double StartFloor(double s)
+	{
+		return PassageFloor(PassageLength - Math.Min(s, RampLength));
+	}
+
+	// its roof: coming down from the tunnel's under the embankment, then a gallery's height over the floor under the deck
+	public static double StartRoof(double s)
+	{
+		double floor = StartFloor(s);
+		if (s < StartCover)
+		{
+			return Math.Max(9.0 + (-Roof - 9.0) * s / StartCover, floor + Headroom + Roof);
+		}
+		return Math.Min(-Roof, floor + GalleryHeight);
+	}
+
+	private bool startKnown;
+
+	private bool startFound;
+
+	private StartWay startWay;
+
+	public bool Start(out StartWay way)
+	{
+		if (!startKnown)
+		{
+			startKnown = true;
+			startFound = FindStart(out startWay);
+		}
+		way = startWay;
+		return startFound;
+	}
+
+	// down the tunnel's line to the chamber, the gallery along the grid line nearest that way, the hall at its end
+	private bool FindStart(out StartWay way)
+	{
+		way = default(StartWay);
+		double length = Math.Sqrt(plan.StartFacing.X * plan.StartFacing.X + plan.StartFacing.Z * plan.StartFacing.Z);
+		if (plan.Layer != 0 || length < 1e-9)
+		{
+			return false;
+		}
+		way.Dir = new XZ(-plan.StartFacing.X / length, -plan.StartFacing.Z / length);
+		way.Back = new XZ(plan.Origin.X + way.Dir.X * StartBack, plan.Origin.Z + way.Dir.Z * StartBack);
+		double reach = RampLength + StartFlat + ChamberRadius;
+		way.Chamber = way.Point(reach, 0.0);
+		way.Out = (Math.Abs(way.Dir.X) >= Math.Abs(way.Dir.Z)) ? new XZ(Math.Sign(way.Dir.X), 0.0) : new XZ(0.0, Math.Sign(way.Dir.Z));
+		way.GalleryA = new XZ(way.Chamber.X + way.Out.X * ChamberRadius, way.Chamber.Z + way.Out.Z * ChamberRadius);
+		way.GalleryB = new XZ(way.GalleryA.X + way.Out.X * StartGallery, way.GalleryA.Z + way.Out.Z * StartGallery);
+		WorldRandom random = new WorldRandom(WorldRandom.Derive(plan.LayerSeed, Gen2.StreamUnder + 4, 0uL));
+		double halfOut = 24.0 + Gen2.Unit(random.NextULong()) * 16.0;
+		double halfAlong = 30.0 + Gen2.Unit(random.NextULong()) * 20.0;
+		double slide = (Gen2.Unit(random.NextULong()) * 2.0 - 1.0) * (halfAlong - GalleryWidth * 0.5 - Wall - 4.0);
+		XZ along = new XZ(-way.Out.Z, way.Out.X);
+		XZ centre = new XZ(way.GalleryB.X + way.Out.X * (Wall + halfOut) - along.X * slide, way.GalleryB.Z + way.Out.Z * (Wall + halfOut) - along.Z * slide);
+		way.Hall = new Hall
+		{
+			Center = centre,
+			HalfX = (Math.Abs(way.Out.X) > 0.5) ? halfOut : halfAlong,
+			HalfZ = (Math.Abs(way.Out.X) > 0.5) ? halfAlong : halfOut,
+			CellX = Gen2.Cell(centre.X, Cell),
+			CellZ = Gen2.Cell(centre.Z, Cell),
+			Seed = random.NextULong()
+		};
+		// all of the way clear of voids, the hall of pillars and the start too
+		for (double s = 0.0; s <= reach + StartGallery; s += 8.0)
+		{
+			XZ p = (s <= reach) ? way.Point(s, 0.0) : new XZ(way.Chamber.X + way.Out.X * (s - reach + ChamberRadius), way.Chamber.Z + way.Out.Z * (s - reach + ChamberRadius));
+			if (plan.Chasms.Inside(p.X, p.Z) > -VoidGap)
+			{
+				return false;
+			}
+		}
+		return Clear(way.Hall.Inner, VoidGap + Wall);
+	}
+
 	// ---- for tiles
 
 	// the halls whose middle is in the tile (with their ways in), and the gallery pieces (at most PieceLength long)
@@ -695,13 +904,23 @@ public sealed class UndergroundPlan
 				{
 					continue;
 				}
-				Area hole = HoleArea(hall);
-				Area part = new Area { X0 = Math.Max(hole.X0, tile.X0), Z0 = Math.Max(hole.Z0, tile.Z0), X1 = Math.Min(hole.X1, tile.X1), Z1 = Math.Min(hole.Z1, tile.Z1) };
-				if (part.X1 > part.X0 && part.Z1 > part.Z0)
-				{
-					holes.Add(part);
-				}
+				Clip(HoleArea(hall), tile, holes);
 			}
+		}
+		// under the start tunnel's embankment, where its ramp goes down through the deck: the box round it, the
+		// embankment hides the rest
+		if (Start(out StartWay start))
+		{
+			Clip(start.Hole, tile, holes);
+		}
+	}
+
+	private static void Clip(Area hole, Area tile, List<Area> holes)
+	{
+		Area part = new Area { X0 = Math.Max(hole.X0, tile.X0), Z0 = Math.Max(hole.Z0, tile.Z0), X1 = Math.Min(hole.X1, tile.X1), Z1 = Math.Min(hole.Z1, tile.Z1) };
+		if (part.X1 > part.X0 && part.Z1 > part.Z0)
+		{
+			holes.Add(part);
 		}
 	}
 
@@ -723,9 +942,14 @@ public sealed class UndergroundPlan
 		return false;
 	}
 
-	// whether (x, z) is over the underground: a hall (its walls too), a gallery or a passage
+	// whether (x, z) is over the underground: a hall (its walls too), a gallery, a passage or the start's way down
 	public bool Under(double x, double z)
 	{
+		// the start's hall needn't keep to its cell
+		if (Start(out StartWay start) && (start.Contains(x, z) || start.Hall.Inner.Grown(Wall).Contains(x, z)))
+		{
+			return true;
+		}
 		int cx = Gen2.Cell(x, Cell);
 		int cz = Gen2.Cell(z, Cell);
 		if (HallAt(cx, cz, out Hall hall) && hall.Inner.Grown(Wall).Contains(x, z))
@@ -759,16 +983,6 @@ public sealed class UndergroundPlan
 		return false;
 	}
 
-	// over a hall's pit, off the ledge and the bridge
-	public bool Pit(double x, double z)
-	{
-		if (!HallAt(Gen2.Cell(x, Cell), Gen2.Cell(z, Cell), out Hall hall) || !PitArea(hall, out Area pit) || !pit.Contains(x, z))
-		{
-			return false;
-		}
-		return !BridgeArea(hall).Contains(x, z);
-	}
-
 	// the pit inside the ledge, if the hall's big enough for one
 	public static bool PitArea(Hall hall, out Area pit)
 	{
@@ -793,6 +1007,7 @@ public sealed class UndergroundPlan
 	public ulong Hash(XZ center, int radius)
 	{
 		ulong hash = 14695981039346656037uL;
+		hash = LayerPlan.Mix(hash, Start(out StartWay start) ? LayerPlan.Centimetres(start.Chamber.X * 1000.0 + start.Chamber.Z) : 0);
 		int cx = Gen2.Cell(center.X, Cell);
 		int cz = Gen2.Cell(center.Z, Cell);
 		for (int x = cx - radius; x <= cx + radius; x++)

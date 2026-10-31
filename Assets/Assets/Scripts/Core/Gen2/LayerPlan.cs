@@ -44,6 +44,10 @@ public sealed class LayerPlan
 
 	public readonly XZ Origin;
 
+	// layer 0: which way the start tunnel's portal faces (unit; zero for none), so its dead end can go on down into
+	// the underground (UndergroundPlan.Start). from the scene, the same on every peer
+	public readonly XZ StartFacing;
+
 	public readonly ulong LayerSeed;
 
 	// null on layer 0. its Up pillars are this layer's Down pillars
@@ -59,7 +63,7 @@ public sealed class LayerPlan
 
 	public readonly UndergroundPlan Underground;
 
-	public LayerPlan(ulong worldSeed, int layer, XZ origin, LayerPlan below)
+	public LayerPlan(ulong worldSeed, int layer, XZ origin, LayerPlan below, XZ startFacing = default(XZ))
 	{
 		if (layer > 0 && (below == null || below.Layer != layer - 1 || below.WorldSeed != worldSeed))
 		{
@@ -69,6 +73,7 @@ public sealed class LayerPlan
 		Layer = layer;
 		Def = Layers.Get(layer);
 		Origin = origin;
+		StartFacing = startFacing;
 		LayerSeed = Gen2.LayerSeed(worldSeed, layer);
 		Below = (layer > 0) ? below : null;
 		Roads = new RoadPlan(this);

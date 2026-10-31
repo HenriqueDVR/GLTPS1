@@ -977,6 +977,17 @@ public class TileStreamer : MonoBehaviour
 		{
 			lotMesh.AddGallery(Local(piece.A, corner), Local(piece.B, corner), WorldRandom.Derive(Plan.LayerSeed, Gen2.StreamUnder + 3, Gen2.Pack((int)System.Math.Round(piece.A.X), (int)System.Math.Round(piece.A.Z))));
 		}
+		// the start tunnel's chamber and its gallery to the hall, with the tile the chamber's in
+		if (StartChamberIn(x, z, out StartWay start))
+		{
+			lotMesh.AddChamber(Local(start.Chamber, corner), new Vector3((float)-start.Dir.X, 0f, (float)-start.Dir.Z), new Vector3((float)start.Out.X, 0f, (float)start.Out.Z));
+			lotMesh.AddGallery(Local(start.GalleryA, corner), Local(start.GalleryB, corner), start.Hall.Seed);
+		}
+	}
+
+	private bool StartChamberIn(int x, int z, out StartWay start)
+	{
+		return Plan.Underground.Start(out start) && Gen2.Cell(start.Chamber.X, Gen2.TileSize) == x && Gen2.Cell(start.Chamber.Z, Gen2.TileSize) == z;
 	}
 
 	// a fan in one of the hall's end walls with no mouth in it, some halls
@@ -1026,9 +1037,17 @@ public class TileStreamer : MonoBehaviour
 				Vector3 back = new Vector3((float)-hall.Out.X, 0f, (float)-hall.Out.Z);
 				XZ foot = hall.PassagePoint(UndergroundPlan.Flat * 0.5, UndergroundPlan.GalleryWidth * 0.5 - 1.2);
 				UnderLamp(new Vector3((float)foot.X, level, (float)foot.Z), back, random, props);
-				XZ inside = hall.PassagePoint(UndergroundPlan.HoleFrom - 1.0, UndergroundPlan.GalleryWidth * 0.5 - 0.8);
-				UnderLamp(new Vector3((float)inside.X, groundY, (float)inside.Z), back, random, props);
+				double s = UndergroundPlan.PassageLength - 5.0;
+				XZ inside = hall.PassagePoint(s, UndergroundPlan.GalleryWidth * 0.5 - 0.8);
+				UnderLamp(new Vector3((float)inside.X, groundY + (float)UndergroundPlan.PassageFloor(s), (float)inside.Z), back, random, props);
 			}
+		}
+		// one in the start tunnel's chamber, against its wall
+		if (StartChamberIn(x, z, out StartWay start))
+		{
+			WorldRandom random = new WorldRandom(WorldRandom.Derive(start.Hall.Seed, Gen2.StreamUnder, 5uL));
+			XZ side = new XZ(start.Chamber.X - start.Out.Z * (UndergroundPlan.ChamberRadius - 2.0), start.Chamber.Z + start.Out.X * (UndergroundPlan.ChamberRadius - 2.0));
+			UnderLamp(new Vector3((float)side.X, level, (float)side.Z), new Vector3((float)start.Out.Z, 0f, (float)-start.Out.X), random, props);
 		}
 	}
 
