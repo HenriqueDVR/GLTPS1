@@ -32,6 +32,9 @@ public class PillarStreamer : MonoBehaviour
 
 		// the real one, null when far
 		public GameObject Instance;
+
+		// its tower rode off to another layer, none here till this layer's gone
+		public bool Gone;
 	}
 
 	public readonly List<Spot> Spots = new List<Spot>();
@@ -40,6 +43,8 @@ public class PillarStreamer : MonoBehaviour
 	public int Version { get; private set; }
 
 	public GameObject Prefab { get; private set; }
+
+	public LayerPlan Plan => plan;
 
 	public float GroundY => tiles.GroundY;
 
@@ -140,6 +145,7 @@ public class PillarStreamer : MonoBehaviour
 	public void Release(Spot spot)
 	{
 		spot.Instance = null;
+		spot.Gone = true;
 		Version++;
 	}
 
@@ -263,8 +269,17 @@ public class PillarStreamer : MonoBehaviour
 		// real towers round both girls
 		foreach (Spot spot in Spots)
 		{
-			if (arrived != null && spot.Instance == null && spot.CellX == arrived.CellX && spot.CellZ == arrived.CellZ && arrived.Instance != null)
+			if (spot.Gone)
 			{
+				continue;
+			}
+			if (arrived != null && spot.Instance == null && spot.CellX == arrived.CellX && spot.CellZ == arrived.CellZ)
+			{
+				// held for the tower that's riding here, till it comes
+				if (arrived.Instance == null)
+				{
+					continue;
+				}
 				spot.Instance = arrived.Instance;
 				arrived = null;
 				changed = true;
@@ -310,17 +325,20 @@ public class PillarStreamer : MonoBehaviour
 	{
 		GameObject tower = Instantiate(Prefab, pose.position - Offset(), pose.rotation);
 		tower.name = "pillar below";
+		// made from the ride's animation events, where nothing can be destroyed right away: off now, gone after
 		Transform scene = tower.transform.GetChild(0);
 		for (int i = scene.childCount - 1; i >= 0; i--)
 		{
 			GameObject part = scene.GetChild(i).gameObject;
 			if (part.name != towerParts[0])
 			{
-				DestroyImmediate(part);
+				part.SetActive(false);
+				Destroy(part);
 			}
 		}
 		foreach (Collider collider in tower.GetComponentsInChildren<Collider>(true))
 		{
+			collider.enabled = false;
 			Destroy(collider);
 		}
 		tower.GetComponent<Node>().MarkPlaced();
@@ -333,31 +351,14 @@ public class PillarStreamer : MonoBehaviour
 		GameObject tower = Instantiate(Prefab, spot.Pose.position - Offset(), spot.Pose.rotation);
 		tower.name = "pillar " + spot.CellX + "," + spot.CellZ;
 		Transform scene = tower.transform.GetChild(0);
+		// an elevator only where it goes up or down from this layer (LayerTransition)
+		bool working = Way(spot.State) != 0;
 		for (int i = scene.childCount - 1; i >= 0; i--)
 		{
 			GameObject part = scene.GetChild(i).gameObject;
-			if (System.Array.IndexOf(towerParts, part.name) < 0)
+			if (System.Array.IndexOf(towerParts, part.name) < 0 || (!working && part.name == "Elevator"))
 			{
 				DestroyImmediate(part);
-			}
-		}
-		// a working elevator where it goes up or down from this layer (LayerTransition)
-		if (Way(spot.State) == 0)
-		{
-			foreach (Collider collider in tower.GetComponentsInChildren<Collider>(true))
-			{
-				if (collider.CompareTag("Elevator") || collider.CompareTag("ElevatorTrigger"))
-				{
-					collider.tag = "Untagged";
-				}
-				if (collider.isTrigger)
-				{
-					Destroy(collider);
-				}
-			}
-			foreach (PillarNodeAnimationEvents events in tower.GetComponentsInChildren<PillarNodeAnimationEvents>(true))
-			{
-				events.enabled = false;
 			}
 		}
 		// the root's footprint box was the old yard's

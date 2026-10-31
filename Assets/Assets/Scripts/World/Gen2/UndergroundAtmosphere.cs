@@ -81,7 +81,8 @@ public class UndergroundAtmosphere : MonoBehaviour
 		}
 		Vector3 at = ((girl != null) ? girl.transform.position + Vector3.up * 1.5f : camera.transform.position) + Offset();
 		float depth = tiles.GroundY - at.y;
-		float target = plan.Underground.Under(at.x, at.z) ? Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(from, full, depth)) : 0f;
+		// the elevator goes far under a deck, out in the open
+		float target = (!LayerTransition.Busy && plan.Underground.Under(at.x, at.z)) ? Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(from, full, depth)) : 0f;
 		if (dark == 0f && target == 0f)
 		{
 			return;

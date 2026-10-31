@@ -74,13 +74,14 @@ public class PillarNodeAnimationEvents : MonoBehaviour
         Debug.Log("CoopTour ending event PauseGameState");
 #endif
         SmoothRide();
-        // the camera leaves the mouse and pulls back over the city
-        EndingCinematic.Begin(transform);
-        // a ride to another layer keeps the music, LayerTransition pauses the rest
+        // a ride to another layer keeps the music, LayerTransition pauses the rest. the camera leaves the mouse
+        // and pulls back over the city, thinner fog on the way to another layer
         if (LayerTransition.Begin(this))
         {
+            EndingCinematic.Begin(transform, EndingCinematic.RideFogShare);
             return;
         }
+        EndingCinematic.Begin(transform);
         // ending has its own song, fade the radio
         PlaylistPlayer playlistPlayer = FindObjectOfType<PlaylistPlayer>();
         if (playlistPlayer != null)

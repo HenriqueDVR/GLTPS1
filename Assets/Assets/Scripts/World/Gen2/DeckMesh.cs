@@ -119,6 +119,7 @@ public class DeckMesh
 				}
 			}
 		}
+		Underside();
 		mesh.Clear();
 		mesh.indexFormat = (vertices.Count > 65000) ? IndexFormat.UInt32 : IndexFormat.UInt16;
 		mesh.SetVertices(vertices);
@@ -132,6 +133,30 @@ public class DeckMesh
 		}
 		mesh.RecalculateNormals();
 		mesh.RecalculateBounds();
+	}
+
+	// the deck seen from the layer below, the ceiling there: its top again this far down, facing down, dark. under
+	// the underground's deepest pits (UndergroundPlan) and a few metres under where DistantPillar draws the ceiling, so
+	// riding up the real layer above wins over it
+	public const float UndersideDepth = 60f;
+
+	private void Underside()
+	{
+		List<int> top = triangles[snow];
+		List<int> under = triangles[dark];
+		int count = top.Count;
+		for (int i = 0; i < count; i += 3)
+		{
+			int at = vertices.Count;
+			for (int k = 2; k >= 0; k--)
+			{
+				vertices.Add(vertices[top[i + k]] + Vector3.down * UndersideDepth);
+				uvs.Add(uvs[top[i + k]]);
+			}
+			under.Add(at);
+			under.Add(at + 1);
+			under.Add(at + 2);
+		}
 	}
 
 	private bool Full(int i, int j)

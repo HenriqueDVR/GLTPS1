@@ -29,6 +29,11 @@ public class EndingCinematic : MonoBehaviour
 	// fog comes down to this share of what the weather has, over this long
 	private const float fogShare = 0.3f;
 
+	// a ride between layers wants to see the layer it goes to, far out
+	public const float RideFogShare = 0.08f;
+
+	private float fogTo = fogShare;
+
 	private const float fogTime = 10f;
 
 	// map pieces spawn and stay shown out to this far
@@ -67,7 +72,7 @@ public class EndingCinematic : MonoBehaviour
 
 	private const float hudFadeTime = 2f;
 
-	public static void Begin(Transform elevator)
+	public static void Begin(Transform elevator, float fog = fogShare)
 	{
 		Camera camera = Camera.main;
 		if (running != null || elevator == null || camera == null)
@@ -75,6 +80,7 @@ public class EndingCinematic : MonoBehaviour
 			return;
 		}
 		running = new GameObject("EndingCinematic").AddComponent<EndingCinematic>();
+		running.fogTo = fog;
 		running.Setup(elevator, camera);
 	}
 
@@ -191,7 +197,7 @@ public class EndingCinematic : MonoBehaviour
 		{
 			baseFog = RenderSettings.fogDensity;
 		}
-		writtenFog = baseFog * Mathf.Lerp(1f, fogShare, Mathf.SmoothStep(0f, 1f, (Time.time - started) / fogTime));
+		writtenFog = baseFog * Mathf.Lerp(1f, fogTo, Mathf.SmoothStep(0f, 1f, (Time.time - started) / fogTime));
 		RenderSettings.fogDensity = writtenFog;
 		float shown = 1f - Mathf.Clamp01((Time.time - started) / hudFadeTime);
 		foreach (CanvasGroup group in hud)

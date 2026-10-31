@@ -3,8 +3,9 @@ using UnityEngine;
 using UnityEngine.Animations;
 
 // world gen v2: the elevators between layers (01, transitions). the ride is the ending's (ElevatorSequence, its events
-// in PillarNodeAnimationEvents), run up or down and stretched to the layer height. at its 35 s event the layer it goes
-// to takes over (tiles, towers, backdrop) with the riding tower moved onto it; at its end they step out on the new deck.
+// in PillarNodeAnimationEvents), run up or down and stretched to the layer height. the layer it goes to is built as
+// it starts, so it's there to see all the way; at its 35 s event that layer becomes the one they're on and the riding
+// tower moves onto it; at its end they step out on the new deck and the layer they left goes.
 // the ket, the barrel and a girl left behind are brought along. co-op: each peer rides its own copy, the host decides
 // the swap and sends LayerChange; a friend that gets there first waits for it, one that missed the ride jumps over.
 // before CoopPlayers (-100), which stands the other player's girl on the car's floor
@@ -66,6 +67,13 @@ public class LayerTransition : MonoBehaviour
 	private bool barrelWasKinematic;
 
 	private readonly List<Girl> brought = new List<Girl>();
+
+	// the layer they're leaving and the one they're going to (GameSession.BeginLayer), and the tower cell held there
+	private GameObject from;
+
+	private GameObject next;
+
+	private PillarStreamer.Spot arriving;
 
 	private readonly Dictionary<Girl, bool> agents = new Dictionary<Girl, bool>();
 
@@ -139,8 +147,8 @@ public class LayerTransition : MonoBehaviour
 			hostSwapped = true;
 			if (arriveDue)
 			{
-				// our ride's over already: the layer all at once, then out of the car once it's built
-				DoSwap(true);
+				// our ride's over already: over, and out of the car a moment later
+				DoSwap();
 				StartCoroutine(ArriveBuilt());
 			}
 			else if (swapDue)
@@ -171,24 +179,22 @@ public class LayerTransition : MonoBehaviour
 		}
 		GameSession session = GameSession.Current;
 		TileStreamer tiles = GameSession.Get<TileStreamer>();
-		PillarStreamer streamer = GameSession.Get<PillarStreamer>();
 		float deck = tiles.GroundY + going * (float)Gen2.LayerHeight;
-		int groundLayer = tiles.GroundLayer;
+		GameObject left = session.Layer;
 		// a girl standing in a tower's car would go with it
 		foreach (Girl girl in Girls.All)
 		{
-			foreach (PillarStreamer.Spot s in streamer.Spots)
+			if (girl.transform.parent != null && girl.transform.root.name.StartsWith("pillar"))
 			{
-				if (s.Instance != null && girl.transform.IsChildOf(s.Instance.transform))
-				{
-					girl.transform.SetParent(null, true);
-				}
+				girl.transform.SetParent(null, true);
 			}
 		}
-		session.EndLayer();
+		GameObject layerObject = session.BeginLayer(next, deck, tiles.GroundLayer, null, true);
 		world.SetLayer(next);
-		session.BeginLayer(next, deck, groundLayer, null, true);
-		PillarStreamer arrived = GameSession.Get<PillarStreamer>();
+		session.UseLayer(layerObject);
+		session.EndLayer(left);
+		session.Backdrop(layerObject);
+		PillarStreamer arrived = layerObject.GetComponent<PillarStreamer>();
 		Vector3 car = arrived.CarPoint(cellX, cellZ) - Offset();
 		Vector3 outward = arrived.Outward(cellX, cellZ);
 		foreach (Girl girl in Girls.All)
@@ -231,6 +237,12 @@ public class LayerTransition : MonoBehaviour
 			Destroy(below);
 			below = null;
 		}
+		if (next != null && next != GameSession.Current.Layer)
+		{
+			GameSession.Current.EndLayer(next);
+		}
+		next = null;
+		from = null;
 		EndingCinematic.End();
 		elevator = null;
 		events = null;
@@ -299,8 +311,8 @@ public class LayerTransition : MonoBehaviour
 		}
 		PillarStreamer.Spot at = streamer.SpotOf(rideOn.transform.root.gameObject);
 		int going = (at != null) ? PillarStreamer.Way(at.State) : 0;
-		LayerPlan next = (going != 0) ? world.Layers.Ride(world.Layer, at.CellX, at.CellZ, going) : null;
-		if (next == null)
+		LayerPlan target = (going != 0) ? world.Layers.Ride(world.Layer, at.CellX, at.CellZ, going) : null;
+		if (target == null)
 		{
 			return false;
 		}
@@ -309,7 +321,7 @@ public class LayerTransition : MonoBehaviour
 		tower = rideOn.transform.root.gameObject;
 		spot = at;
 		way = going;
-		to = next;
+		to = target;
 		swapped = false;
 		hostSwapped = false;
 		swapDue = false;
@@ -340,6 +352,16 @@ public class LayerTransition : MonoBehaviour
 		{
 			below = streamer.Bare(new Pose(spot.Pose.position - Vector3.up * (float)Gen2.LayerHeight, spot.Pose.rotation));
 		}
+		// the layer it goes to, from now: below it's in view all the way down, above it's a ceiling over the tower.
+		// its far city waits till they're over its deck, from under it the boxes would hang in the air
+		TileStreamer tiles = GameSession.Get<TileStreamer>();
+		from = GameSession.Current.Layer;
+		arriving = new PillarStreamer.Spot { CellX = spot.CellX, CellZ = spot.CellZ };
+		next = GameSession.Current.BeginLayer(to, tiles.GroundY + way * (float)Gen2.LayerHeight, tiles.GroundLayer, arriving);
+		if (way > 0)
+		{
+			next.GetComponent<FarCity>().Show(false);
+		}
 		Debug.Log("LayerTransition: riding " + (way > 0 ? "up" : "down") + " from layer " + world.Layer + " to " + to.Layer + " at pillar " + spot.CellX + "," + spot.CellZ);
 		return true;
 	}
@@ -354,7 +376,7 @@ public class LayerTransition : MonoBehaviour
 		}
 	}
 
-	private bool DoSwap(bool buildAll = false)
+	private bool DoSwap()
 	{
 		if (swapped)
 		{
@@ -363,11 +385,9 @@ public class LayerTransition : MonoBehaviour
 		swapped = true;
 		GameSession session = GameSession.Current;
 		WorldGenerator world = GameSession.Get<WorldGenerator>();
-		TileStreamer tiles = GameSession.Get<TileStreamer>();
 		PillarStreamer streamer = GameSession.Get<PillarStreamer>();
 		float rise = way * (float)Gen2.LayerHeight;
-		float deck = tiles.GroundY + rise;
-		int groundLayer = tiles.GroundLayer;
+		float deck = next.GetComponent<TileStreamer>().GroundY;
 		// anyone of ours not aboard rides along in the car, and the ket and a loose barrel wait for them up there.
 		// the other player's girl, ket and barrel are theirs to bring
 		foreach (Girl girl in Girls.All)
@@ -404,15 +424,14 @@ public class LayerTransition : MonoBehaviour
 			below = streamer.Bare(new Pose(tower.transform.position + ((origin != null) ? origin.TotalOffset : Vector3.zero), tower.transform.rotation));
 		}
 		streamer.Release(spot);
-		session.EndLayer();
 		world.SetLayer(to);
 		// the tower goes over to the new layer, the car stays where it is
 		tower.transform.position += Vector3.up * rise;
 		carOffset = -rise;
 		Ride();
-		// a spot of its own: the old streamer clears its spots' towers when it goes, at the end of the frame
-		PillarStreamer.Spot arrived = new PillarStreamer.Spot { CellX = spot.CellX, CellZ = spot.CellZ, Instance = tower };
-		session.BeginLayer(to, deck, groundLayer, arrived, buildAll);
+		arriving.Instance = tower;
+		session.UseLayer(next);
+		next.GetComponent<FarCity>().Show(true);
 		Physics.SyncTransforms();
 		Debug.Log("LayerTransition: now on layer " + to.Layer + " (" + to.Def.Name + "), deck " + deck.ToString("F1") + ", origin " + to.Origin + (brought.Count > 0 ? ", brought " + brought.Count + " girl(s) aboard" : ""));
 		if (CoopSession.Together)
@@ -461,6 +480,12 @@ public class LayerTransition : MonoBehaviour
 			barrelBody.velocity = Vector3.zero;
 		}
 		Physics.SyncTransforms();
+		// nothing of the layer they left shows now: under the deck, or the ceiling stands in for it
+		GameSession.Current.EndLayer(from);
+		GameSession.Current.Backdrop(next);
+		from = null;
+		next = null;
+		arriving = null;
 		RestoreAgents();
 		foreach (InputContextStack.Token token in held)
 		{

@@ -540,6 +540,24 @@ public class TileStreamer : MonoBehaviour
 		missing.Sort((a, b) => NearestDistance(KeyX(b), KeyZ(b)).CompareTo(NearestDistance(KeyX(a), KeyZ(a))));
 	}
 
+	// every tile nearer either girl than this is built and showing (FarCity stands in out from here)
+	public float BuiltRadius
+	{
+		get
+		{
+			float radius = BuildRadius;
+			if (job != null)
+			{
+				radius = Mathf.Min(radius, NearestDistance(KeyX(job.Key), KeyZ(job.Key)));
+			}
+			if (missing.Count > 0)
+			{
+				radius = Mathf.Min(radius, NearestDistance(KeyX(missing[missing.Count - 1]), KeyZ(missing[missing.Count - 1])));
+			}
+			return radius;
+		}
+	}
+
 	// from p to the closest point of the tile
 	private static float TileDistance(int x, int z, Vector3 p)
 	{

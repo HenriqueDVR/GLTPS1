@@ -536,7 +536,8 @@ public class LotMesh
 		Slab(centre, u, half, half * Range(0.7f, 1f), floors);
 		float bottom = top - floors * FloorHeight;
 		Raise(first, bottom);
-		Box(centre, u, 2.2f, 2.2f, -260f, bottom + 1f, concrete, concrete, false);
+		// down to the void's dark floor, past it the stilt hung out under the deck in the layer below's sky
+		Box(centre, u, 2.2f, 2.2f, -DeckMesh.Abyss, bottom + 1f, concrete, concrete, false);
 		// a strut or two from the stilt up under the block
 		Box(centre, u, half * 0.9f, 0.8f, bottom - 1.5f, bottom + 0.5f, metal, metal, true);
 		Box(centre, Left(u), half * 0.6f, 0.8f, bottom - 1.5f, bottom + 0.5f, metal, metal, true);

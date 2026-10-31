@@ -63,9 +63,12 @@ public class GameSession : MonoBehaviour
 		}
 		if (WorldGenerator.GenVersion == 2)
 		{
-			TileStreamer tiles = BeginLayer(world.Plan, float.NaN, 0, null);
+			GameObject layer = BeginLayer(world.Plan, float.NaN, 0, null);
+			TileStreamer tiles = layer.GetComponent<TileStreamer>();
 			Add<SafeGround>().Init(world.Plan, tiles, floatingOrigin);
 			Add<UndergroundAtmosphere>().Init(world.Plan, tiles, floatingOrigin);
+			UseLayer(layer);
+			Backdrop(layer);
 			Add<LayerTransition>();
 			// an endless world needs it, v1 never goes far enough
 			if (floatingOrigin != null)
@@ -97,51 +100,65 @@ public class GameSession : MonoBehaviour
 		StartCoroutine(SaveScene.Register());
 	}
 
-	// v2: what's built for the layer the girls are on. deck NaN = from the floor under Chito (the start).
-	// a tower the ride brought along goes on standing in its cell
-	public TileStreamer BeginLayer(LayerPlan plan, float deck, int groundLayer, PillarStreamer.Spot arrived, bool buildAll = false)
+	// v2: the layer the girls are on, its own object (tiles, towers, the far city, the backdrop)
+	public GameObject Layer { get; private set; }
+
+	// v2: one layer's world. deck NaN = from the floor under Chito (the start). a ride builds the next one while it's
+	// still going, so the layer it goes to is there to see; the tower it rides takes the arrival cell
+	public GameObject BeginLayer(LayerPlan plan, float deck, int groundLayer, PillarStreamer.Spot arrived, bool buildAll = false)
 	{
 		WorldGenerator world = Get<WorldGenerator>();
 		FloatingOrigin floatingOrigin = Get<FloatingOrigin>();
-		TileStreamer tiles = Add<TileStreamer>();
+		GameObject layer = new GameObject("layer " + plan.Layer);
+		TileStreamer tiles = layer.AddComponent<TileStreamer>();
 		tiles.Init(plan, floatingOrigin, deck, groundLayer, buildAll);
 		if (world.PillarPrefab != null)
 		{
-			Add<PillarStreamer>().Init(plan, tiles, floatingOrigin, world.PillarPrefab, arrived);
-			gameObject.AddComponent<DistantPillar>();
+			layer.AddComponent<PillarStreamer>().Init(plan, tiles, floatingOrigin, world.PillarPrefab, arrived);
 		}
+		layer.AddComponent<FarCity>().Init(plan, tiles, floatingOrigin);
+		return layer;
+	}
+
+	// the girls are on it now
+	public void UseLayer(GameObject layer)
+	{
+		Layer = layer;
+		TileStreamer tiles = layer.GetComponent<TileStreamer>();
+		Register(tiles);
+		PillarStreamer towers = layer.GetComponent<PillarStreamer>();
+		if (towers != null)
+		{
+			Register(towers);
+		}
+		FloatingOrigin floatingOrigin = Get<FloatingOrigin>();
 		SafeGround safe = Get<SafeGround>();
 		if (safe != null)
 		{
-			safe.Init(plan, tiles, floatingOrigin);
+			safe.Init(tiles.Plan, tiles, floatingOrigin);
 		}
 		UndergroundAtmosphere under = Get<UndergroundAtmosphere>();
 		if (under != null)
 		{
-			under.Init(plan, tiles, floatingOrigin);
-		}
-		return tiles;
-	}
-
-	// the layer's tiles, towers and backdrop go
-	public void EndLayer()
-	{
-		Drop<TileStreamer>();
-		Drop<PillarStreamer>();
-		DistantPillar backdrop = GetComponent<DistantPillar>();
-		if (backdrop != null)
-		{
-			Destroy(backdrop);
+			under.Init(tiles.Plan, tiles, floatingOrigin);
 		}
 	}
 
-	private void Drop<T>() where T : Component
+	// its far towers and the deck above, once nothing of the one before shows (one at a time)
+	public void Backdrop(GameObject layer)
 	{
-		T service = Get<T>();
-		if (service != null)
+		if (layer.GetComponent<PillarStreamer>() != null)
 		{
-			services.Remove(typeof(T));
-			Destroy(service);
+			layer.AddComponent<DistantPillar>();
+		}
+	}
+
+	// a layer they've left: everything of it goes
+	public void EndLayer(GameObject layer)
+	{
+		if (layer != null)
+		{
+			Destroy(layer);
 		}
 	}
 
