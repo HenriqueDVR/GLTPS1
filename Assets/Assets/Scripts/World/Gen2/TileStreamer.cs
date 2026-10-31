@@ -85,6 +85,14 @@ public class TileStreamer : MonoBehaviour
 	// in the entry of a building entered from a raised street
 	private const float itemInEntry = 0.3f;
 
+	// lamps on raised streets: decks at least this high (not up their ramps), standing on the parapet's top
+	// (RoadMesh: the street's lift and the parapet's height) in the middle of its width
+	private const double lampDeck = 6.0;
+
+	private const float parapetTop = 0.06f + 0.9f;
+
+	private const float parapetMiddle = 0.175f;
+
 	private readonly List<RoadPiece> pieces = new List<RoadPiece>();
 
 	private readonly List<RoadPatch> patches = new List<RoadPatch>();
@@ -1247,7 +1255,8 @@ public class TileStreamer : MonoBehaviour
 		}
 	}
 
-	// on the sidewalk by every other street piece, sides taking turns, a district's share of them
+	// on the sidewalk by every other street piece, sides taking turns, a district's share of them. on a raised
+	// street they stand on the parapet, out of the way, and not by an opening in it
 	private void PlaceLamps(Transform props)
 	{
 		if (kit == null || kit.Lamps == null || kit.Lamps.Length == 0)
@@ -1256,7 +1265,8 @@ public class TileStreamer : MonoBehaviour
 		}
 		foreach (RoadPiece piece in pieces)
 		{
-			if (piece.Kind != RoadKind.Street || piece.Index % 2 != 0 || piece.HeightA > 0.3 || piece.HeightB > 0.3)
+			bool raised = piece.HeightA > 0.3 || piece.HeightB > 0.3;
+			if (piece.Kind != RoadKind.Street || piece.Index % 2 != 0 || (raised && System.Math.Min(piece.HeightA, piece.HeightB) < lampDeck))
 			{
 				continue;
 			}
@@ -1268,6 +1278,19 @@ public class TileStreamer : MonoBehaviour
 			}
 			Vector3 left = new Vector3((float)-piece.TangentA.Z, 0f, (float)piece.TangentA.X);
 			float side = ((piece.Index / 2) % 2 == 0) ? 1f : -1f;
+			if (raised)
+			{
+				bool open = (side > 0f) ? (piece.LeftTo > piece.LeftFrom || piece.LeftTo2 > piece.LeftFrom2) : (piece.RightTo > piece.RightFrom || piece.RightTo2 > piece.RightFrom2);
+				if (open)
+				{
+					continue;
+				}
+				float deck = (float)(piece.HeightA + piece.HeightB) * 0.5f + parapetTop;
+				Vector3 onParapet = new Vector3((float)mid.X, groundY + deck, (float)mid.Z) + left * (side * ((float)piece.Width * 0.5f - parapetMiddle));
+				GameObject high = kit.Lamps[(int)(roll % (ulong)kit.Lamps.Length)];
+				GraphicsTuning.Adopt(Instantiate(high, onParapet - Offset(), Quaternion.LookRotation(-left * side) * high.transform.rotation, props));
+				continue;
+			}
 			// on the sidewalk, or against the wall where there's hardly one
 			float sidewalk = (float)Plan.Def.Districts[Plan.DistrictAt(mid.X, mid.Z)].Sidewalk;
 			Vector3 at = new Vector3((float)mid.X, groundY, (float)mid.Z) + left * (side * ((float)piece.Width * 0.5f + Mathf.Min(1.5f, sidewalk * 0.5f)));
