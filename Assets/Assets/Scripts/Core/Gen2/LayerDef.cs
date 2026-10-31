@@ -108,4 +108,7 @@ public sealed class DistrictDef
 
 	// share of the cross streets between two raised streets that are lifted too, joining them (RoadPlan)
 	public double RaisedCross;
+
+	// share of the underground's cells with a hall (UndergroundPlan)
+	public double Underground;
 }

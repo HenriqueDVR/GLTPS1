@@ -981,6 +981,154 @@ public class LotMesh
 
 	private const int archSteps = 8;
 
+	// ---- the underground (UndergroundPlan), heights from the deck
+
+	private static float UnderFloor => -(float)UndergroundPlan.Depth;
+
+	// a hall: floor, the slab over it, walls with the galleries' mouths in them (gaps: per side +x, -x, +z, -z, the
+	// middle of an opening along the wall from the hall's middle, NaN for none) and a door to its shaft on one side
+	public void AddHall(Vector3 centre, float halfX, float halfZ, float[] gaps, int doorSide, float doorFrom, float doorTo)
+	{
+		float wall = (float)UndergroundPlan.Wall;
+		float floor = UnderFloor;
+		float ceiling = -(float)UndergroundPlan.Slab;
+		float mouth = (float)UndergroundPlan.GalleryWidth * 0.5f;
+		Box(centre, Vector3.right, halfX + wall, halfZ + wall, floor - 1f, floor, concrete, concrete, false);
+		Box(centre, Vector3.right, halfX + wall, halfZ + wall, ceiling, -0.1f, concrete, concrete, true);
+		for (int side = 0; side < 4; side++)
+		{
+			Vector3 out_ = (side == 0) ? Vector3.right : (side == 1) ? Vector3.left : (side == 2) ? Vector3.forward : Vector3.back;
+			Vector3 along = Left(out_);
+			float half = (side < 2) ? halfZ + wall : halfX + wall;
+			Vector3 middle = centre + out_ * (((side < 2) ? halfX : halfZ) + wall * 0.5f);
+			openings.Clear();
+			if (!float.IsNaN(gaps[side]))
+			{
+				openings.Add(new Vector2(gaps[side] - mouth, gaps[side] + mouth));
+			}
+			if (side == doorSide)
+			{
+				openings.Add(new Vector2(doorFrom, doorTo));
+			}
+			UnderWall(middle, along, half, floor, ceiling, floor + (float)UndergroundPlan.GalleryHeight);
+		}
+	}
+
+	private readonly List<Vector2> openings = new List<Vector2>();
+
+	// a wall wall-thick on its middle line, half long either way along it, from y0 to y1, with openings (along it from
+	// middle, from y0 up to gapTop)
+	private void UnderWall(Vector3 middle, Vector3 along, float half, float y0, float y1, float gapTop)
+	{
+		float w = (float)UndergroundPlan.Wall * 0.5f;
+		openings.Sort((a, b) => a.x.CompareTo(b.x));
+		float at = -half;
+		foreach (Vector2 gap in openings)
+		{
+			if (gap.x > at)
+			{
+				Box(middle + along * ((at + gap.x) * 0.5f), along, (gap.x - at) * 0.5f, w, y0, y1, concrete, concrete, false);
+			}
+			Box(middle + along * ((gap.x + gap.y) * 0.5f), along, (gap.y - gap.x) * 0.5f, w, gapTop, y1, concrete, concrete, true);
+			at = Mathf.Max(at, gap.y);
+		}
+		if (half > at)
+		{
+			Box(middle + along * ((at + half) * 0.5f), along, (half - at) * 0.5f, w, y0, y1, concrete, concrete, false);
+		}
+	}
+
+	// a stretch of gallery from a to b (along x or z): floor, walls, roof
+	public void AddGallery(Vector3 a, Vector3 b)
+	{
+		float wall = (float)UndergroundPlan.Wall;
+		float half = (float)UndergroundPlan.GalleryWidth * 0.5f;
+		float floor = UnderFloor;
+		float top = floor + (float)UndergroundPlan.GalleryHeight;
+		Vector3 along = (b - a).normalized;
+		Vector3 v = Left(along);
+		Vector3 middle = (a + b) * 0.5f;
+		float length = (b - a).magnitude * 0.5f;
+		Box(middle, along, length, half + wall, floor - 1f, floor, concrete, concrete, false);
+		Box(middle, along, length, half + wall, top, top + 1f, concrete, concrete, true);
+		Box(middle + v * (half + wall * 0.5f), along, length, wall * 0.5f, floor, top, concrete, concrete, false);
+		Box(middle - v * (half + wall * 0.5f), along, length, wall * 0.5f, floor, top, concrete, concrete, false);
+	}
+
+	// a shaft beside a hall (UndergroundPlan, the way in): its walls from the floor up to the deck, the wall it shares
+	// with the hall only above the hall's slab, a ramp in flights along the walls with flat landings in the corners,
+	// a parapet on its open side, and one round the hole on the deck but at the corner it starts from.
+	// point(p, q) gives the shaft's frame, q towards the hall at -Shaft/2
+	public void AddShaft(System.Func<float, float, Vector3> point, Vector3 out_)
+	{
+		float h = (float)UndergroundPlan.Shaft * 0.5f;
+		float r = (float)UndergroundPlan.Ramp;
+		float wall = (float)UndergroundPlan.Wall;
+		float floor = UnderFloor;
+		float drop = (float)UndergroundPlan.Drop;
+		const float slab = 0.6f;
+		const float parapet = 1.0f;
+		Vector3 along = Left(out_);
+		Vector3 centre = point(0f, 0f);
+		Box(centre, along, h, h, floor - 1f, floor, concrete, concrete, false);
+		// the walls: far side, the two ends, and over the hall's slab the near one
+		Box(point(0f, h + wall * 0.5f), along, h + wall, wall * 0.5f, floor - 1f, 0f, concrete, concrete, false);
+		Box(point(h + wall * 0.5f, 0f), out_, h, wall * 0.5f, floor - 1f, 0f, concrete, concrete, false);
+		Box(point(-h - wall * 0.5f, 0f), out_, h, wall * 0.5f, floor - 1f, 0f, concrete, concrete, false);
+		Box(point(0f, -h - wall * 0.5f), along, h + wall, wall * 0.5f, -(float)UndergroundPlan.Slab, 0f, concrete, concrete, false);
+		// the corner it starts from is deck, a slab under it
+		Box(point(-h + r * 0.5f, -h + r * 0.5f), along, r * 0.5f, r * 0.5f, -slab, -0.05f, concrete, concrete, true);
+		for (int k = 0; k < UndergroundPlan.Flights; k++)
+		{
+			// which wall: near (+p), right end (+q), far (-p), left end (-q)
+			int side = k % 4;
+			float topA = -k * drop;
+			float topB = -(k + 1) * drop;
+			Vector2 a, b, inward;
+			switch (side)
+			{
+				case 0:
+					a = new Vector2(-h + r, -h + r * 0.5f);
+					b = new Vector2(h - r, -h + r * 0.5f);
+					inward = new Vector2(0f, 1f);
+					break;
+				case 1:
+					a = new Vector2(h - r * 0.5f, -h + r);
+					b = new Vector2(h - r * 0.5f, h - r);
+					inward = new Vector2(-1f, 0f);
+					break;
+				case 2:
+					a = new Vector2(h - r, h - r * 0.5f);
+					b = new Vector2(-h + r, h - r * 0.5f);
+					inward = new Vector2(0f, -1f);
+					break;
+				default:
+					a = new Vector2(-h + r * 0.5f, h - r);
+					b = new Vector2(-h + r * 0.5f, -h + r);
+					inward = new Vector2(1f, 0f);
+					break;
+			}
+			Vector3 pa = point(a.x, a.y);
+			Vector3 pb = point(b.x, b.y);
+			Sloped(concrete, pa, pb, r * 0.5f, topA - slab, topA, topB - slab, topB);
+			Vector2 edge = inward * (r * 0.5f - 0.15f);
+			Sloped(concrete, point(a.x + edge.x, a.y + edge.y), point(b.x + edge.x, b.y + edge.y), 0.15f, topA, topA + parapet, topB, topB + parapet);
+			// the landing at the corner it ends in, but the last, which is the floor
+			if (k + 1 < UndergroundPlan.Flights)
+			{
+				Vector2 corner = b + (b - a).normalized * (r * 0.5f);
+				Box(point(corner.x, corner.y), along, r * 0.5f, r * 0.5f, topB - slab, topB, concrete, concrete, true);
+			}
+		}
+		// round the hole on the deck: along the far side and the two ends, the near side but the start corner, and
+		// across the start corner's inner edge, which drops to the flight below
+		Box(point(0f, h + wall * 0.5f), along, h + wall, 0.15f, 0f, parapet, concrete, concrete, false);
+		Box(point(h + wall * 0.5f, 0f), out_, h, 0.15f, 0f, parapet, concrete, concrete, false);
+		Box(point(-h - wall * 0.5f, r * 0.5f), out_, h - r * 0.5f, 0.15f, 0f, parapet, concrete, concrete, false);
+		Box(point(r * 0.5f, -h - wall * 0.5f), along, h - r * 0.5f, 0.15f, 0f, parapet, concrete, concrete, false);
+		Box(point(-h + r * 0.5f, -h + r - 0.15f), along, r * 0.5f, 0.15f, 0f, parapet, concrete, concrete, false);
+	}
+
 	// a viaduct pier standing on the ground under the deck, centred on at
 	public void AddPier(Vector3 at, Vector3 along, float height)
 	{

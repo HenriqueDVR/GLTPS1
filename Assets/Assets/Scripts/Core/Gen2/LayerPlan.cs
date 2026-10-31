@@ -57,6 +57,8 @@ public sealed class LayerPlan
 
 	public readonly ChasmPlan Chasms;
 
+	public readonly UndergroundPlan Underground;
+
 	public LayerPlan(ulong worldSeed, int layer, XZ origin, LayerPlan below)
 	{
 		if (layer > 0 && (below == null || below.Layer != layer - 1 || below.WorldSeed != worldSeed))
@@ -72,6 +74,7 @@ public sealed class LayerPlan
 		Roads = new RoadPlan(this);
 		Viaducts = new ViaductPlan(this);
 		Chasms = new ChasmPlan(this);
+		Underground = new UndergroundPlan(this);
 		Lots = new LotPlan(this);
 	}
 

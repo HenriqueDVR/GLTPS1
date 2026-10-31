@@ -97,21 +97,31 @@ public class SafeGround : MonoBehaviour
 			nextKeep = Time.time + keepInterval;
 			Keep(girl, at, driving, deck);
 		}
-		if (at.y < deck - fallDepth)
+		if (Fallen(at, deck))
 		{
 			StartCoroutine(PutBack(girl, driving));
 			return;
 		}
 		// the ket on its own, nobody here driving it
-		if (Simulated && !driving && haveKet && ket.transform.position.y + Offset().y < deck - fallDepth)
+		if (Simulated && !driving && haveKet && Fallen(ket.transform.position + Offset(), deck))
 		{
 			PlaceKet();
 		}
 		Girl other = Girls.Other(girl);
-		if (other != null && other.Control == GirlControl.AI && other.Agent != null && other.transform.position.y + Offset().y < deck - fallDepth)
+		if (other != null && other.Control == GirlControl.AI && other.Agent != null && Fallen(other.transform.position + Offset(), deck))
 		{
 			other.Agent.Warp(girl.transform.position);
 		}
+	}
+
+	// under the deck, or under the underground's floor where there's one (UndergroundPlan)
+	private bool Fallen(Vector3 at, float deck)
+	{
+		if (at.y >= deck - fallDepth)
+		{
+			return false;
+		}
+		return !plan.Underground.Under(at.x, at.z) || at.y < deck - (float)UndergroundPlan.Depth - 5f;
 	}
 
 	private static bool Driving(Girl girl)

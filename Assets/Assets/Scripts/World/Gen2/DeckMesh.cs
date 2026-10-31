@@ -43,7 +43,9 @@ public class DeckMesh
 	// whether any of the tile is void
 	public bool Broken { get; private set; }
 
-	public void Build(Mesh mesh, ChasmPlan chasms, int tileX, int tileZ)
+	// holes: the underground's shafts reaching into the tile (UndergroundPlan.Holes), cut out exactly. shafts keep far
+	// from voids, so a tile has one or the other
+	public void Build(Mesh mesh, ChasmPlan chasms, int tileX, int tileZ, List<Area> holes = null)
 	{
 		vertices.Clear();
 		uvs.Clear();
@@ -56,9 +58,35 @@ public class DeckMesh
 		double z0 = tileZ * size;
 		// nothing near: one quad
 		Broken = chasms.Inside(x0 + size * 0.5, z0 + size * 0.5) > -(size * 0.75 + Cell + ChasmPlan.Ragged + 2.0);
-		if (!Broken)
+		if (!Broken && (holes == null || holes.Count == 0))
 		{
 			Top(Vector3.zero, new Vector3((float)size, 0f, (float)size));
+		}
+		else if (!Broken)
+		{
+			// the tile minus each hole, as rectangles
+			pieces.Clear();
+			pieces.Add(new Area { X0 = x0, Z0 = z0, X1 = x0 + size, Z1 = z0 + size });
+			foreach (Area hole in holes)
+			{
+				for (int i = pieces.Count - 1; i >= 0; i--)
+				{
+					Area r = pieces[i];
+					if (hole.X1 <= r.X0 || hole.X0 >= r.X1 || hole.Z1 <= r.Z0 || hole.Z0 >= r.Z1)
+					{
+						continue;
+					}
+					pieces.RemoveAt(i);
+					Keep(r.X0, r.Z0, hole.X0, r.Z1);
+					Keep(hole.X1, r.Z0, r.X1, r.Z1);
+					Keep(System.Math.Max(r.X0, hole.X0), r.Z0, System.Math.Min(r.X1, hole.X1), hole.Z0);
+					Keep(System.Math.Max(r.X0, hole.X0), hole.Z1, System.Math.Min(r.X1, hole.X1), r.Z1);
+				}
+			}
+			foreach (Area r in pieces)
+			{
+				Top(new Vector3((float)(r.X0 - x0), 0f, (float)(r.Z0 - z0)), new Vector3((float)(r.X1 - x0), 0f, (float)(r.Z1 - z0)));
+			}
 		}
 		else
 		{
@@ -185,6 +213,16 @@ public class DeckMesh
 	}
 
 	// snow, uv over the whole tile (the material repeats it)
+	private readonly List<Area> pieces = new List<Area>();
+
+	private void Keep(double x0, double z0, double x1, double z1)
+	{
+		if (x1 - x0 > 1e-6 && z1 - z0 > 1e-6)
+		{
+			pieces.Add(new Area { X0 = x0, Z0 = z0, X1 = x1, Z1 = z1 });
+		}
+	}
+
 	private void Top(Vector3 a, Vector3 b)
 	{
 		int first = vertices.Count;

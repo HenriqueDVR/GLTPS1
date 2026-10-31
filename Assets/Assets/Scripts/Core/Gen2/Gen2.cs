@@ -114,6 +114,9 @@ public static class Gen2
 
 	public const ulong StreamCrossStair = 0x58535441uL;
 
+	// the underground (UndergroundPlan). +1 and +2 the galleries east and north
+	public const ulong StreamUnder = 0x554E4452uL;
+
 	// world items spawned by v2 tiles: bit 61, then (layer:8)(tileX:20)(tileZ:20)(index:12) as in 01-world-layers.
 	// legacy spawner ids are small, scene pickups use bit 62, items made at runtime will use bit 62 with a peer (03)
 	public const ulong TileItemTag = 0x2000000000000000uL;

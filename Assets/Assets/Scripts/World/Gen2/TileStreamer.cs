@@ -110,6 +110,13 @@ public class TileStreamer : MonoBehaviour
 	// stairs up to raised streets from the blocks centred in the tile being built
 	private readonly List<Stair> stairs = new List<Stair>();
 
+	// the underground's halls and gallery pieces the tile being built owns, and the shaft holes in its deck
+	private readonly List<Hall> halls = new List<Hall>();
+
+	private readonly List<GalleryPiece> galleries = new List<GalleryPiece>();
+
+	private readonly List<Area> holes = new List<Area>();
+
 	private readonly List<RoadPatch> otherPatches = new List<RoadPatch>();
 
 	// made here at runtime, destroyed with the streamer (never the loaded assets)
@@ -595,7 +602,8 @@ public class TileStreamer : MonoBehaviour
 				float size = (float)Gen2.TileSize;
 				tile.transform.SetPositionAndRotation(new Vector3(x * size, groundY, z * size) - Offset(), Quaternion.identity);
 				ClearProps(tile);
-				deckMesh.Build(tile.transform.GetChild(0).GetComponent<MeshFilter>().sharedMesh, Plan.Chasms, x, z);
+				Plan.Underground.Holes(x, z, holes);
+				deckMesh.Build(tile.transform.GetChild(0).GetComponent<MeshFilter>().sharedMesh, Plan.Chasms, x, z, holes);
 				return false;
 			}
 			case 1:
@@ -642,6 +650,7 @@ public class TileStreamer : MonoBehaviour
 				PlaceViaducts(x, z);
 				PlaceRaised(x, z);
 				DressVoids(x, z);
+				PlaceUnderground(x, z);
 				foreach (Stair stair in stairs)
 				{
 					Vector3 corner = new Vector3((float)(x * Gen2.TileSize), 0f, (float)(z * Gen2.TileSize));
@@ -690,6 +699,7 @@ public class TileStreamer : MonoBehaviour
 					PlaceItems(lot, x, z, ref items, props);
 				}
 				PlaceLamps(props);
+				PlaceUnderLamps(x, z, props);
 #if DUMP_WORLDGEN
 				builtTiles++;
 				roadTriangles += roadMesh.Triangles;
@@ -940,6 +950,77 @@ public class TileStreamer : MonoBehaviour
 
 	// the bays of every viaduct whose middle is in this tile, and the piers that stand in it. a pier is left out
 	// where a road runs, the bays either side of it get a girder instead of an arch
+	// the underground's halls (with their shafts) and gallery pieces this tile owns
+	private void PlaceUnderground(int x, int z)
+	{
+		Plan.Underground.Collect(x, z, halls, galleries);
+		Vector3 corner = new Vector3((float)(x * Gen2.TileSize), 0f, (float)(z * Gen2.TileSize));
+		float[] gaps = new float[4];
+		foreach (Hall hall in halls)
+		{
+			Vector3 centre = Local(hall.Center, corner);
+			double[] at = { hall.GalleryPX - hall.Center.Z, -(hall.GalleryNX - hall.Center.Z), -(hall.GalleryPZ - hall.Center.X), hall.GalleryNZ - hall.Center.X };
+			for (int side = 0; side < 4; side++)
+			{
+				gaps[side] = (float)at[side];
+			}
+			int door = -1;
+			float doorFrom = 0f, doorTo = 0f;
+			if (hall.Shaft)
+			{
+				door = (hall.Out.X > 0.5) ? 0 : (hall.Out.X < -0.5) ? 1 : (hall.Out.Z > 0.5) ? 2 : 3;
+				// the shaft's door: its near wall from its left end, a gallery wide, along the hall's wall from its middle
+				double h = UndergroundPlan.Shaft * 0.5;
+				XZ along = hall.Along;
+				XZ from = hall.ShaftPoint(-h, -h);
+				doorFrom = (float)((from.X - hall.Center.X) * along.X + (from.Z - hall.Center.Z) * along.Z);
+				doorTo = doorFrom + (float)UndergroundPlan.GalleryWidth;
+				Hall shaft = hall;
+				lotMesh.AddShaft((p, q) => Local(shaft.ShaftPoint(p, q), corner), new Vector3((float)hall.Out.X, 0f, (float)hall.Out.Z));
+			}
+			lotMesh.AddHall(centre, (float)hall.HalfX, (float)hall.HalfZ, gaps, door, doorFrom, doorTo);
+		}
+		foreach (GalleryPiece piece in galleries)
+		{
+			lotMesh.AddGallery(Local(piece.A, corner), Local(piece.B, corner));
+		}
+	}
+
+	// a lamp or two on each hall's floor, near its corners, and one in the middle of its shaft's floor, under the hole
+	private void PlaceUnderLamps(int x, int z, Transform props)
+	{
+		if (kit == null || kit.Lamps == null || kit.Lamps.Length == 0)
+		{
+			return;
+		}
+		Plan.Underground.Collect(x, z, halls, galleries);
+		float floor = groundY - (float)UndergroundPlan.Depth;
+		foreach (Hall hall in halls)
+		{
+			WorldRandom random = new WorldRandom(WorldRandom.Derive(hall.Seed, Gen2.StreamUnder, 2uL));
+			int count = 1 + random.Next(2);
+			for (int i = 0; i < count; i++)
+			{
+				int c = random.Next(4);
+				float sx = ((c & 1) == 0) ? -1f : 1f;
+				float sz = ((c & 2) == 0) ? -1f : 1f;
+				Vector3 at = new Vector3((float)hall.Center.X + sx * ((float)hall.HalfX - 2f), floor, (float)hall.Center.Z + sz * ((float)hall.HalfZ - 2f));
+				UnderLamp(at, new Vector3(-sx, 0f, -sz), random, props);
+			}
+			if (hall.Shaft)
+			{
+				XZ foot = hall.ShaftPoint(0.0, 0.0);
+				UnderLamp(new Vector3((float)foot.X, floor, (float)foot.Z), new Vector3((float)-hall.Out.X, 0f, (float)-hall.Out.Z), random, props);
+			}
+		}
+	}
+
+	private void UnderLamp(Vector3 at, Vector3 facing, WorldRandom random, Transform props)
+	{
+		GameObject prefab = kit.Lamps[random.Next(kit.Lamps.Length)];
+		GraphicsTuning.Adopt(Instantiate(prefab, at - Offset(), Quaternion.LookRotation(facing.normalized) * prefab.transform.rotation, props));
+	}
+
 	private void PlaceViaducts(int x, int z)
 	{
 		double size = Gen2.TileSize;
@@ -1175,7 +1256,7 @@ public class TileStreamer : MonoBehaviour
 
 	private bool Blocked(XZ p, double clear)
 	{
-		if (Plan.Origin.DistanceTo(p) < RoadPlan.StartClearance + clear || Plan.Chasms.Inside(p.X, p.Z) > -clear)
+		if (Plan.Origin.DistanceTo(p) < RoadPlan.StartClearance + clear || Plan.Chasms.Inside(p.X, p.Z) > -clear || Plan.Underground.Blocks(p, clear))
 		{
 			return true;
 		}
