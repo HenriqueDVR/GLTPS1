@@ -311,7 +311,8 @@ public class LotPlanTests
 								{
 									continue;
 								}
-								Assert.AreEqual(lot.Deck, piece.HeightA, 1e-6);
+								// a cross street's deck may slope a little
+								Assert.AreEqual(lot.Deck, piece.HeightA + (piece.HeightB - piece.HeightA) * s, 0.05);
 								// the lot's on the side away from the deck's middle, so that's the side that's open
 								double from = (across > 0.0) ? piece.LeftFrom : piece.RightFrom;
 								double to = (across > 0.0) ? piece.LeftTo : piece.RightTo;
@@ -382,7 +383,7 @@ public class LotPlanTests
 								{
 									continue;
 								}
-								Assert.AreEqual(stair.Deck, piece.HeightA, 1e-6);
+								Assert.AreEqual(stair.Deck, piece.HeightA + (piece.HeightB - piece.HeightA) * s, 0.05);
 								double from = (across > 0.0) ? piece.LeftFrom : piece.RightFrom;
 								double to = (across > 0.0) ? piece.LeftTo : piece.RightTo;
 								open = s >= from - 1e-6 && s <= to + 1e-6;
@@ -394,6 +395,74 @@ public class LotPlanTests
 			}
 		}
 		Assert.Greater(count, 3);
+	}
+
+	// raised cross streets get doors and stairs too (their place is checked above with the rest)
+	[Test]
+	public void DoorsAndStairsOnRaisedCrossStreets()
+	{
+		LayerPlan plan = Layer0();
+		int doors = 0;
+		int stairs = 0;
+		for (int district = 0; district < plan.Def.Districts.Length; district++)
+		{
+			if (plan.Def.Districts[district].RaisedCross <= 0.0)
+			{
+				continue;
+			}
+			for (int k = -50; k <= 50; k++)
+			{
+				for (int j = -50; j <= 50; j++)
+				{
+					for (int side = -2; side <= 2; side += 4)
+					{
+						if (plan.Lots.Door(district, k, j, side, out _, out double deck))
+						{
+							doors++;
+							Assert.GreaterOrEqual(deck, LotPlan.DoorMinDeck);
+							Assert.IsFalse(plan.Lots.Stair(district, k, j, side, out _));
+						}
+						if (plan.Lots.Stair(district, k, j, side, out Stair stair))
+						{
+							stairs++;
+							Assert.GreaterOrEqual(stair.Deck, LotPlan.DoorMinDeck);
+							Assert.IsFalse(plan.Lots.Stair(district, k, j, -1, out _) || plan.Lots.Stair(district, k, j, 1, out _));
+						}
+					}
+				}
+			}
+		}
+		Assert.Greater(doors, 5);
+		Assert.Greater(stairs, 3);
+		// and some in the area the tests above check: a cross street's door lot is turned a quarter from its block's
+		// others, its stairs climb across the raised streets' ones
+		List<Lot> lots = new List<Lot>();
+		List<Stair> flights = new List<Stair>();
+		int turned = 0;
+		int across = 0;
+		for (int x = 20; x < 36; x++)
+		{
+			for (int z = 12; z < 28; z++)
+			{
+				plan.Lots.Collect(x, z, lots, flights);
+				foreach (Lot lot in lots)
+				{
+					if (lot.Door != 0 && lots.Exists(o => o.Door == 0 && o.District == lot.District && o.Kind == LotKind.Building && System.Math.Abs(o.Axis.X * lot.Axis.X + o.Axis.Z * lot.Axis.Z) < 1e-9))
+					{
+						turned++;
+					}
+				}
+				foreach (Stair stair in flights)
+				{
+					if (lots.Exists(o => o.Door == 0 && o.District == stair.District && o.Kind == LotKind.Building && System.Math.Abs(o.Axis.X * stair.Dir.X + o.Axis.Z * stair.Dir.Z) < 1e-9))
+					{
+						across++;
+					}
+				}
+			}
+		}
+		Assert.Greater(turned, 0);
+		Assert.Greater(across, 0);
 	}
 
 	// frozen genVersion 2 output. a failure here means v2 saves or mixed-version co-op would break: bump genVersion instead

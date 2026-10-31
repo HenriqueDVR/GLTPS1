@@ -799,8 +799,34 @@ public sealed class RoadPlan
 				continue;
 			}
 			int arch = (i == 0 && j != run.From) ? ArchGirder : (i == n - 1 && j + 1 != run.To) ? ArchGirder : (i == n - 2) ? ArchPiers : ArchPier;
-			pieces.Add(new RoadPiece { Kind = RoadKind.Street, A = pa, B = pb, TangentA = dir, TangentB = dir, Width = width, HeightA = CrossDeck(district, run, j, sa), HeightB = CrossDeck(district, run, j, sb), Index = i, Arch = arch });
+			RoadPiece piece = new RoadPiece { Kind = RoadKind.Street, A = pa, B = pb, TangentA = dir, TangentB = dir, Width = width, HeightA = CrossDeck(district, run, j, sa), HeightB = CrossDeck(district, run, j, sb), Index = i, Arch = arch };
+			// the grid's -U is the street's left: the block on that side is (k - 1, j), its +u edge on this street
+			double along = GridLine(district, 1, j);
+			if (plan.Lots.Door(district, k - 1, j, 2, out double leftV, out _))
+			{
+				Opening(leftV - along, LotPlan.DoorWidth * 0.5, sa, sb, out piece.LeftFrom, out piece.LeftTo);
+			}
+			else if (plan.Lots.Stair(district, k - 1, j, 2, out Stair left))
+			{
+				Opening(left.LandingAt - along, LotPlan.TopLanding * 0.5 - 0.2, sa, sb, out piece.LeftFrom, out piece.LeftTo);
+			}
+			if (plan.Lots.Door(district, k, j, -2, out double rightV, out _))
+			{
+				Opening(rightV - along, LotPlan.DoorWidth * 0.5, sa, sb, out piece.RightFrom, out piece.RightTo);
+			}
+			else if (plan.Lots.Stair(district, k, j, -2, out Stair right))
+			{
+				Opening(right.LandingAt - along, LotPlan.TopLanding * 0.5 - 0.2, sa, sb, out piece.RightFrom, out piece.RightTo);
+			}
+			pieces.Add(piece);
 		}
+	}
+
+	// deck height of raised cross street k at grid v along its block j, 0 where that block isn't raised
+	public double CrossHeight(int district, int k, int j, double gv)
+	{
+		Cross run = CrossRun(district, k, j);
+		return run.Up ? CrossDeck(district, run, j, gv - GridLine(district, 1, j)) : 0.0;
 	}
 
 	// the raised street passes corner (k, j) too low to go under
@@ -975,7 +1001,7 @@ public sealed class RoadPlan
 			}
 			else if (plan.Lots.Stair(district, k, j, -1, out Stair left))
 			{
-				Opening(left.LandingU - GridLine(district, 0, k), LotPlan.TopLanding * 0.5 - 0.2, sa, sb, out piece.LeftFrom, out piece.LeftTo);
+				Opening(left.LandingAt - GridLine(district, 0, k), LotPlan.TopLanding * 0.5 - 0.2, sa, sb, out piece.LeftFrom, out piece.LeftTo);
 			}
 			if (plan.Lots.Door(district, k, j - 1, 1, out double rightU, out _))
 			{
@@ -983,7 +1009,7 @@ public sealed class RoadPlan
 			}
 			else if (plan.Lots.Stair(district, k, j - 1, 1, out Stair right))
 			{
-				Opening(right.LandingU - GridLine(district, 0, k), LotPlan.TopLanding * 0.5 - 0.2, sa, sb, out piece.RightFrom, out piece.RightTo);
+				Opening(right.LandingAt - GridLine(district, 0, k), LotPlan.TopLanding * 0.5 - 0.2, sa, sb, out piece.RightFrom, out piece.RightTo);
 			}
 			// junctions with raised cross streets at the block's two corners: one leaving towards the block on the
 			// left, one arriving from the right

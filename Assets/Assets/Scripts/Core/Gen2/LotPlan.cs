@@ -33,7 +33,8 @@ public struct Lot
 
 	// a building entered from a raised street (LotPlan.Door): which of its v sides faces the street (+1, -1, 0 for
 	// none), how far along Axis from the centre the door is, and the street's deck height there. it stands on a
-	// plinth up to the deck instead of on any podium
+	// plinth up to the deck instead of on any podium. one entered from a raised cross street is turned a quarter, so
+	// its door's on a v side too
 	public int Door;
 
 	public double DoorAt;
@@ -58,8 +59,9 @@ public struct Stair
 
 	public double Deck;
 
-	// grid u of the top landing's middle, where the parapet's open
-	public double LandingU;
+	// grid coordinate along its street of the top landing's middle, where the parapet's open (u on a raised street,
+	// v on a raised cross street)
+	public double LandingAt;
 
 	public double Length => LotPlan.StairLength(Deck);
 }
@@ -257,30 +259,52 @@ public sealed class LotPlan
 		}
 		int first = lots.Count;
 		BlockLots(district, origin, u, v, gridSeed, k, j, highway, viaducts, lots);
-		for (int side = -1; side <= 1; side += 2)
+		foreach (int side in Sides)
 		{
-			if (!Door(district, k, j, side, out double doorU, out double deck))
+			if (Door(district, k, j, side, out double at, out double deck))
 			{
-				continue;
+				MarkDoor(district, k, j, side, at, deck, origin, u, v, lots, first);
 			}
-			int at = DoorLot(lots, first, origin, u, v, doorU, EdgeV(district, j, side), side);
-			if (at < 0)
-			{
-				continue;
-			}
-			Lot lot = lots[at];
-			lot.Door = side;
-			lot.DoorAt = doorU - Grid(origin, u, lot.Center);
-			lot.Deck = deck;
-			lots[at] = lot;
 		}
-		for (int side = -1; side <= 1 && stairsOut != null; side += 2)
+		foreach (int side in Sides)
 		{
-			if (Stair(district, k, j, side, out Stair stair))
+			if (stairsOut != null && Stair(district, k, j, side, out Stair stair))
 			{
 				stairsOut.Add(stair);
 			}
 		}
+	}
+
+	// a block's sides, in the order their doors take lots: its -v and +v edges (raised streets), its -u and +u edges
+	// (raised cross streets)
+	private static readonly int[] Sides = { -1, 1, -2, 2 };
+
+	// the door's lot on that side, if one's left that no earlier side took. a cross street's is turned a quarter
+	private void MarkDoor(int district, int k, int j, int side, double at, double deck, XZ origin, XZ u, XZ v, List<Lot> lots, int first)
+	{
+		int i = DoorLot(district, k, j, side, at, origin, u, v, lots, first);
+		if (i < 0)
+		{
+			return;
+		}
+		Lot lot = lots[i];
+		if (Math.Abs(side) == 2)
+		{
+			// Left(v) is -u
+			double hu = lot.HalfU;
+			lot.Axis = v;
+			lot.HalfU = lot.HalfV;
+			lot.HalfV = hu;
+			lot.Door = (side > 0) ? -1 : 1;
+			lot.DoorAt = at - Grid(origin, v, lot.Center);
+		}
+		else
+		{
+			lot.Door = side;
+			lot.DoorAt = at - Grid(origin, u, lot.Center);
+		}
+		lot.Deck = deck;
+		lots[i] = lot;
 	}
 
 	// the lots of block (k, j) wherever it is, if it all lies in the district
@@ -315,11 +339,16 @@ public sealed class LotPlan
 		}
 		// a side with stairs keeps them clear
 		double half = plan.Def.Districts[district].StreetWidth * 0.5;
-		double v0 = bv0 + (Stair(district, k, j, -1, out _) ? Math.Max(inset, half + StairWidth + StairGap) : inset);
-		double v1 = bv1 - (Stair(district, k, j, 1, out _) ? Math.Max(inset, half + StairWidth + StairGap) : inset);
+		double clear = Math.Max(inset, half + StairWidth + StairGap);
+		double v0 = bv0 + (Stair(district, k, j, -1, out _) ? clear : inset);
+		double v1 = bv1 - (Stair(district, k, j, 1, out _) ? clear : inset);
+		double u0 = bu0 + (Stair(district, k, j, -2, out _) ? clear : inset);
+		double u1 = bu1 - (Stair(district, k, j, 2, out _) ? clear : inset);
 		cv = (v0 + v1) * 0.5;
 		hv = (v1 - v0) * 0.5;
-		if (hv * 2.0 < MinLot)
+		cu = (u0 + u1) * 0.5;
+		hu = (u1 - u0) * 0.5;
+		if (hv * 2.0 < MinLot || hu * 2.0 < MinLot)
 		{
 			return;
 		}
@@ -328,15 +357,16 @@ public sealed class LotPlan
 
 	// ---- doors from raised streets (01, the raised city)
 
-	// whether the street along side (+1 the +v edge, -1 the -v edge) of block (k, j) is a raised one with a door
-	// into the block from it: the deck flat and high all along the block, a building lot on that edge with room for
-	// the entry, a share of those. grid u of the door's middle and the deck height. cached, pure
-	public bool Door(int district, int k, int j, int side, out double doorU, out double deck)
+	// whether the street along side (+1 the +v edge, -1 the -v edge, +2 the +u edge, -2 the -u edge) of block (k, j)
+	// is a raised one with a door into the block from it: the deck high all along the block (and flat, on a raised
+	// street), a building lot on that edge with room for the entry that no earlier side took, a share of those. grid
+	// coordinate along the street of the door's middle, the deck height there. cached, pure
+	public bool Door(int district, int k, int j, int side, out double at, out double deck)
 	{
 		(int, int, int, int) key = (district, k, j, side);
 		if (doors.TryGetValue(key, out (bool, double, double) known))
 		{
-			doorU = known.Item2;
+			at = known.Item2;
 			deck = known.Item3;
 			return known.Item1;
 		}
@@ -344,53 +374,90 @@ public sealed class LotPlan
 		{
 			doors.Clear();
 		}
-		bool found = FindDoor(district, k, j, side, out doorU, out deck);
-		doors[key] = (found, doorU, deck);
+		bool found = FindDoor(district, k, j, side, out at, out deck);
+		doors[key] = (found, at, deck);
 		return found;
 	}
 
-	private bool FindDoor(int district, int k, int j, int side, out double doorU, out double deck)
+	private bool FindDoor(int district, int k, int j, int side, out double at, out double deck)
 	{
-		doorU = deck = 0.0;
+		at = deck = 0.0;
 		DistrictDef def = plan.Def.Districts[district];
-		if (def.Roads != DistrictRoads.Streets || def.Style == BuildingStyle.Industrial || def.Raised <= 0.0 || Stair(district, k, j, side, out _))
+		bool cross = Math.Abs(side) == 2;
+		if (def.Roads != DistrictRoads.Streets || def.Style == BuildingStyle.Industrial || (cross ? def.RaisedCross : def.Raised) <= 0.0 || Stair(district, k, j, side, out _))
 		{
 			return false;
 		}
 		plan.Roads.GridFrame(district, out XZ origin, out XZ u, out XZ v, out ulong gridSeed);
-		ulong roll = WorldRandom.Derive(gridSeed, Gen2.StreamDoor + (side > 0 ? 1uL : 0uL), Gen2.Pack(k, j));
+		ulong stream = cross ? Gen2.StreamCrossDoor : Gen2.StreamDoor;
+		ulong roll = WorldRandom.Derive(gridSeed, stream + (side > 0 ? 1uL : 0uL), Gen2.Pack(k, j));
 		if (Gen2.Unit(roll) >= DoorChance)
 		{
 			return false;
 		}
-		int line = (side > 0) ? j + 1 : j;
-		deck = plan.Roads.RaisedHeight(district, line, k);
-		if (deck < DoorMinDeck || Math.Abs(plan.Roads.RaisedHeight(district, line, k + 0.5) - deck) > 1e-9 || Math.Abs(plan.Roads.RaisedHeight(district, line, k + 0.999) - deck) > 1e-9)
-		{
-			return false;
-		}
 		double inset = def.StreetWidth * 0.5 + def.Sidewalk;
-		double from = plan.Roads.GridLine(district, 0, k) + inset + PorchWidth;
-		double to = plan.Roads.GridLine(district, 0, k + 1) - inset - PorchWidth;
+		double from, to;
+		if (cross)
+		{
+			from = plan.Roads.GridLine(district, 1, j) + inset + PorchWidth;
+			to = plan.Roads.GridLine(district, 1, j + 1) - inset - PorchWidth;
+		}
+		else
+		{
+			int line = (side > 0) ? j + 1 : j;
+			deck = plan.Roads.RaisedHeight(district, line, k);
+			if (deck < DoorMinDeck || Math.Abs(plan.Roads.RaisedHeight(district, line, k + 0.5) - deck) > 1e-9 || Math.Abs(plan.Roads.RaisedHeight(district, line, k + 0.999) - deck) > 1e-9)
+			{
+				return false;
+			}
+			from = plan.Roads.GridLine(district, 0, k) + inset + PorchWidth;
+			to = plan.Roads.GridLine(district, 0, k + 1) - inset - PorchWidth;
+		}
 		if (to <= from)
 		{
 			return false;
 		}
-		doorU = from + (to - from) * Gen2.Unit(WorldRandom.Derive(roll, Gen2.StreamDoor, 2uL));
+		at = from + (to - from) * Gen2.Unit(WorldRandom.Derive(roll, stream, 2uL));
+		if (cross)
+		{
+			// a cross street's deck may slope a little, the entry meets it where it is
+			deck = plan.Roads.CrossHeight(district, (side > 0) ? k + 1 : k, j, at);
+			if (deck < DoorMinDeck)
+			{
+				return false;
+			}
+		}
+		// the sides before this one first, before doorLots is taken
+		int earlier = Array.IndexOf(Sides, side);
+		bool[] had = new bool[earlier];
+		double[] hadAt = new double[earlier];
+		double[] hadDeck = new double[earlier];
+		for (int n = 0; n < earlier; n++)
+		{
+			had[n] = Door(district, k, j, Sides[n], out hadAt[n], out hadDeck[n]);
+		}
 		XZ centre = At(origin, u, v, (plan.Roads.GridLine(district, 0, k) + plan.Roads.GridLine(district, 0, k + 1)) * 0.5, (plan.Roads.GridLine(district, 1, j) + plan.Roads.GridLine(district, 1, j + 1)) * 0.5);
 		double reach = RoadPlan.StreetSpacing + RoadPlan.StreetJitter + HighwayGap + RoadPlan.HighwayWidth;
 		plan.Roads.HighwaySegments(centre.X - reach, centre.Z - reach, centre.X + reach, centre.Z + reach, doorHighway);
 		plan.Viaducts.Near(centre.X, centre.Z, doorViaducts);
 		doorLots.Clear();
 		BlockLots(district, origin, u, v, gridSeed, k, j, doorHighway, doorViaducts, doorLots);
-		return DoorLot(doorLots, 0, origin, u, v, doorU, EdgeV(district, j, side), side) >= 0;
+		for (int n = 0; n < earlier; n++)
+		{
+			if (had[n])
+			{
+				MarkDoor(district, k, j, Sides[n], hadAt[n], hadDeck[n], origin, u, v, doorLots, 0);
+			}
+		}
+		return DoorLot(district, k, j, side, at, origin, u, v, doorLots, 0) >= 0;
 	}
 
 	// ---- stairs up to raised streets (01, the raised city)
 
 	// whether a flight of stairs climbs from the ground to the raised street along side (+1 the +v edge, -1 the -v
-	// edge) of block (k, j): the deck flat and high all along the block, the flight against its side over the
-	// sidewalk, clear of pillars, voids and expressways, a share of those. cached, pure
+	// edge, +2 and -2 the u edges, on raised cross streets) of block (k, j): the deck high all along the block (and
+	// flat, on a raised street), the flight against its side over the sidewalk, clear of pillars, voids and
+	// expressways, a share of those. cached, pure
 	public bool Stair(int district, int k, int j, int side, out Stair stair)
 	{
 		(int, int, int, int) key = (district, k, j, side);
@@ -403,7 +470,7 @@ public sealed class LotPlan
 		{
 			stairs.Clear();
 		}
-		bool found = FindStair(district, k, j, side, out stair);
+		bool found = (Math.Abs(side) == 2) ? FindCrossStair(district, k, j, side, out stair) : FindStair(district, k, j, side, out stair);
 		stairs[key] = (found, stair);
 		return found;
 	}
@@ -446,12 +513,70 @@ public sealed class LotPlan
 		stair.Foot = At(origin, u, v, (climb > 0.0) ? u0 : u0 + length, mid);
 		stair.Dir = new XZ(u.X * climb, u.Z * climb);
 		stair.Out = new XZ(v.X * away, v.Z * away);
-		stair.LandingU = (climb > 0.0) ? u0 + length - TopLanding * 0.5 : u0 + TopLanding * 0.5;
-		XZ middle = At(origin, u, v, u0 + length * 0.5, mid);
+		stair.LandingAt = (climb > 0.0) ? u0 + length - TopLanding * 0.5 : u0 + TopLanding * 0.5;
+		return StairClear(district, origin, u, v, u0, length, mid);
+	}
+
+	// a flight against a raised cross street: like a raised street's, but its deck may slope a little, so the flight
+	// is as tall as the deck where the top landing meets it. none in a block with a raised street's flight, they'd
+	// meet at the corner
+	private bool FindCrossStair(int district, int k, int j, int side, out Stair stair)
+	{
+		stair = default(Stair);
+		DistrictDef def = plan.Def.Districts[district];
+		if (def.Roads != DistrictRoads.Streets || def.RaisedCross <= 0.0 || Stair(district, k, j, -1, out _) || Stair(district, k, j, 1, out _))
+		{
+			return false;
+		}
+		plan.Roads.GridFrame(district, out XZ origin, out XZ u, out XZ v, out ulong gridSeed);
+		ulong roll = WorldRandom.Derive(gridSeed, Gen2.StreamCrossStair + (side > 0 ? 1uL : 0uL), Gen2.Pack(k, j));
+		if (Gen2.Unit(roll) >= StairChance)
+		{
+			return false;
+		}
+		int line = (side > 0) ? k + 1 : k;
+		double inset = def.StreetWidth * 0.5 + def.Sidewalk;
+		double from = plan.Roads.GridLine(district, 1, j) + inset;
+		double end = plan.Roads.GridLine(district, 1, j + 1) - inset;
+		double low = Math.Min(plan.Roads.CrossHeight(district, line, j, from), plan.Roads.CrossHeight(district, line, j, end));
+		double high = Math.Max(plan.Roads.CrossHeight(district, line, j, from), plan.Roads.CrossHeight(district, line, j, end));
+		double to = end - StairLength(high);
+		if (low < DoorMinDeck || to <= from)
+		{
+			return false;
+		}
+		double v0 = from + (to - from) * Gen2.Unit(WorldRandom.Derive(roll, Gen2.StreamCrossStair, 2uL));
+		double climb = (Gen2.Unit(WorldRandom.Derive(roll, Gen2.StreamCrossStair, 3uL)) < 0.5) ? 1.0 : -1.0;
+		// climbing towards +v the landing moves with the length, which moves with the deck there: a few rounds settle it
+		double deck = high;
+		double landing = 0.0;
+		for (int n = 0; n < 3; n++)
+		{
+			landing = (climb > 0.0) ? v0 + StairLength(deck) - TopLanding * 0.5 : v0 + TopLanding * 0.5;
+			deck = plan.Roads.CrossHeight(district, line, j, landing);
+		}
+		double length = StairLength(deck);
+		// the block's on the other side of the street from the line's far side: +u of line k, -u of line k + 1
+		double away = (side > 0) ? -1.0 : 1.0;
+		double mid = plan.Roads.GridLine(district, 0, line) + away * (def.StreetWidth * 0.5 + StairWidth * 0.5);
+		stair.District = district;
+		stair.Deck = deck;
+		stair.Foot = At(origin, u, v, mid, (climb > 0.0) ? v0 : v0 + length);
+		stair.Dir = new XZ(v.X * climb, v.Z * climb);
+		stair.Out = new XZ(u.X * away, u.Z * away);
+		stair.LandingAt = (climb > 0.0) ? v0 + length - TopLanding * 0.5 : v0 + TopLanding * 0.5;
+		return StairClear(district, origin, v, u, v0, length, mid);
+	}
+
+	// a flight from along to along + length (grid coordinates on axis), across from the street's line on the other
+	// axis, clear of everything it can't stand in
+	private bool StairClear(int district, XZ origin, XZ axis, XZ other, double along, double length, double across)
+	{
+		XZ middle = At(origin, axis, other, along + length * 0.5, across);
 		plan.Viaducts.Near(middle.X, middle.Z, stairViaducts);
 		for (double s = 0.0; s <= length + 0.01; s += 4.0)
 		{
-			XZ p = At(origin, u, v, u0 + Math.Min(s, length), mid);
+			XZ p = At(origin, axis, other, along + Math.Min(s, length), across);
 			if (plan.DistrictAt(p.X, p.Z) != district || plan.Chasms.Blocks(p, StairWidth) || plan.Viaducts.Blocks(p, StairWidth, stairViaducts) || plan.Roads.HighwayNear(p, StairWidth + 4.0) || plan.PillarNear(p.X, p.Z).Position.DistanceTo(p) < RoadPlan.PillarClearance + StairWidth || plan.Origin.DistanceTo(p) < RoadPlan.StartClearance)
 			{
 				return false;
@@ -460,27 +585,27 @@ public sealed class LotPlan
 		return true;
 	}
 
-	// grid v of the block's edge on that side, where its lots stop
-	private double EdgeV(int district, int j, int side)
+	// the building lot from first on that reaches the block's edge on that side with room for the entry at grid
+	// coordinate at along it, and that no earlier side took. -1 if none
+	private int DoorLot(int district, int k, int j, int side, double at, XZ origin, XZ u, XZ v, List<Lot> lots, int first)
 	{
 		DistrictDef def = plan.Def.Districts[district];
 		double inset = def.StreetWidth * 0.5 + def.Sidewalk;
-		return (side > 0) ? plan.Roads.GridLine(district, 1, j + 1) - inset : plan.Roads.GridLine(district, 1, j) + inset;
-	}
-
-	// the building lot from first on that reaches the edge at doorU with room for the entry, -1 if none
-	private static int DoorLot(List<Lot> lots, int first, XZ origin, XZ u, XZ v, double doorU, double edgeV, int side)
-	{
+		bool cross = Math.Abs(side) == 2;
+		int sign = Math.Sign(side);
+		XZ along = cross ? v : u;
+		XZ across = cross ? u : v;
+		double edge = cross ? ((side > 0) ? plan.Roads.GridLine(district, 0, k + 1) - inset : plan.Roads.GridLine(district, 0, k) + inset) : ((side > 0) ? plan.Roads.GridLine(district, 1, j + 1) - inset : plan.Roads.GridLine(district, 1, j) + inset);
 		for (int i = first; i < lots.Count; i++)
 		{
 			Lot lot = lots[i];
-			if (lot.Kind != LotKind.Building)
+			if (lot.Kind != LotKind.Building || lot.Door != 0)
 			{
 				continue;
 			}
-			double cu = Grid(origin, u, lot.Center);
-			double cv = Grid(origin, v, lot.Center);
-			if (Math.Abs(cv + side * lot.HalfV - edgeV) < 0.01 && Math.Abs(doorU - cu) <= lot.HalfU - PorchWidth * 0.5 - 0.5 && lot.HalfV * 2.0 >= PorchDepth + 8.0)
+			double halfAlong = cross ? lot.HalfV : lot.HalfU;
+			double halfAcross = cross ? lot.HalfU : lot.HalfV;
+			if (Math.Abs(Grid(origin, across, lot.Center) + sign * halfAcross - edge) < 0.01 && Math.Abs(at - Grid(origin, along, lot.Center)) <= halfAlong - PorchWidth * 0.5 - 0.5 && halfAcross * 2.0 >= PorchDepth + 8.0)
 			{
 				return i;
 			}
