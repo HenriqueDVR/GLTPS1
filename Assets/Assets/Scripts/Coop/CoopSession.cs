@@ -56,6 +56,8 @@ public class CoopSession : MonoBehaviour
 		Sequenced = 26,
 		// driver got off, where the ket ended up
 		KetPlaced = 27,
+		// host->friend: the ride got to the swap, layer + the pillar's cell (LayerTransition)
+		LayerChange = 28,
 		// host->friend state sections after Start (StateRegistry, StateUse.Join)
 		Snapshot = 29,
 		// [kind][netId][payload] for systems on NetRegistry
@@ -85,7 +87,7 @@ public class CoopSession : MonoBehaviour
 	private const float lanHeadStart = 1f;
 
 	// bump on protocol changes
-	private const string connectionKey = "GLTPS1-coop-21";
+	private const string connectionKey = "GLTPS1-coop-22";
 
 	private const string difficultyKey = "difficultySetting";
 
@@ -122,6 +124,15 @@ public class CoopSession : MonoBehaviour
 	private int joinedLevelRun;
 
 	private uint joinedLayoutHash;
+
+	private int joinedGenVersion;
+
+	private int joinedLayer;
+
+	private int joinedLayers;
+
+	// host: a friend came during a ride, Start waits for the arrival
+	private bool startPending;
 
 	private bool reconnected;
 
@@ -761,7 +772,7 @@ public class CoopSession : MonoBehaviour
 		}
 		Mode = SessionMode.Off;
 		Invite = null;
-		WorldGenerator.RequestedSeed = 0uL;
+		WorldGenerator.ClearRequested();
 		hostSeed = 0uL;
 		CoopItem.ResetLevel();
 		CoopWeather.ResetLevel();
@@ -1204,7 +1215,15 @@ public class CoopSession : MonoBehaviour
 				ulong @ulong = reader.GetULong();
 				string @string = reader.GetString();
 				int levelRun = reader.GetInt();
-				bool resume = reconnected && joinedSeed == @ulong && joinedLevelRun == levelRun && Scenes.InGame;
+				// the host's world: generator, the origins of the layers past 0 it's been to, the one it's on
+				int genVersion = reader.GetByte();
+				int layer = reader.GetInt();
+				XZ[] origins = new XZ[reader.GetInt()];
+				for (int i = 0; i < origins.Length; i++)
+				{
+					origins[i] = new XZ(reader.GetDouble(), reader.GetDouble());
+				}
+				bool resume = reconnected && joinedSeed == @ulong && joinedLevelRun == levelRun && joinedGenVersion == genVersion && joinedLayer == layer && joinedLayers == origins.Length + 1 && Scenes.InGame;
 				reconnected = false;
 				skipRejoin = resume;
 				if (resume)
@@ -1220,6 +1239,9 @@ public class CoopSession : MonoBehaviour
 				}
 				joinedSeed = @ulong;
 				joinedLevelRun = levelRun;
+				joinedGenVersion = genVersion;
+				joinedLayer = layer;
+				joinedLayers = origins.Length + 1;
 				GameSave.RestoreTaken = null;
 				CoopPipes.SetRestore(null);
 				StateRegistry.ClearPending();
@@ -1228,6 +1250,9 @@ public class CoopSession : MonoBehaviour
 					PlayerPrefs.SetString(difficultyKey, @string);
 				}
 				WorldGenerator.RequestedSeed = @ulong;
+				WorldGenerator.RequestedGenVersion = genVersion;
+				WorldGenerator.RequestedOrigins = origins;
+				WorldGenerator.RequestedLayer = layer;
 				CoopItem.ResetLevel();
 				CoopWeather.ResetLevel();
 				CoopMusic.ResetLevel();
@@ -1299,6 +1324,15 @@ public class CoopSession : MonoBehaviour
 		case MessageType.ElevatorClosed:
 			CoopElevator.OnGateClosed();
 			break;
+		case MessageType.LayerChange:
+			if (!IsHost)
+			{
+				int layer = reader.GetInt();
+				int cellX = reader.GetInt();
+				int cellZ = reader.GetInt();
+				LayerTransition.OnLayerChange(layer, cellX, cellZ);
+			}
+			break;
 		case MessageType.Shot:
 			CoopShots.OnShot(reader);
 			break;
@@ -1367,6 +1401,9 @@ public class CoopSession : MonoBehaviour
 		else if (Connected)
 		{
 			joinedLayoutHash = generator.LayoutHash;
+			joinedGenVersion = WorldGenerator.GenVersion;
+			joinedLayer = generator.Layer;
+			joinedLayers = (generator.Layers != null) ? generator.Layers.Count : 1;
 			writer.Reset();
 			writer.Put((byte)MessageType.Ready);
 			writer.Put(generator.LayoutHash);
@@ -1375,13 +1412,70 @@ public class CoopSession : MonoBehaviour
 		}
 	}
 
+	// the elevator took them to another layer: the host tells the friend where, the friend says what it got
+	public void OnLayerChanged(WorldGenerator generator, int cellX, int cellZ)
+	{
+		if (!Together)
+		{
+			return;
+		}
+		if (IsHost)
+		{
+			hostLayoutHash = generator.LayoutHash;
+			Warning = "";
+			writer.Reset();
+			writer.Put((byte)MessageType.LayerChange);
+			writer.Put(generator.Layer);
+			writer.Put(cellX);
+			writer.Put(cellZ);
+			Send(writer, DeliveryMethod.ReliableOrdered);
+			return;
+		}
+		joinedLayoutHash = generator.LayoutHash;
+		joinedLayer = generator.Layer;
+		joinedLayers = generator.Layers.Count;
+		writer.Reset();
+		writer.Put((byte)MessageType.Ready);
+		writer.Put(generator.LayoutHash);
+		Send(writer, DeliveryMethod.ReliableOrdered);
+	}
+
+	public void OnLayerArrived()
+	{
+		if (IsHost && startPending)
+		{
+			startPending = false;
+			if (Connected && Scenes.InGame && hostSeed != 0L)
+			{
+				SendStart();
+			}
+		}
+	}
+
 	private void SendStart()
 	{
+		// mid-ride the world is half one layer, half the other
+		if (LayerTransition.Busy)
+		{
+			startPending = true;
+			return;
+		}
+		startPending = false;
+		WorldGenerator world = GameSession.Get<WorldGenerator>();
+		LayerStack layers = (world != null) ? world.Layers : null;
 		writer.Reset();
 		writer.Put((byte)MessageType.Start);
 		writer.Put(hostSeed);
 		writer.Put(PlayerPrefs.GetString(difficultyKey, ""));
 		writer.Put(hostLevelRun);
+		writer.Put((byte)WorldGenerator.GenVersion);
+		writer.Put((layers != null) ? world.Layer : 0);
+		writer.Put((layers != null) ? layers.Count - 1 : 0);
+		for (int i = 1; layers != null && i < layers.Count; i++)
+		{
+			writer.Put(layers.Get(i).Origin.X);
+			writer.Put(layers.Get(i).Origin.Z);
+		}
 		Send(writer, DeliveryMethod.ReliableOrdered);
 		List<StateSection> sections = StateRegistry.Capture(StateUse.Join);
 		if (!CoopGirlState.RejoinSection.HasState)

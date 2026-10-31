@@ -59,6 +59,15 @@ public sealed class LayerStack
 		return null;
 	}
 
+	// the next layer up as it was first reached, from its origin: a co-op friend's world from the host's (Start)
+	public LayerPlan Add(XZ origin)
+	{
+		LayerPlan top = plans[plans.Count - 1];
+		LayerPlan next = new LayerPlan(top.WorldSeed, top.Layer + 1, origin, top);
+		plans.Add(next);
+		return next;
+	}
+
 	// layer k's deck over layer 0's
 	public static double Rise(int layer)
 	{

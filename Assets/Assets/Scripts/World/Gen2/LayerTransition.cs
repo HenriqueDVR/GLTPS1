@@ -5,8 +5,10 @@ using UnityEngine.Animations;
 // world gen v2: the elevators between layers (01, transitions). the ride is the ending's (ElevatorSequence, its events
 // in PillarNodeAnimationEvents), run up or down and stretched to the layer height. at its 35 s event the layer it goes
 // to takes over (tiles, towers, backdrop) with the riding tower moved onto it; at its end they step out on the new deck.
-// solo for now: the ket, the barrel and a girl left behind are brought along. co-op rides keep the ending (WP-WORLD-4)
-[DefaultExecutionOrder(-20)]
+// the ket, the barrel and a girl left behind are brought along. co-op: each peer rides its own copy, the host decides
+// the swap and sends LayerChange; a friend that gets there first waits for it, one that missed the ride jumps over.
+// before CoopPlayers (-100), which stands the other player's girl on the car's floor
+[DefaultExecutionOrder(-110)]
 public class LayerTransition : MonoBehaviour
 {
 	// the clip's lift: flat keys at these times, so an eased rise between (ElevatorSequence.anim)
@@ -65,6 +67,17 @@ public class LayerTransition : MonoBehaviour
 
 	private readonly List<Girl> brought = new List<Girl>();
 
+	private readonly Dictionary<Girl, bool> agents = new Dictionary<Girl, bool>();
+
+	// co-op friend: the host's LayerChange for this ride came, and our own ride got to its swap or its end first
+	private bool hostSwapped;
+
+	private bool swapDue;
+
+	private bool arriveDue;
+
+	private static bool Friend => CoopSession.Together && !CoopSession.Instance.IsHost;
+
 	// PauseGameState: a ride to another layer starts. false for the ending
 	public static bool Begin(PillarNodeAnimationEvents events)
 	{
@@ -76,14 +89,200 @@ public class LayerTransition : MonoBehaviour
 	public static bool Swap(PillarNodeAnimationEvents events)
 	{
 		LayerTransition current = Current;
-		return current != null && current.events == events && current.DoSwap();
+		if (current == null || current.events != events)
+		{
+			return false;
+		}
+		if (Friend && !current.hostSwapped)
+		{
+			current.swapDue = true;
+			return true;
+		}
+		return current.DoSwap();
 	}
 
 	// DisableCamera, at the end: they're on the new deck
 	public static bool Arrive(PillarNodeAnimationEvents events)
 	{
 		LayerTransition current = Current;
-		return current != null && current.events == events && current.DoArrive();
+		if (current == null || current.events != events)
+		{
+			return false;
+		}
+		if (Friend && !current.swapped)
+		{
+			current.arriveDue = true;
+			return true;
+		}
+		return current.DoArrive();
+	}
+
+	// co-op friend: the host's layer changed (CoopSession, LayerChange)
+	public static void OnLayerChange(int layer, int cellX, int cellZ)
+	{
+		LayerTransition current = Current;
+		if (current != null)
+		{
+			current.HostChanged(layer, cellX, cellZ);
+		}
+	}
+
+	private void HostChanged(int layer, int cellX, int cellZ)
+	{
+		WorldGenerator world = GameSession.Get<WorldGenerator>();
+		if (world == null || world.Layers == null)
+		{
+			return;
+		}
+		if (elevator != null && to.Layer == layer && spot.CellX == cellX && spot.CellZ == cellZ)
+		{
+			hostSwapped = true;
+			if (arriveDue)
+			{
+				// our ride's over already: the layer all at once, then out of the car once it's built
+				DoSwap(true);
+				StartCoroutine(ArriveBuilt());
+			}
+			else if (swapDue)
+			{
+				DoSwap();
+			}
+			return;
+		}
+		if (world.Layer != layer)
+		{
+			Jump(world, layer, cellX, cellZ);
+		}
+	}
+
+	// no ride here (the gate didn't close on this side): straight over to the host's layer, out of that pillar's car
+	private void Jump(WorldGenerator world, int layer, int cellX, int cellZ)
+	{
+		int going = (layer > world.Layer) ? 1 : -1;
+		LayerPlan next = world.Layers.Ride(world.Layer, cellX, cellZ, going);
+		if (next == null || next.Layer != layer)
+		{
+			Debug.LogWarning("LayerTransition: can't follow the host to layer " + layer + " by pillar " + cellX + "," + cellZ + " from layer " + world.Layer);
+			return;
+		}
+		if (elevator != null)
+		{
+			Abandon();
+		}
+		GameSession session = GameSession.Current;
+		TileStreamer tiles = GameSession.Get<TileStreamer>();
+		PillarStreamer streamer = GameSession.Get<PillarStreamer>();
+		float deck = tiles.GroundY + going * (float)Gen2.LayerHeight;
+		int groundLayer = tiles.GroundLayer;
+		// a girl standing in a tower's car would go with it
+		foreach (Girl girl in Girls.All)
+		{
+			foreach (PillarStreamer.Spot s in streamer.Spots)
+			{
+				if (s.Instance != null && girl.transform.IsChildOf(s.Instance.transform))
+				{
+					girl.transform.SetParent(null, true);
+				}
+			}
+		}
+		session.EndLayer();
+		world.SetLayer(next);
+		session.BeginLayer(next, deck, groundLayer, null, true);
+		PillarStreamer arrived = GameSession.Get<PillarStreamer>();
+		Vector3 car = arrived.CarPoint(cellX, cellZ) - Offset();
+		Vector3 outward = arrived.Outward(cellX, cellZ);
+		foreach (Girl girl in Girls.All)
+		{
+			if (girl.Control != GirlControl.Remote)
+			{
+				Put(girl, car + outward * 4f + Vector3.up * 0.3f);
+			}
+		}
+		VehicleMovement ket = FindObjectOfType<VehicleMovement>();
+		if (ket != null && !CoopKettenkrad.FollowsRemote)
+		{
+			Rigidbody body = ket.GetComponent<Rigidbody>();
+			body.position = car + outward * (2f + ketOut) + Vector3.up * 1f;
+			body.rotation = Quaternion.LookRotation(outward, Vector3.up);
+			ket.transform.SetPositionAndRotation(body.position, body.rotation);
+			body.velocity = Vector3.zero;
+			body.angularVelocity = Vector3.zero;
+		}
+		Physics.SyncTransforms();
+		Debug.Log("LayerTransition: jumped to the host's layer " + layer + " at pillar " + cellX + "," + cellZ);
+		CoopSession.Instance.OnLayerChanged(world, cellX, cellZ);
+	}
+
+	// a ride of ours that isn't the host's: let it go, it never swaps
+	private void Abandon()
+	{
+		foreach (InputContextStack.Token token in held)
+		{
+			token.Release();
+		}
+		held.Clear();
+		RestoreAgents();
+		if (characterManager != null)
+		{
+			characterManager.SetActive(true);
+		}
+		if (below != null)
+		{
+			Destroy(below);
+			below = null;
+		}
+		EndingCinematic.End();
+		elevator = null;
+		events = null;
+		tower = null;
+		spot = null;
+		to = null;
+	}
+
+	private void RestoreAgents()
+	{
+		foreach (KeyValuePair<Girl, bool> agent in agents)
+		{
+			if (agent.Key == null || agent.Key.Agent == null)
+			{
+				continue;
+			}
+			if (agent.Key.Control == GirlControl.AI)
+			{
+				agent.Key.Agent.enabled = true;
+				agent.Key.Agent.Warp(agent.Key.transform.position);
+				if (agent.Key.Follow != null)
+				{
+					agent.Key.Follow.follow = true;
+				}
+			}
+			else
+			{
+				agent.Key.Agent.enabled = agent.Value;
+			}
+		}
+		agents.Clear();
+	}
+
+	private static Vector3 Offset()
+	{
+		FloatingOrigin origin = GameSession.Get<FloatingOrigin>();
+		return (origin != null) ? origin.TotalOffset : Vector3.zero;
+	}
+
+	private static void Put(Girl girl, Vector3 at)
+	{
+		CharacterController controller = girl.GetComponentInChildren<CharacterController>();
+		if (controller != null)
+		{
+			controller.enabled = false;
+		}
+		girl.transform.position = at;
+		Physics.SyncTransforms();
+		if (controller != null)
+		{
+			controller.enabled = true;
+		}
 	}
 
 	private bool Depart(PillarNodeAnimationEvents rideOn)
@@ -94,7 +293,7 @@ public class LayerTransition : MonoBehaviour
 		}
 		WorldGenerator world = GameSession.Get<WorldGenerator>();
 		PillarStreamer streamer = GameSession.Get<PillarStreamer>();
-		if (elevator != null || CoopSession.InGame || world == null || world.Layers == null || streamer == null)
+		if (elevator != null || world == null || world.Layers == null || streamer == null)
 		{
 			return false;
 		}
@@ -112,6 +311,9 @@ public class LayerTransition : MonoBehaviour
 		way = going;
 		to = next;
 		swapped = false;
+		hostSwapped = false;
+		swapDue = false;
+		arriveDue = false;
 		carOffset = 0f;
 		characterManager = GameObject.FindWithTag("CharacterManager");
 		if (characterManager != null)
@@ -120,6 +322,7 @@ public class LayerTransition : MonoBehaviour
 		}
 		held.Clear();
 		brought.Clear();
+		agents.Clear();
 		foreach (Girl girl in Girls.All)
 		{
 			if (girl.Input != null && girl.Input.Contexts != null)
@@ -129,6 +332,7 @@ public class LayerTransition : MonoBehaviour
 			// the agent would pull her back onto the navmesh, it's 600 m off
 			if (girl.Agent != null)
 			{
+				agents[girl] = girl.Agent.enabled;
 				girl.Agent.enabled = false;
 			}
 		}
@@ -140,7 +344,17 @@ public class LayerTransition : MonoBehaviour
 		return true;
 	}
 
-	private bool DoSwap()
+	private System.Collections.IEnumerator ArriveBuilt()
+	{
+		yield return null;
+		yield return null;
+		if (elevator != null)
+		{
+			DoArrive();
+		}
+	}
+
+	private bool DoSwap(bool buildAll = false)
 	{
 		if (swapped)
 		{
@@ -154,17 +368,18 @@ public class LayerTransition : MonoBehaviour
 		float rise = way * (float)Gen2.LayerHeight;
 		float deck = tiles.GroundY + rise;
 		int groundLayer = tiles.GroundLayer;
-		// anyone not aboard rides along in the car, and the ket and a loose barrel wait for them up there
+		// anyone of ours not aboard rides along in the car, and the ket and a loose barrel wait for them up there.
+		// the other player's girl, ket and barrel are theirs to bring
 		foreach (Girl girl in Girls.All)
 		{
-			if (!girl.transform.IsChildOf(tower.transform))
+			if (girl.Control != GirlControl.Remote && !girl.transform.IsChildOf(tower.transform))
 			{
 				brought.Add(girl);
 				Board(girl);
 			}
 		}
 		VehicleMovement ket = FindObjectOfType<VehicleMovement>();
-		ketBody = (ket != null) ? ket.GetComponent<Rigidbody>() : null;
+		ketBody = (ket != null && !CoopKettenkrad.FollowsRemote) ? ket.GetComponent<Rigidbody>() : null;
 		if (ketBody != null)
 		{
 			ketWasKinematic = ketBody.isKinematic;
@@ -172,7 +387,7 @@ public class LayerTransition : MonoBehaviour
 		}
 		GameObject barrel = GameObject.FindWithTag("Barrel");
 		ParentConstraint carried = (barrel != null) ? barrel.GetComponent<ParentConstraint>() : null;
-		barrelBody = (barrel != null && (carried == null || !carried.constraintActive)) ? barrel.GetComponent<Rigidbody>() : null;
+		barrelBody = (barrel != null && !CoopBarrel.RemoteOwned && (carried == null || !carried.constraintActive)) ? barrel.GetComponent<Rigidbody>() : null;
 		if (barrelBody != null)
 		{
 			barrelWasKinematic = barrelBody.isKinematic;
@@ -197,9 +412,13 @@ public class LayerTransition : MonoBehaviour
 		Ride();
 		// a spot of its own: the old streamer clears its spots' towers when it goes, at the end of the frame
 		PillarStreamer.Spot arrived = new PillarStreamer.Spot { CellX = spot.CellX, CellZ = spot.CellZ, Instance = tower };
-		session.BeginLayer(to, deck, groundLayer, arrived);
+		session.BeginLayer(to, deck, groundLayer, arrived, buildAll);
 		Physics.SyncTransforms();
 		Debug.Log("LayerTransition: now on layer " + to.Layer + " (" + to.Def.Name + "), deck " + deck.ToString("F1") + ", origin " + to.Origin + (brought.Count > 0 ? ", brought " + brought.Count + " girl(s) aboard" : ""));
+		if (CoopSession.Together)
+		{
+			CoopSession.Instance.OnLayerChanged(world, spot.CellX, spot.CellZ);
+		}
 		return true;
 	}
 
@@ -242,18 +461,7 @@ public class LayerTransition : MonoBehaviour
 			barrelBody.velocity = Vector3.zero;
 		}
 		Physics.SyncTransforms();
-		foreach (Girl girl in Girls.All)
-		{
-			if (girl.Agent != null && girl.Control == GirlControl.AI)
-			{
-				girl.Agent.enabled = true;
-				girl.Agent.Warp(girl.transform.position);
-				if (girl.Follow != null)
-				{
-					girl.Follow.follow = true;
-				}
-			}
-		}
+		RestoreAgents();
 		foreach (InputContextStack.Token token in held)
 		{
 			token.Release();
@@ -283,6 +491,11 @@ public class LayerTransition : MonoBehaviour
 		ketBody = null;
 		barrelBody = null;
 		brought.Clear();
+		// a friend who joined during the ride gets the world now
+		if (CoopSession.InGame)
+		{
+			CoopSession.Instance.OnLayerArrived();
+		}
 		return true;
 	}
 

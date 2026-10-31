@@ -151,16 +151,24 @@ public class TileStreamer : MonoBehaviour
 	// more holes in a tile's deck, besides the underground's shafts: the elevators' shafts (PillarStreamer)
 	public System.Action<int, int, List<Area>> MoreHoles;
 
-	public void Init(LayerPlan plan, FloatingOrigin origin, float deck = float.NaN, int groundLayer = 0)
+	// where Chito stood as the scene loaded, on layer 0's floor, before a join or a save moves her
+	private Vector3 startAt;
+
+	// everything in reach at once, not over the ride: a layer reached without one (a co-op friend that missed it)
+	private bool buildAll;
+
+	public void Init(LayerPlan plan, FloatingOrigin origin, float deck = float.NaN, int groundLayer = 0, bool buildAll = false)
 	{
 		Plan = plan;
 		floatingOrigin = origin;
 		this.deck = deck;
 		this.groundLayer = groundLayer;
+		this.buildAll = buildAll;
 		if (!float.IsNaN(deck))
 		{
 			groundY = deck;
 		}
+		startAt = (Girls.Chito != null) ? Girls.Chito.transform.position : transform.position;
 	}
 
 	public int GroundLayer => groundLayer;
@@ -170,12 +178,14 @@ public class TileStreamer : MonoBehaviour
 		// no girl registry yet (WP-ARCH-2), same lookup as CoopPlayers
 		chito = Girl("ChitoParent");
 		yuuri = Girl("YuuriParent");
-		Vector3 start = (chito != null) ? chito.position : transform.position;
-		groundY = float.IsNaN(deck) ? start.y + Offset().y : deck;
+		Vector3 start = startAt;
+		// a co-op friend joining on a layer over the first: its deck is that much over the start's floor
+		float rise = (float)LayerStack.Rise(Plan.Layer);
+		groundY = float.IsNaN(deck) ? start.y + Offset().y + rise : deck;
 		Material floor = null;
 		if (float.IsNaN(deck) && Physics.Raycast(start + Vector3.up, Vector3.down, out RaycastHit hit, 50f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
 		{
-			groundY = hit.point.y + Offset().y;
+			groundY = hit.point.y + Offset().y + rise;
 			groundLayer = hit.collider.gameObject.layer;
 			Renderer renderer = hit.collider.GetComponent<Renderer>();
 			if (renderer != null)
@@ -230,7 +240,7 @@ public class TileStreamer : MonoBehaviour
 #endif
 		// everything in reach before the first frame, like the legacy BuildAround. not mid-ride
 		Refresh();
-		if (float.IsNaN(deck))
+		if (float.IsNaN(deck) || buildAll)
 		{
 			BuildMissing(double.MaxValue);
 		}

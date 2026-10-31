@@ -15,6 +15,21 @@ public class WorldGenerator : MonoBehaviour
 	// stays 1 by default until v2 has content, and isn't saved or sent yet (WP-WORLD-4/5)
 	public static int GenVersion { get; private set; } = 1;
 
+	// a co-op friend: the host's generator, the origins of its layers past 0 and the layer it's on (Start)
+	public static int RequestedGenVersion;
+
+	public static XZ[] RequestedOrigins;
+
+	public static int RequestedLayer;
+
+	public static void ClearRequested()
+	{
+		RequestedSeed = 0uL;
+		RequestedGenVersion = 0;
+		RequestedOrigins = null;
+		RequestedLayer = 0;
+	}
+
 	private const int maxNodes = 300;
 
 	private const float proximityCheckInterval = 0.5f;
@@ -90,16 +105,23 @@ public class WorldGenerator : MonoBehaviour
 			Vector3 facing = node.transform.rotation * Vector3.forward;
 			Plan = new LayerPlan(Seed, 0, new XZ(centre.x, centre.z), null, new XZ(facing.x, facing.z));
 			Layers = new LayerStack(Plan);
-			// roads, voids, viaducts and the underground too, so peers on different world code see the mismatch warning
-			ulong planHash = Plan.PlanHash(Plan.Origin, 1) ^ Plan.Roads.Hash(Plan.Origin, 1) ^ Plan.Chasms.Hash(Plan.Origin, 1) ^ Plan.Underground.Hash(Plan.Origin, 3);
-			LayoutHash = (uint)(planHash ^ (planHash >> 32));
-			Debug.Log("WorldGenerator: gen2 seed=" + Seed + " origin=" + Plan.Origin + " planhash=" + planHash.ToString("x16"));
+			Debug.Log("WorldGenerator: gen2 seed=" + Seed + " origin=" + Plan.Origin + " planhash=" + PlanHash(Plan).ToString("x16"));
+			if (RequestedOrigins != null)
+			{
+				foreach (XZ origin in RequestedOrigins)
+				{
+					Layers.Add(origin);
+				}
+				Plan = Layers.Get(Mathf.Clamp(RequestedLayer, 0, Layers.Count - 1));
+				Debug.Log("WorldGenerator: on the host's layer " + Plan.Layer + " of " + Layers.Count);
+			}
+			LayoutHash = Fold(PlanHash(Plan));
 #if DUMP_WORLDGEN
 			base.gameObject.AddComponent<WorldGenOverheadView>();
 #endif
 			SeedItemSpawners(node.gameObject, 0uL);
 			node.MarkPlaced();
-			OriginTunnel.Build(node, girls, node.transform.rotation, Plan.Underground.Start(out _));
+			OriginTunnel.Build(node, girls, node.transform.rotation, Layers.Get(0).Underground.Start(out _));
 			return;
 		}
 		Layout = BuildLayout(node, nodeData, rootPose, Seed);
@@ -125,6 +147,19 @@ public class WorldGenerator : MonoBehaviour
 	public void SetLayer(LayerPlan plan)
 	{
 		Plan = plan;
+		LayoutHash = Fold(PlanHash(plan));
+	}
+
+	// roads, voids, viaducts and the underground too, so peers on different world code see the mismatch warning.
+	// round the layer's origin, which both peers know
+	public static ulong PlanHash(LayerPlan plan)
+	{
+		return plan.PlanHash(plan.Origin, 1) ^ plan.Roads.Hash(plan.Origin, 1) ^ plan.Chasms.Hash(plan.Origin, 1) ^ plan.Underground.Hash(plan.Origin, 3);
+	}
+
+	private static uint Fold(ulong hash)
+	{
+		return (uint)(hash ^ (hash >> 32));
 	}
 
 	private void Update()
@@ -584,6 +619,10 @@ public class WorldGenerator : MonoBehaviour
 
 	private static int ChooseGenVersion()
 	{
+		if (RequestedGenVersion != 0)
+		{
+			return RequestedGenVersion;
+		}
 		return (Array.IndexOf(Environment.GetCommandLineArgs(), "-gen2") >= 0) ? 2 : 1;
 	}
 

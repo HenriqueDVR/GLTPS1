@@ -104,14 +104,24 @@ public class PillarStreamer : MonoBehaviour
 		tiles.MoreHoles = Shafts;
 	}
 
-	// which way its elevator goes from here: 1 up, -1 down, 0 none. co-op rides keep the old ending until WP-WORLD-4
+	// which way its elevator goes from here: 1 up, -1 down, 0 none
 	public static int Way(PillarState state)
 	{
-		if (CoopSession.InGame)
-		{
-			return ((state & PillarState.Up) != 0) ? 1 : 0;
-		}
 		return LayerStack.Way(state);
+	}
+
+	// layout coords of the middle of the cell's elevator car standing on the deck
+	public Vector3 CarPoint(int cellX, int cellZ)
+	{
+		Pose root = RootPose(cellX, cellZ, plan.Pillar(cellX, cellZ));
+		Vector2 middle = (carMin + carMax) * 0.5f;
+		return root.position + root.rotation * new Vector3(middle.x, 0f, middle.y);
+	}
+
+	// out of the car's door, along the deck
+	public Vector3 Outward(int cellX, int cellZ)
+	{
+		return RootPose(cellX, cellZ, plan.Pillar(cellX, cellZ)).rotation * Vector3.right;
 	}
 
 	public Spot SpotOf(GameObject tower)

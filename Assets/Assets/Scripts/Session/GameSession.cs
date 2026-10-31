@@ -99,12 +99,12 @@ public class GameSession : MonoBehaviour
 
 	// v2: what's built for the layer the girls are on. deck NaN = from the floor under Chito (the start).
 	// a tower the ride brought along goes on standing in its cell
-	public TileStreamer BeginLayer(LayerPlan plan, float deck, int groundLayer, PillarStreamer.Spot arrived)
+	public TileStreamer BeginLayer(LayerPlan plan, float deck, int groundLayer, PillarStreamer.Spot arrived, bool buildAll = false)
 	{
 		WorldGenerator world = Get<WorldGenerator>();
 		FloatingOrigin floatingOrigin = Get<FloatingOrigin>();
 		TileStreamer tiles = Add<TileStreamer>();
-		tiles.Init(plan, floatingOrigin, deck, groundLayer);
+		tiles.Init(plan, floatingOrigin, deck, groundLayer, buildAll);
 		if (world.PillarPrefab != null)
 		{
 			Add<PillarStreamer>().Init(plan, tiles, floatingOrigin, world.PillarPrefab, arrived);

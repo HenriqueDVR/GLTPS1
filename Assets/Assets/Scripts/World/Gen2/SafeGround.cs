@@ -153,6 +153,17 @@ public class SafeGround : MonoBehaviour
 		}
 	}
 
+	// the other girl, if she's standing up on the deck
+	private Girl Partner(Girl girl)
+	{
+		Girl other = Girls.Other(girl);
+		if (other == null || Fallen(other.transform.position + Offset(), tiles.GroundY))
+		{
+			return null;
+		}
+		return other;
+	}
+
 	private static bool Grounded(Vector3 position)
 	{
 		return Physics.Raycast(position + Vector3.up * 0.5f, Vector3.down, 2f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
@@ -168,21 +179,25 @@ public class SafeGround : MonoBehaviour
 			yield return null;
 		}
 		black.color = Color.black;
+		Girl partner = Partner(girl);
 #if DUMP_WORLDGEN
-		Debug.Log("SafeGround: fell at " + (girl.transform.position + Offset()) + (driving ? ", ket back to " + ketSafe : ", back to " + girlSafe));
+		Debug.Log("SafeGround: fell at " + (girl.transform.position + Offset()) + (driving ? ", ket back to " + ketSafe : haveGirl ? ", back to " + girlSafe : ", by the other girl"));
 #endif
 		if (driving && Simulated && haveKet)
 		{
 			PlaceKet();
 		}
-		else if (!driving && haveGirl)
+		// something else put her back on her feet meanwhile (a co-op join's rejoin)
+		else if (!driving && Fallen(girl.transform.position + Offset(), tiles.GroundY) && (haveGirl || partner != null))
 		{
 			CharacterController controller = girl.GetComponentInChildren<CharacterController>();
 			if (controller != null)
 			{
 				controller.enabled = false;
 			}
-			girl.transform.position = girlSafe - Offset() + Vector3.up * 0.3f;
+			// nowhere stood on this layer yet (a friend joining on a layer over the first starts down at the scene's
+			// start): by the other girl
+			girl.transform.position = haveGirl ? girlSafe - Offset() + Vector3.up * 0.3f : partner.transform.position + partner.transform.right * 1.5f + Vector3.up * 0.3f;
 			Physics.SyncTransforms();
 			if (controller != null)
 			{
