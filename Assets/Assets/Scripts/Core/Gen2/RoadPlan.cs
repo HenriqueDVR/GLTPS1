@@ -42,7 +42,7 @@ public struct RoadPiece
 	// a raised street's piece (RoadPlan.Arch*): what stands under it
 	public int Arch;
 
-	// where a door's walkway comes in (LotPlan.Door) the parapet on that side is open from ..From to ..To, shares
+	// where a door's walkway comes in (LotPlan.Door) or a stair's top landing (LotPlan.Stair) the parapet on that side is open from ..From to ..To, shares
 	// along the piece; none where To <= From. left is the side (-TangentA.Z, TangentA.X) points at
 	public double LeftFrom;
 
@@ -819,20 +819,28 @@ public sealed class RoadPlan
 			// the grid's V is the street's left: the block on that side is (k, j), its -v edge on this street
 			if (plan.Lots.Door(district, k, j, -1, out double leftU, out _))
 			{
-				Opening(leftU - GridLine(district, 0, k), sa, sb, out piece.LeftFrom, out piece.LeftTo);
+				Opening(leftU - GridLine(district, 0, k), LotPlan.DoorWidth * 0.5, sa, sb, out piece.LeftFrom, out piece.LeftTo);
+			}
+			else if (plan.Lots.Stair(district, k, j, -1, out Stair left))
+			{
+				Opening(left.LandingU - GridLine(district, 0, k), LotPlan.TopLanding * 0.5 - 0.2, sa, sb, out piece.LeftFrom, out piece.LeftTo);
 			}
 			if (plan.Lots.Door(district, k, j - 1, 1, out double rightU, out _))
 			{
-				Opening(rightU - GridLine(district, 0, k), sa, sb, out piece.RightFrom, out piece.RightTo);
+				Opening(rightU - GridLine(district, 0, k), LotPlan.DoorWidth * 0.5, sa, sb, out piece.RightFrom, out piece.RightTo);
+			}
+			else if (plan.Lots.Stair(district, k, j - 1, 1, out Stair right))
+			{
+				Opening(right.LandingU - GridLine(district, 0, k), LotPlan.TopLanding * 0.5 - 0.2, sa, sb, out piece.RightFrom, out piece.RightTo);
 			}
 			pieces.Add(piece);
 		}
 	}
 
-	// a door's opening, centred s metres along the block, as shares of the piece from sa to sb (empty if it misses)
-	private static void Opening(double s, double sa, double sb, out double from, out double to)
+	// an opening half wide either side of s metres along the block (a door's walkway, a stair's top landing), as
+	// shares of the piece from sa to sb (empty if it misses)
+	private static void Opening(double s, double half, double sa, double sb, out double from, out double to)
 	{
-		double half = LotPlan.DoorWidth * 0.5;
 		from = Math.Max(0.0, (s - half - sa) / (sb - sa));
 		to = Math.Min(1.0, (s + half - sa) / (sb - sa));
 		if (to <= from)

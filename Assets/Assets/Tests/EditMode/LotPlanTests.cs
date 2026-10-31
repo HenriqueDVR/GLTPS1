@@ -326,12 +326,82 @@ public class LotPlanTests
 		Assert.Greater(doors, 5);
 	}
 
+	// stairs up to raised streets: against the deck's side, no lot in their way, the parapet open by the top landing
+	[Test]
+	public void StairsUpToRaisedStreets()
+	{
+		LayerPlan plan = Layer0();
+		List<Lot> lots = new List<Lot>();
+		List<Lot> near = new List<Lot>();
+		List<Stair> stairs = new List<Stair>();
+		List<Stair> none = new List<Stair>();
+		List<RoadPiece> pieces = new List<RoadPiece>();
+		List<RoadPatch> patches = new List<RoadPatch>();
+		int count = 0;
+		for (int x = 20; x < 36; x++)
+		{
+			for (int z = 12; z < 28; z++)
+			{
+				plan.Lots.Collect(x, z, lots, stairs);
+				foreach (Stair stair in stairs)
+				{
+					count++;
+					Assert.GreaterOrEqual(stair.Deck, LotPlan.DoorMinDeck);
+					XZ top = new XZ(stair.Foot.X + stair.Dir.X * stair.Length, stair.Foot.Z + stair.Dir.Z * stair.Length);
+					// no lot reaches into it
+					for (int dx = -1; dx <= 1; dx++)
+					{
+						for (int dz = -1; dz <= 1; dz++)
+						{
+							plan.Lots.Collect(x + dx, z + dz, near, none);
+							foreach (Lot lot in near)
+							{
+								for (double s = 0.0; s <= stair.Length; s += 1.0)
+								{
+									XZ p = new XZ(stair.Foot.X + stair.Dir.X * s, stair.Foot.Z + stair.Dir.Z * s);
+									Assert.IsFalse(Inside(lot, p, LotPlan.StairWidth * 0.5), "lot in a stair at " + p);
+								}
+							}
+						}
+					}
+					// the deck's edge beside the top landing, open
+					double inward = LotPlan.StairWidth * 0.5 + 0.1;
+					XZ landing = new XZ(stair.Foot.X + stair.Dir.X * (stair.Length - LotPlan.TopLanding * 0.5) - stair.Out.X * inward, stair.Foot.Z + stair.Dir.Z * (stair.Length - LotPlan.TopLanding * 0.5) - stair.Out.Z * inward);
+					bool open = false;
+					for (int dx = -1; dx <= 1 && !open; dx++)
+					{
+						for (int dz = -1; dz <= 1 && !open; dz++)
+						{
+							plan.Roads.Collect(Gen2.Cell(landing.X, Gen2.TileSize) + dx, Gen2.Cell(landing.Z, Gen2.TileSize) + dz, pieces, patches);
+							foreach (RoadPiece piece in pieces)
+							{
+								double length = piece.A.DistanceTo(piece.B);
+								double s = ((landing.X - piece.A.X) * piece.TangentA.X + (landing.Z - piece.A.Z) * piece.TangentA.Z) / length;
+								double across = -(landing.X - piece.A.X) * piece.TangentA.Z + (landing.Z - piece.A.Z) * piece.TangentA.X;
+								if (s < 0.0 || s > 1.0 || System.Math.Abs(System.Math.Abs(across) - piece.Width * 0.5) > 0.2)
+								{
+									continue;
+								}
+								Assert.AreEqual(stair.Deck, piece.HeightA, 1e-6);
+								double from = (across > 0.0) ? piece.LeftFrom : piece.RightFrom;
+								double to = (across > 0.0) ? piece.LeftTo : piece.RightTo;
+								open = s >= from - 1e-6 && s <= to + 1e-6;
+							}
+						}
+					}
+					Assert.IsTrue(open, "stair at " + stair.Foot + " has no opening at the top");
+				}
+			}
+		}
+		Assert.Greater(count, 3);
+	}
+
 	// frozen genVersion 2 output. a failure here means v2 saves or mixed-version co-op would break: bump genVersion instead
 	[Test]
 	public void GoldenValues()
 	{
-		Assert.AreEqual(0xddf1741b305e763fuL, Fold(Layer0(), -12, -12, 24), "layer 0 lots");
-		Assert.AreEqual(0x9b31d30bc8c0b13fuL, Fold(Layer1(), 50, -20, 12), "layer 1 lots");
+		Assert.AreEqual(0xbe497e56fd226b95uL, Fold(Layer0(), -12, -12, 24), "layer 0 lots");
+		Assert.AreEqual(0xe7dfec70f549dedauL, Fold(Layer1(), 50, -20, 12), "layer 1 lots");
 	}
 
 	private static ulong Fold(LayerPlan plan, int x0, int z0, int size)

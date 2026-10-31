@@ -106,6 +106,9 @@ public static class Gen2
 	// doors from raised streets (LotPlan.Door). +1 is the other side, +2 the door's place
 	public const ulong StreamDoor = 0x444F4F52uL;
 
+	// stairs up to raised streets (LotPlan.Stair). +1 is the other side, +2 and +3 the place and the way up
+	public const ulong StreamStair = 0x53544149uL;
+
 	// world items spawned by v2 tiles: bit 61, then (layer:8)(tileX:20)(tileZ:20)(index:12) as in 01-world-layers.
 	// legacy spawner ids are small, scene pickups use bit 62, items made at runtime will use bit 62 with a peer (03)
 	public const ulong TileItemTag = 0x2000000000000000uL;

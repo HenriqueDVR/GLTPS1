@@ -99,6 +99,9 @@ public class TileStreamer : MonoBehaviour
 
 	private readonly List<Viaduct> viaducts = new List<Viaduct>();
 
+	// stairs up to raised streets from the blocks centred in the tile being built
+	private readonly List<Stair> stairs = new List<Stair>();
+
 	private readonly List<RoadPatch> otherPatches = new List<RoadPatch>();
 
 	// made here at runtime, destroyed with the streamer (never the loaded assets)
@@ -593,7 +596,7 @@ public class TileStreamer : MonoBehaviour
 				job.AnyRoads = roadMesh.Build(tile.transform.GetChild(1).GetComponent<MeshFilter>().sharedMesh, pieces, patches, x * Gen2.TileSize, z * Gen2.TileSize);
 				return false;
 			case 2:
-				Plan.Lots.Collect(x, z, lots);
+				Plan.Lots.Collect(x, z, lots, stairs);
 				// a landmark lot with no landmark that fits is open ground
 				placed.Clear();
 				pieceOf.Clear();
@@ -631,6 +634,11 @@ public class TileStreamer : MonoBehaviour
 				PlaceViaducts(x, z);
 				PlaceRaised(x, z);
 				DressVoids(x, z);
+				foreach (Stair stair in stairs)
+				{
+					Vector3 corner = new Vector3((float)(x * Gen2.TileSize), 0f, (float)(z * Gen2.TileSize));
+					lotMesh.AddStair(Local(stair.Foot, corner), new Vector3((float)stair.Dir.X, 0f, (float)stair.Dir.Z), new Vector3((float)stair.Out.X, 0f, (float)stair.Out.Z), (float)stair.Deck);
+				}
 				job.AnyLots = lotMesh.End(tile.transform.GetChild(2).GetComponent<MeshFilter>().sharedMesh);
 				return false;
 			case 6:
@@ -1166,6 +1174,14 @@ public class TileStreamer : MonoBehaviour
 		foreach (RoadPiece piece in pieces)
 		{
 			if (RoadPlan.SegmentDistance(p, piece.A, piece.B) < piece.Width * 0.5 + clear)
+			{
+				return true;
+			}
+		}
+		foreach (Stair stair in stairs)
+		{
+			XZ top = new XZ(stair.Foot.X + stair.Dir.X * stair.Length, stair.Foot.Z + stair.Dir.Z * stair.Length);
+			if (RoadPlan.SegmentDistance(p, stair.Foot, top) < LotPlan.StairWidth * 0.5 + clear)
 			{
 				return true;
 			}

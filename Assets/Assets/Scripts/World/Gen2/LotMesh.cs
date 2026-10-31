@@ -192,6 +192,46 @@ public class LotMesh
 	// streets sit this much over their deck (RoadMesh)
 	private const float deckLift = 0.06f;
 
+	// a flight of stairs up the side of a raised street (LotPlan.Stair) from foot along dir, out pointing away from
+	// the street: solid concrete steps, a landing half way, a top landing beside the deck's opened parapet, a wall
+	// on the outer side and across the top end
+	public void AddStair(Vector3 foot, Vector3 dir, Vector3 out_, float deck)
+	{
+		float top = deck + deckLift;
+		float rise = (float)LotPlan.StairRise;
+		float run = (float)LotPlan.StairRun;
+		float mid = (float)LotPlan.MidLanding;
+		float landing = (float)LotPlan.TopLanding;
+		float half = (float)LotPlan.StairWidth * 0.5f;
+		const float wall = 0.3f;
+		Vector3 walk = foot - out_ * (wall * 0.5f);
+		float walkHalf = half - wall * 0.5f;
+		Vector3 side = foot + out_ * (half - wall * 0.5f);
+		int steps = Mathf.CeilToInt(deck / rise);
+		int first = steps / 2;
+		float s = 0f;
+		for (int i = 0; i < steps; i++)
+		{
+			if (i == first)
+			{
+				float flat = i * rise;
+				Box(walk + dir * (s + mid * 0.5f), dir, mid * 0.5f, walkHalf, -sink, flat, concrete, concrete, false);
+				// the first flight's wall, rising with it, then flat along the landing
+				Sloped(concrete, side, side + dir * s, wall * 0.5f, -sink, 1f, -sink, flat + 1f);
+				Sloped(concrete, side + dir * s, side + dir * (s + mid), wall * 0.5f, -sink, flat + 1f, -sink, flat + 1f);
+				s += mid;
+			}
+			Box(walk + dir * (s + run * 0.5f), dir, run * 0.5f, walkHalf, -sink, Mathf.Min(top, (i + 1) * rise), concrete, concrete, false);
+			s += run;
+		}
+		float second = first * rise;
+		float flightFrom = first * run + mid;
+		Sloped(concrete, side + dir * flightFrom, side + dir * s, wall * 0.5f, -sink, second + 1f, -sink, top + 1f);
+		Box(walk + dir * (s + landing * 0.5f), dir, landing * 0.5f, walkHalf, -sink, top, concrete, concrete, false);
+		Sloped(concrete, side + dir * s, side + dir * (s + landing), wall * 0.5f, -sink, top + 1f, -sink, top + 1f);
+		Box(walk + dir * (s + landing - wall * 0.5f), dir, wall * 0.5f, walkHalf, top, top + 1f, concrete, concrete, false);
+	}
+
 	// the lower storeys under an entered building, the whole lot up to the deck: panels and windows on its faces,
 	// plain windows only on the street's side (nothing that could reach into the deck's space)
 	private void Plinth(Vector3 centre, Vector3 u, float hu, float hv, float top, Vector3 toStreet)
@@ -473,9 +513,10 @@ public class LotMesh
 		}
 	}
 
-	private const float stairRise = 0.25f;
+	// under the girls' step height (0.23 m), the same 1.5 m of run a metre up that LotPlan.Podium counts on
+	private const float stairRise = 0.2f;
 
-	private const float stairRun = 0.375f;
+	private const float stairRun = 0.3f;
 
 	// ---- voids (ChasmPlan)
 
