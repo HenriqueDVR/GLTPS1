@@ -165,6 +165,61 @@ public class RoadMesh
 		Quad(submesh, a - la * inner + upA, a - la * half, b - lb * half, b - lb * inner + upB);
 	}
 
+	// one side's parapet along a deck from topA to topB (side +1 left, -1 right), left out between the shares from
+	// and to
+	private void Parapet(Vector3 topA, Vector3 topB, Vector3 la, Vector3 lb, float half, float rise, float side, float from, float to)
+	{
+		if (to > from)
+		{
+			if (from > 0.001f)
+			{
+				Parapet(topA, topB, la, lb, half, rise, side, 0f, from, true);
+			}
+			if (to < 0.999f)
+			{
+				Parapet(topA, topB, la, lb, half, rise, side, to, 1f, true);
+			}
+			return;
+		}
+		Parapet(topA, topB, la, lb, half, rise, side, 0f, 1f, false);
+	}
+
+	// the stretch of it from share t0 to t1: its outer face, top, inner face, and ends where it's cut for an opening
+	private void Parapet(Vector3 topA, Vector3 topB, Vector3 la, Vector3 lb, float half, float rise, float side, float t0, float t1, bool ends)
+	{
+		Vector3 p = Vector3.Lerp(topA, topB, t0);
+		Vector3 q = Vector3.Lerp(topB, topA, 1f - t1);
+		Vector3 lp = Vector3.Lerp(la, lb, t0).normalized * side;
+		Vector3 lq = Vector3.Lerp(la, lb, t1).normalized * side;
+		float inner = half - parapetWidth;
+		Vector3 up = Vector3.up * rise;
+		bool flip = side < 0f;
+		Sided(flip, p + lp * half, p + lp * half + up, q + lq * half + up, q + lq * half);
+		Sided(flip, p + lp * half + up, p + lp * inner + up, q + lq * inner + up, q + lq * half + up);
+		Sided(flip, p + lp * inner + up, p + lp * inner, q + lq * inner, q + lq * inner + up);
+		if (ends)
+		{
+			// seen from either way
+			Sided(false, p + lp * inner, p + lp * inner + up, p + lp * half + up, p + lp * half);
+			Sided(true, p + lp * inner, p + lp * inner + up, p + lp * half + up, p + lp * half);
+			Sided(false, q + lq * half, q + lq * half + up, q + lq * inner + up, q + lq * inner);
+			Sided(true, q + lq * half, q + lq * half + up, q + lq * inner + up, q + lq * inner);
+		}
+	}
+
+	// a concrete quad, wound the other way round if flip (a right-hand face mirrored from the left)
+	private void Sided(bool flip, Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3)
+	{
+		if (flip)
+		{
+			Quad(concrete, p0, p3, p2, p1);
+		}
+		else
+		{
+			Quad(concrete, p0, p1, p2, p3);
+		}
+	}
+
 	// an elevated piece or a ramp: top, sides down to the underside (or the ground on a low ramp), parapets,
 	// a column under every other piece, a wall across a broken end
 	private void Deck(RoadPiece piece, Vector3 a, Vector3 b, Vector3 ta, Vector3 tb, float half, bool span)
@@ -181,20 +236,17 @@ public class RoadMesh
 		Vector3 topA = a + Vector3.up * ha;
 		Vector3 topB = b + Vector3.up * hb;
 		Quad(Surface(piece.Kind), topA + la * half, topA - la * half, topB - lb * half, topB + lb * half);
-		// outer sides, up to the parapet top
-		Quad(concrete, a + la * half + Vector3.up * ba, a + la * half + Vector3.up * (ha + rise), b + lb * half + Vector3.up * (hb + rise), b + lb * half + Vector3.up * bb);
-		Quad(concrete, b - lb * half + Vector3.up * bb, b - lb * half + Vector3.up * (hb + rise), a - la * half + Vector3.up * (ha + rise), a - la * half + Vector3.up * ba);
+		// outer sides up to the deck, the parapets on them (open where a door's walkway comes in)
+		Quad(concrete, a + la * half + Vector3.up * ba, a + la * half + Vector3.up * ha, b + lb * half + Vector3.up * hb, b + lb * half + Vector3.up * bb);
+		Quad(concrete, b - lb * half + Vector3.up * bb, b - lb * half + Vector3.up * hb, a - la * half + Vector3.up * ha, a - la * half + Vector3.up * ba);
 		if (ba != 0f || bb != 0f)
 		{
 			Quad(concrete, a + la * half + Vector3.up * ba, b + lb * half + Vector3.up * bb, b - lb * half + Vector3.up * bb, a - la * half + Vector3.up * ba);
 		}
 		if (parapets)
 		{
-			float inner = half - parapetWidth;
-			Quad(concrete, topA + la * half + Vector3.up * rise, topA + la * inner + Vector3.up * rise, topB + lb * inner + Vector3.up * rise, topB + lb * half + Vector3.up * rise);
-			Quad(concrete, topA + la * inner + Vector3.up * rise, topA + la * inner, topB + lb * inner, topB + lb * inner + Vector3.up * rise);
-			Quad(concrete, topA - la * inner, topA - la * inner + Vector3.up * rise, topB - lb * inner + Vector3.up * rise, topB - lb * inner);
-			Quad(concrete, topA - la * inner + Vector3.up * rise, topA - la * half + Vector3.up * rise, topB - lb * half + Vector3.up * rise, topB - lb * inner + Vector3.up * rise);
+			Parapet(topA, topB, la, lb, half, rise, 1f, (float)piece.LeftFrom, (float)piece.LeftTo);
+			Parapet(topA, topB, la, lb, half, rise, -1f, (float)piece.RightFrom, (float)piece.RightTo);
 		}
 		// raised streets stand on arches (TileStreamer), not columns
 		if (!span && piece.Kind != RoadKind.Street && piece.Index % 2 == 0 && piece.HeightA > supportFrom)

@@ -31,6 +31,15 @@ public struct Lot
 	// a building lot standing on a raised plate this high (podium), 0 on the deck
 	public double Base;
 
+	// a building entered from a raised street (LotPlan.Door): which of its v sides faces the street (+1, -1, 0 for
+	// none), how far along Axis from the centre the door is, and the street's deck height there. it stands on a
+	// plinth up to the deck instead of on any podium
+	public int Door;
+
+	public double DoorAt;
+
+	public double Deck;
+
 	// the world side's own randomness for this lot (building shape, which landmark, props)
 	public ulong Seed;
 }
@@ -52,6 +61,18 @@ public sealed class LotPlan
 
 	// lots keep this much more than their own size from an expressway
 	public const double HighwayGap = 6.0;
+
+	// doors from raised streets: share of block sides along a flat stretch of deck that get one, the lowest deck,
+	// the entry's size on the lot's edge, the gap left in the street's parapet
+	public const double DoorChance = 0.33;
+
+	public const double DoorMinDeck = 8.0;
+
+	public const double PorchWidth = 3.6;
+
+	public const double PorchDepth = 3.2;
+
+	public const double DoorWidth = 1.6;
 
 	private struct Rect
 	{
@@ -79,6 +100,15 @@ public sealed class LotPlan
 	// and the viaducts, whose corridors stay free
 	private readonly List<Viaduct> viaducts = new List<Viaduct>();
 
+	// the same for one block asked about on its own (doors), so a query never clobbers a tile being collected
+	private readonly List<XZ> doorHighway = new List<XZ>();
+
+	private readonly List<Viaduct> doorViaducts = new List<Viaduct>();
+
+	private readonly List<Lot> doorLots = new List<Lot>();
+
+	private readonly Dictionary<(int, int, int, int), (bool, double, double)> doors = new Dictionary<(int, int, int, int), (bool, double, double)>();
+
 	public LotPlan(LayerPlan plan)
 	{
 		this.plan = plan;
@@ -103,7 +133,7 @@ public sealed class LotPlan
 	}
 
 	// an expressway's edge within distance of p
-	private bool HighwayNear(XZ p, double distance)
+	private static bool HighwayNear(XZ p, double distance, List<XZ> highway)
 	{
 		double reach = distance + RoadPlan.HighwayWidth * 0.5;
 		for (int i = 0; i + 1 < highway.Count; i += 2)
@@ -168,8 +198,38 @@ public sealed class LotPlan
 		}
 	}
 
-	// the block between grid lines k, k+1 and j, j+1, if its centre is in this tile and it all lies in the district
+	// the block between grid lines k, k+1 and j, j+1, if its centre is in this tile, with its doors marked
 	private void Block(Rect tile, int district, XZ origin, XZ u, XZ v, ulong gridSeed, int k, int j, List<Lot> lots)
+	{
+		double cu = (plan.Roads.GridLine(district, 0, k) + plan.Roads.GridLine(district, 0, k + 1)) * 0.5;
+		double cv = (plan.Roads.GridLine(district, 1, j) + plan.Roads.GridLine(district, 1, j + 1)) * 0.5;
+		if (!tile.Contains(At(origin, u, v, cu, cv)))
+		{
+			return;
+		}
+		int first = lots.Count;
+		BlockLots(district, origin, u, v, gridSeed, k, j, highway, viaducts, lots);
+		for (int side = -1; side <= 1; side += 2)
+		{
+			if (!Door(district, k, j, side, out double doorU, out double deck))
+			{
+				continue;
+			}
+			int at = DoorLot(lots, first, origin, u, v, doorU, EdgeV(district, j, side), side);
+			if (at < 0)
+			{
+				continue;
+			}
+			Lot lot = lots[at];
+			lot.Door = side;
+			lot.DoorAt = doorU - Grid(origin, u, lot.Center);
+			lot.Deck = deck;
+			lots[at] = lot;
+		}
+	}
+
+	// the lots of block (k, j) wherever it is, if it all lies in the district
+	private void BlockLots(int district, XZ origin, XZ u, XZ v, ulong gridSeed, int k, int j, List<XZ> highway, List<Viaduct> viaducts, List<Lot> lots)
 	{
 		double bu0 = plan.Roads.GridLine(district, 0, k);
 		double bu1 = plan.Roads.GridLine(district, 0, k + 1);
@@ -178,10 +238,6 @@ public sealed class LotPlan
 		double cu = (bu0 + bu1) * 0.5;
 		double cv = (bv0 + bv1) * 0.5;
 		XZ centre = At(origin, u, v, cu, cv);
-		if (!tile.Contains(centre))
-		{
-			return;
-		}
 		double inset = plan.Def.Districts[district].StreetWidth * 0.5 + plan.Def.Districts[district].Sidewalk;
 		double hu = (bu1 - bu0) * 0.5 - inset;
 		double hv = (bv1 - bv0) * 0.5 - inset;
@@ -202,15 +258,109 @@ public sealed class LotPlan
 		{
 			return;
 		}
-		Split(district, origin, u, v, cu, cv, hu, hv, WorldRandom.Derive(gridSeed, Gen2.StreamLot, Gen2.Pack(k, j)), lots);
+		Split(district, origin, u, v, cu, cv, hu, hv, WorldRandom.Derive(gridSeed, Gen2.StreamLot, Gen2.Pack(k, j)), highway, viaducts, lots);
+	}
+
+	// ---- doors from raised streets (01, the raised city)
+
+	// whether the street along side (+1 the +v edge, -1 the -v edge) of block (k, j) is a raised one with a door
+	// into the block from it: the deck flat and high all along the block, a building lot on that edge with room for
+	// the entry, a share of those. grid u of the door's middle and the deck height. cached, pure
+	public bool Door(int district, int k, int j, int side, out double doorU, out double deck)
+	{
+		(int, int, int, int) key = (district, k, j, side);
+		if (doors.TryGetValue(key, out (bool, double, double) known))
+		{
+			doorU = known.Item2;
+			deck = known.Item3;
+			return known.Item1;
+		}
+		if (doors.Count > 8192)
+		{
+			doors.Clear();
+		}
+		bool found = FindDoor(district, k, j, side, out doorU, out deck);
+		doors[key] = (found, doorU, deck);
+		return found;
+	}
+
+	private bool FindDoor(int district, int k, int j, int side, out double doorU, out double deck)
+	{
+		doorU = deck = 0.0;
+		DistrictDef def = plan.Def.Districts[district];
+		if (def.Roads != DistrictRoads.Streets || def.Style == BuildingStyle.Industrial || def.Raised <= 0.0)
+		{
+			return false;
+		}
+		plan.Roads.GridFrame(district, out XZ origin, out XZ u, out XZ v, out ulong gridSeed);
+		ulong roll = WorldRandom.Derive(gridSeed, Gen2.StreamDoor + (side > 0 ? 1uL : 0uL), Gen2.Pack(k, j));
+		if (Gen2.Unit(roll) >= DoorChance)
+		{
+			return false;
+		}
+		int line = (side > 0) ? j + 1 : j;
+		deck = plan.Roads.RaisedHeight(district, line, k);
+		if (deck < DoorMinDeck || Math.Abs(plan.Roads.RaisedHeight(district, line, k + 0.5) - deck) > 1e-9 || Math.Abs(plan.Roads.RaisedHeight(district, line, k + 0.999) - deck) > 1e-9)
+		{
+			return false;
+		}
+		double inset = def.StreetWidth * 0.5 + def.Sidewalk;
+		double from = plan.Roads.GridLine(district, 0, k) + inset + PorchWidth;
+		double to = plan.Roads.GridLine(district, 0, k + 1) - inset - PorchWidth;
+		if (to <= from)
+		{
+			return false;
+		}
+		doorU = from + (to - from) * Gen2.Unit(WorldRandom.Derive(roll, Gen2.StreamDoor, 2uL));
+		XZ centre = At(origin, u, v, (plan.Roads.GridLine(district, 0, k) + plan.Roads.GridLine(district, 0, k + 1)) * 0.5, (plan.Roads.GridLine(district, 1, j) + plan.Roads.GridLine(district, 1, j + 1)) * 0.5);
+		double reach = RoadPlan.StreetSpacing + RoadPlan.StreetJitter + HighwayGap + RoadPlan.HighwayWidth;
+		plan.Roads.HighwaySegments(centre.X - reach, centre.Z - reach, centre.X + reach, centre.Z + reach, doorHighway);
+		plan.Viaducts.Near(centre.X, centre.Z, doorViaducts);
+		doorLots.Clear();
+		BlockLots(district, origin, u, v, gridSeed, k, j, doorHighway, doorViaducts, doorLots);
+		return DoorLot(doorLots, 0, origin, u, v, doorU, EdgeV(district, j, side), side) >= 0;
+	}
+
+	// grid v of the block's edge on that side, where its lots stop
+	private double EdgeV(int district, int j, int side)
+	{
+		DistrictDef def = plan.Def.Districts[district];
+		double inset = def.StreetWidth * 0.5 + def.Sidewalk;
+		return (side > 0) ? plan.Roads.GridLine(district, 1, j + 1) - inset : plan.Roads.GridLine(district, 1, j) + inset;
+	}
+
+	// the building lot from first on that reaches the edge at doorU with room for the entry, -1 if none
+	private static int DoorLot(List<Lot> lots, int first, XZ origin, XZ u, XZ v, double doorU, double edgeV, int side)
+	{
+		for (int i = first; i < lots.Count; i++)
+		{
+			Lot lot = lots[i];
+			if (lot.Kind != LotKind.Building)
+			{
+				continue;
+			}
+			double cu = Grid(origin, u, lot.Center);
+			double cv = Grid(origin, v, lot.Center);
+			if (Math.Abs(cv + side * lot.HalfV - edgeV) < 0.01 && Math.Abs(doorU - cu) <= lot.HalfU - PorchWidth * 0.5 - 0.5 && lot.HalfV * 2.0 >= PorchDepth + 8.0)
+			{
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	// p's grid coordinate along axis
+	private static double Grid(XZ origin, XZ axis, XZ p)
+	{
+		return (p.X - origin.X) * axis.X + (p.Z - origin.Z) * axis.Z;
 	}
 
 	// halves the longer side at 35-65% until both fit MaxLot
-	private void Split(int district, XZ origin, XZ u, XZ v, double cu, double cv, double hu, double hv, ulong seed, List<Lot> lots)
+	private void Split(int district, XZ origin, XZ u, XZ v, double cu, double cv, double hu, double hv, ulong seed, List<XZ> highway, List<Viaduct> viaducts, List<Lot> lots)
 	{
 		if (hu * 2.0 <= MaxLot && hv * 2.0 <= MaxLot)
 		{
-			AddLot(district, At(origin, u, v, cu, cv), u, hu, hv, seed, lots);
+			AddLot(district, At(origin, u, v, cu, cv), u, hu, hv, seed, highway, viaducts, lots);
 			return;
 		}
 		double at = 0.35 + 0.3 * Gen2.Unit(WorldRandom.Derive(seed, Gen2.StreamLot, 1uL));
@@ -220,22 +370,22 @@ public sealed class LotPlan
 		{
 			double a = hu * 2.0 * at * 0.5;
 			double b = hu - a;
-			Split(district, origin, u, v, cu - hu + a, cv, a, hv, first, lots);
-			Split(district, origin, u, v, cu + hu - b, cv, b, hv, second, lots);
+			Split(district, origin, u, v, cu - hu + a, cv, a, hv, first, highway, viaducts, lots);
+			Split(district, origin, u, v, cu + hu - b, cv, b, hv, second, highway, viaducts, lots);
 		}
 		else
 		{
 			double a = hv * 2.0 * at * 0.5;
 			double b = hv - a;
-			Split(district, origin, u, v, cu, cv - hv + a, hu, a, first, lots);
-			Split(district, origin, u, v, cu, cv + hv - b, hu, b, second, lots);
+			Split(district, origin, u, v, cu, cv - hv + a, hu, a, first, highway, viaducts, lots);
+			Split(district, origin, u, v, cu, cv + hv - b, hu, b, second, highway, viaducts, lots);
 		}
 	}
 
-	private void AddLot(int district, XZ centre, XZ axis, double hu, double hv, ulong seed, List<Lot> lots)
+	private void AddLot(int district, XZ centre, XZ axis, double hu, double hv, ulong seed, List<XZ> highway, List<Viaduct> viaducts, List<Lot> lots)
 	{
 		double reach = Math.Sqrt(hu * hu + hv * hv);
-		if (HighwayNear(centre, reach + HighwayGap) || plan.Viaducts.Blocks(centre, reach, viaducts) || plan.Chasms.Blocks(centre, reach))
+		if (HighwayNear(centre, reach + HighwayGap, highway) || plan.Viaducts.Blocks(centre, reach, viaducts) || plan.Chasms.Blocks(centre, reach))
 		{
 			return;
 		}
@@ -295,7 +445,7 @@ public sealed class LotPlan
 				ulong seed = WorldRandom.Derive(plan.LayerSeed, Gen2.StreamLot + 1, Gen2.Pack(cx, cz));
 				double pick = Gen2.Unit(WorldRandom.Derive(seed, Gen2.StreamLot, 4uL));
 				// the rest of the sites stay empty snow
-				if (pick >= def.LotLandmark + def.LotOpen || HighwayNear(site, SiteLot * 1.42 + HighwayGap) || plan.Viaducts.Blocks(site, SiteLot * 1.42, viaducts) || plan.Chasms.Blocks(site, SiteLot * 1.42))
+				if (pick >= def.LotLandmark + def.LotOpen || HighwayNear(site, SiteLot * 1.42 + HighwayGap, highway) || plan.Viaducts.Blocks(site, SiteLot * 1.42, viaducts) || plan.Chasms.Blocks(site, SiteLot * 1.42))
 				{
 					continue;
 				}

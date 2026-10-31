@@ -266,6 +266,66 @@ public class LotPlanTests
 		Assert.Less((1000000uL + 100000uL) << 16 | 0xFFFFuL, Gen2.TileItemTag);
 	}
 
+	// doors from raised streets: each on a building lot by a flat stretch of high deck, and the street's parapet
+	// left open right in front of it
+	[Test]
+	public void DoorsFromRaisedStreets()
+	{
+		LayerPlan plan = Layer0();
+		List<Lot> lots = new List<Lot>();
+		List<RoadPiece> pieces = new List<RoadPiece>();
+		List<RoadPatch> patches = new List<RoadPatch>();
+		int doors = 0;
+		for (int x = 20; x < 36; x++)
+		{
+			for (int z = 12; z < 28; z++)
+			{
+				plan.Lots.Collect(x, z, lots);
+				foreach (Lot lot in lots)
+				{
+					if (lot.Door == 0)
+					{
+						continue;
+					}
+					doors++;
+					Assert.AreEqual(LotKind.Building, lot.Kind);
+					Assert.GreaterOrEqual(lot.Deck, LotPlan.DoorMinDeck);
+					Assert.LessOrEqual(System.Math.Abs(lot.DoorAt), lot.HalfU - LotPlan.PorchWidth * 0.5);
+					XZ v = new XZ(-lot.Axis.Z * lot.Door, lot.Axis.X * lot.Door);
+					DistrictDef def = plan.Def.Districts[lot.District];
+					// where the walkway meets the deck's edge
+					double out_ = lot.HalfV + def.Sidewalk + 0.1;
+					XZ meet = new XZ(lot.Center.X + v.X * out_ + lot.Axis.X * lot.DoorAt, lot.Center.Z + v.Z * out_ + lot.Axis.Z * lot.DoorAt);
+					bool open = false;
+					for (int dx = -1; dx <= 1 && !open; dx++)
+					{
+						for (int dz = -1; dz <= 1 && !open; dz++)
+						{
+							plan.Roads.Collect(Gen2.Cell(meet.X, Gen2.TileSize) + dx, Gen2.Cell(meet.Z, Gen2.TileSize) + dz, pieces, patches);
+							foreach (RoadPiece piece in pieces)
+							{
+								double length = piece.A.DistanceTo(piece.B);
+								double s = ((meet.X - piece.A.X) * piece.TangentA.X + (meet.Z - piece.A.Z) * piece.TangentA.Z) / length;
+								double across = -(meet.X - piece.A.X) * piece.TangentA.Z + (meet.Z - piece.A.Z) * piece.TangentA.X;
+								if (s < 0.0 || s > 1.0 || System.Math.Abs(System.Math.Abs(across) - piece.Width * 0.5) > 0.2)
+								{
+									continue;
+								}
+								Assert.AreEqual(lot.Deck, piece.HeightA, 1e-6);
+								// the lot's on the side away from the deck's middle, so that's the side that's open
+								double from = (across > 0.0) ? piece.LeftFrom : piece.RightFrom;
+								double to = (across > 0.0) ? piece.LeftTo : piece.RightTo;
+								open = s >= from - 1e-6 && s <= to + 1e-6;
+							}
+						}
+					}
+					Assert.IsTrue(open, "door at " + meet + " has no opening in the parapet");
+				}
+			}
+		}
+		Assert.Greater(doors, 5);
+	}
+
 	// frozen genVersion 2 output. a failure here means v2 saves or mixed-version co-op would break: bump genVersion instead
 	[Test]
 	public void GoldenValues()

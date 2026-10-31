@@ -119,6 +119,11 @@ public class LotMesh
 			BuildingStyle style = districts[lot.District].Style;
 			float share = (style == BuildingStyle.Ruin) ? 0.25f : (style == BuildingStyle.Industrial) ? 0f : 0.35f;
 			int first = vertices.Count;
+			if (lot.Door != 0)
+			{
+				roofs.Add(new Vector4(centre.x, Entered(lot, style, centre, u, hu, hv, districts[lot.District], ruin), centre.z, (float)districts[lot.District].Stacking));
+				continue;
+			}
 			// on a podium the building stands on the plate, clear of the strip its stairs go up
 			float side = (Unit() < 0.5f) ? 1f : -1f;
 			Vector3 at = centre;
@@ -161,6 +166,105 @@ public class LotMesh
 		if (to == lots.Count)
 		{
 			Bridges();
+		}
+	}
+
+	// a building entered from a raised street (LotPlan.Door): it starts at the deck, on a plinth that's its lower
+	// storeys, set back from the street's side by the entry. gives its roof
+	private float Entered(Lot lot, BuildingStyle style, Vector3 centre, Vector3 u, float hu, float hv, DistrictDef def, double ruin)
+	{
+		float floor = (float)lot.Deck + deckLift;
+		float depth = (float)LotPlan.PorchDepth;
+		Vector3 toStreet = Left(u) * lot.Door;
+		int first = vertices.Count;
+		Building(style, centre - toStreet * (depth * 0.5f), u, hu, hv - depth * 0.5f, lot.Floors, ruin);
+		Raise(first, floor);
+		float roof = Top(first);
+		Plinth(centre, u, hu, hv, floor, toStreet);
+		Entry(centre + toStreet * hv + u * (float)lot.DoorAt, toStreet, floor, (float)def.Sidewalk + 0.45f);
+		if (style != BuildingStyle.Industrial && Unit() < def.Stacking)
+		{
+			roof = Stack(centre - toStreet * (depth * 0.5f), u, hu, hv - depth * 0.5f, roof, 1 + random.Next(3));
+		}
+		return roof;
+	}
+
+	// streets sit this much over their deck (RoadMesh)
+	private const float deckLift = 0.06f;
+
+	// the lower storeys under an entered building, the whole lot up to the deck: panels and windows on its faces,
+	// plain windows only on the street's side (nothing that could reach into the deck's space)
+	private void Plinth(Vector3 centre, Vector3 u, float hu, float hv, float top, Vector3 toStreet)
+	{
+		Box(centre, u, hu, hv, -sink, top, concrete, concrete, false);
+		Vector3 v = Left(u);
+		for (int side = 0; side < 4; side++)
+		{
+			Vector3 normal = (side == 0) ? u : (side == 1) ? -u : (side == 2) ? v : -v;
+			float half = (side < 2) ? hv : hu;
+			Vector3 face = centre + normal * ((side < 2) ? hu : hv);
+			if (Vector3.Dot(normal, toStreet) < 0.5f)
+			{
+				FaceDetail(face, normal, half, top);
+				continue;
+			}
+			Vector3 along = Vector3.Cross(Vector3.up, normal).normalized;
+			for (float y = 1.2f; y + 1.6f < top - 0.5f; y += FloorHeight)
+			{
+				for (float x = -half + 2f; x + 1.2f < half - 1f; x += 3.2f)
+				{
+					if (Unit() < 0.35f)
+					{
+						continue;
+					}
+					Vector3 at = face + along * x + normal * 0.04f + Vector3.up * y;
+					Quad(dark, at, at + along * 1.2f, at + along * 1.2f + Vector3.up * 1.4f, at + Vector3.up * 1.4f, normal);
+				}
+			}
+		}
+	}
+
+	// the way in from a raised street, on the lot's edge at the deck's height: a concrete entry with a dark
+	// doorway in its front and a dark room behind it, a steel walkway with railings across to the deck. edge is
+	// the middle of the entry's front, out points at the street
+	private void Entry(Vector3 edge, Vector3 out_, float floor, float walk)
+	{
+		float w = (float)LotPlan.PorchWidth * 0.5f;
+		float d = (float)LotPlan.PorchDepth;
+		float door = (float)LotPlan.DoorWidth * 0.5f;
+		const float t = 0.3f;
+		const float h = 3.0f;
+		const float opening = 2.4f;
+		Vector3 along = Left(out_);
+		Vector3 middle = edge - out_ * (d * 0.5f);
+		Box(middle + along * (w - t * 0.5f), out_, d * 0.5f, t * 0.5f, floor - 0.1f, floor + h, concrete, concrete, false);
+		Box(middle - along * (w - t * 0.5f), out_, d * 0.5f, t * 0.5f, floor - 0.1f, floor + h, concrete, concrete, false);
+		Box(edge - out_ * (d - t * 0.5f), along, w, t * 0.5f, floor - 0.1f, floor + h, concrete, concrete, false);
+		float jamb = (w - t - door) * 0.5f;
+		Box(edge - out_ * (t * 0.5f) + along * (door + jamb), along, jamb, t * 0.5f, floor - 0.1f, floor + h, concrete, concrete, false);
+		Box(edge - out_ * (t * 0.5f) - along * (door + jamb), along, jamb, t * 0.5f, floor - 0.1f, floor + h, concrete, concrete, false);
+		Box(edge - out_ * (t * 0.5f), along, door, t * 0.5f, floor + opening, floor + h, concrete, concrete, false);
+		Box(middle + out_ * 0.15f, along, w + 0.15f, d * 0.5f + 0.15f, floor + h, floor + h + 0.3f, concrete, concrete, true);
+		// inside, dark: the back, the sides, the ceiling, the floor
+		Vector3 back = edge - out_ * (d - t - 0.02f);
+		Vector3 front = edge - out_ * (t + 0.02f);
+		float iw = w - t - 0.02f;
+		Vector3 lo = Vector3.up * (floor + 0.01f);
+		Vector3 hi = Vector3.up * (floor + h - 0.02f);
+		Quad(dark, back - along * iw + lo, back + along * iw + lo, back + along * iw + hi, back - along * iw + hi, out_);
+		Quad(dark, back + along * iw + lo, front + along * iw + lo, front + along * iw + hi, back + along * iw + hi, -along);
+		Quad(dark, back - along * iw + lo, front - along * iw + lo, front - along * iw + hi, back - along * iw + hi, along);
+		Quad(dark, back - along * iw + hi, back + along * iw + hi, front + along * iw + hi, front - along * iw + hi, Vector3.down);
+		Quad(dark, back - along * iw + lo, back + along * iw + lo, front + along * iw + lo, front - along * iw + lo, Vector3.up);
+		// the walkway, a grating a hair over the deck so it doesn't flicker where it laps onto it
+		Vector3 bridge = edge + out_ * (walk * 0.5f);
+		Box(bridge, out_, walk * 0.5f + 0.1f, door, floor - 0.12f, floor + 0.02f, metal, metal, true);
+		for (int s = -1; s <= 1; s += 2)
+		{
+			Vector3 rail = bridge + along * (s * (door - 0.05f));
+			Box(rail, out_, walk * 0.5f, 0.04f, floor + 1.0f, floor + 1.06f, metal, metal, true);
+			Box(rail - out_ * (walk * 0.5f - 0.05f), out_, 0.04f, 0.04f, floor, floor + 1.0f, metal, metal, false);
+			Box(rail + out_ * (walk * 0.5f - 0.05f), out_, 0.04f, 0.04f, floor, floor + 1.0f, metal, metal, false);
 		}
 	}
 

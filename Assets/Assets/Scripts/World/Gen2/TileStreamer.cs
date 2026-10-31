@@ -82,6 +82,9 @@ public class TileStreamer : MonoBehaviour
 
 	private const float itemOnBuilding = 0.03f;
 
+	// in the entry of a building entered from a raised street
+	private const float itemInEntry = 0.3f;
+
 	private readonly List<RoadPiece> pieces = new List<RoadPiece>();
 
 	private readonly List<RoadPatch> patches = new List<RoadPatch>();
@@ -1202,7 +1205,7 @@ public class TileStreamer : MonoBehaviour
 	// a spawner by one of the lot's long edges, clear of its building or rubble; ids from the tile and a running index
 	private void PlaceItems(Lot lot, int x, int z, ref int index, Transform props)
 	{
-		float chance = (lot.Kind == LotKind.Landmark) ? itemOnLandmark : (lot.Kind == LotKind.Open) ? itemOnOpen : itemOnBuilding;
+		float chance = (lot.Door != 0) ? itemInEntry : (lot.Kind == LotKind.Landmark) ? itemOnLandmark : (lot.Kind == LotKind.Open) ? itemOnOpen : itemOnBuilding;
 		ulong roll = WorldRandom.Derive(lot.Seed, Gen2.StreamLot, 10uL);
 		if (kit == null || kit.ItemSpawner == null || Gen2.Unit(roll) >= chance)
 		{
@@ -1213,6 +1216,11 @@ public class TileStreamer : MonoBehaviour
 		float side = ((roll & 1uL) == 0uL) ? 1f : -1f;
 		float along = (float)Gen2.Unit(WorldRandom.Derive(lot.Seed, Gen2.StreamLot, 11uL)) * 2f - 1f;
 		Vector3 at = new Vector3((float)lot.Center.X, groundY + 0.1f, (float)lot.Center.Z) + v * (side * ((float)lot.HalfV - 0.5f)) + u * (along * (float)lot.HalfU * 0.5f);
+		if (lot.Door != 0)
+		{
+			// in the dark of the entry, the building itself stands on its plinth
+			at = new Vector3((float)lot.Center.X, groundY + (float)lot.Deck + 0.16f, (float)lot.Center.Z) + v * (lot.Door * ((float)lot.HalfV - (float)LotPlan.PorchDepth * 0.6f)) + u * (float)lot.DoorAt;
+		}
 		GameObject spawner = Instantiate(kit.ItemSpawner, at - Offset(), Quaternion.identity, props);
 		ulong tileSeed = Gen2.TileSeed(Plan.LayerSeed, x, z);
 		foreach (ItemSpawnManager manager in spawner.GetComponentsInChildren<ItemSpawnManager>(true))
