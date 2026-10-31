@@ -25,8 +25,14 @@ public class DeckMesh
 	// at the cell corners, positive on the deck
 	private readonly float[,] solid = new float[cells + 1, cells + 1];
 
-	// the dark floor the voids end on, and how far down their cut edges go
-	public const float Abyss = 90f;
+	// the deck's underside, the ceiling seen from the layer below: a flat slab this far down, whole but for the elevator
+	// shafts. under the underground's deepest pits (UndergroundPlan), and a few metres under where DistantPillar draws the
+	// ceiling, so riding up the real layer above wins over it
+	public const float UndersideDepth = 60f;
+
+	// the dark floor the voids end on, and how far down their cut edges go: on the underside, so from below a void
+	// doesn't show
+	public const float Abyss = UndersideDepth;
 
 	private readonly List<Vector3> polygon = new List<Vector3>();
 
@@ -43,9 +49,10 @@ public class DeckMesh
 	// whether any of the tile is void
 	public bool Broken { get; private set; }
 
-	// holes: the underground's shafts reaching into the tile (UndergroundPlan.Holes), cut out exactly. shafts keep far
-	// from voids, so a tile has one or the other
-	public void Build(Mesh mesh, ChasmPlan chasms, int tileX, int tileZ, List<Area> holes = null)
+	// holes: the underground's shafts reaching into the tile (UndergroundPlan.Holes) and the elevator shafts, cut out of
+	// the top exactly; shafts: the elevators' alone, cut through the underside too. both keep far from voids, so a tile
+	// has one or the other
+	public void Build(Mesh mesh, ChasmPlan chasms, int tileX, int tileZ, List<Area> holes = null, List<Area> shafts = null)
 	{
 		vertices.Clear();
 		uvs.Clear();
@@ -65,24 +72,7 @@ public class DeckMesh
 		else if (!Broken)
 		{
 			// the tile minus each hole, as rectangles
-			pieces.Clear();
-			pieces.Add(new Area { X0 = x0, Z0 = z0, X1 = x0 + size, Z1 = z0 + size });
-			foreach (Area hole in holes)
-			{
-				for (int i = pieces.Count - 1; i >= 0; i--)
-				{
-					Area r = pieces[i];
-					if (hole.X1 <= r.X0 || hole.X0 >= r.X1 || hole.Z1 <= r.Z0 || hole.Z0 >= r.Z1)
-					{
-						continue;
-					}
-					pieces.RemoveAt(i);
-					Keep(r.X0, r.Z0, hole.X0, r.Z1);
-					Keep(hole.X1, r.Z0, r.X1, r.Z1);
-					Keep(System.Math.Max(r.X0, hole.X0), r.Z0, System.Math.Min(r.X1, hole.X1), hole.Z0);
-					Keep(System.Math.Max(r.X0, hole.X0), hole.Z1, System.Math.Min(r.X1, hole.X1), r.Z1);
-				}
-			}
+			Pieces(x0, z0, holes);
 			foreach (Area r in pieces)
 			{
 				Top(new Vector3((float)(r.X0 - x0), 0f, (float)(r.Z0 - z0)), new Vector3((float)(r.X1 - x0), 0f, (float)(r.Z1 - z0)));
@@ -119,7 +109,7 @@ public class DeckMesh
 				}
 			}
 		}
-		Underside();
+		Underside(x0, z0, shafts);
 		mesh.Clear();
 		mesh.indexFormat = (vertices.Count > 65000) ? IndexFormat.UInt32 : IndexFormat.UInt16;
 		mesh.SetVertices(vertices);
@@ -135,27 +125,50 @@ public class DeckMesh
 		mesh.RecalculateBounds();
 	}
 
-	// the deck seen from the layer below, the ceiling there: its top again this far down, facing down, dark. under
-	// the underground's deepest pits (UndergroundPlan) and a few metres under where DistantPillar draws the ceiling, so
-	// riding up the real layer above wins over it
-	public const float UndersideDepth = 60f;
-
-	private void Underside()
+	// the tile as rectangles, minus the holes
+	private void Pieces(double x0, double z0, List<Area> holes)
 	{
-		List<int> top = triangles[snow];
-		List<int> under = triangles[dark];
-		int count = top.Count;
-		for (int i = 0; i < count; i += 3)
+		double size = Gen2.TileSize;
+		pieces.Clear();
+		pieces.Add(new Area { X0 = x0, Z0 = z0, X1 = x0 + size, Z1 = z0 + size });
+		if (holes == null)
 		{
-			int at = vertices.Count;
-			for (int k = 2; k >= 0; k--)
+			return;
+		}
+		foreach (Area hole in holes)
+		{
+			for (int i = pieces.Count - 1; i >= 0; i--)
 			{
-				vertices.Add(vertices[top[i + k]] + Vector3.down * UndersideDepth);
-				uvs.Add(uvs[top[i + k]]);
+				Area r = pieces[i];
+				if (hole.X1 <= r.X0 || hole.X0 >= r.X1 || hole.Z1 <= r.Z0 || hole.Z0 >= r.Z1)
+				{
+					continue;
+				}
+				pieces.RemoveAt(i);
+				Keep(r.X0, r.Z0, hole.X0, r.Z1);
+				Keep(hole.X1, r.Z0, r.X1, r.Z1);
+				Keep(System.Math.Max(r.X0, hole.X0), r.Z0, System.Math.Min(r.X1, hole.X1), hole.Z0);
+				Keep(System.Math.Max(r.X0, hole.X0), hole.Z1, System.Math.Min(r.X1, hole.X1), r.Z1);
 			}
-			under.Add(at);
-			under.Add(at + 1);
-			under.Add(at + 2);
+		}
+	}
+
+	// flat and whole under voids and the underground's holes too: from below the layer is one slab
+	private void Underside(double x0, double z0, List<Area> shafts)
+	{
+		Pieces(x0, z0, shafts);
+		foreach (Area r in pieces)
+		{
+			float ax = (float)(r.X0 - x0);
+			float az = (float)(r.Z0 - z0);
+			float bx = (float)(r.X1 - x0);
+			float bz = (float)(r.Z1 - z0);
+			int first = vertices.Count;
+			Add(new Vector3(ax, -UndersideDepth, az), new Vector2(ax, az) / (float)Gen2.TileSize);
+			Add(new Vector3(ax, -UndersideDepth, bz), new Vector2(ax, bz) / (float)Gen2.TileSize);
+			Add(new Vector3(bx, -UndersideDepth, bz), new Vector2(bx, bz) / (float)Gen2.TileSize);
+			Add(new Vector3(bx, -UndersideDepth, az), new Vector2(bx, az) / (float)Gen2.TileSize);
+			Face(dark, first, Vector3.down);
 		}
 	}
 

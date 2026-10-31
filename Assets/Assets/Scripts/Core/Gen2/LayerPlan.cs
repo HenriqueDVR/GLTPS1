@@ -106,7 +106,7 @@ public sealed class LayerPlan
 		int result = 0;
 		for (int i = 1; i < districts.Length; i++)
 		{
-			if (progress >= districts[i].From)
+			if (progress >= districts[i].From * Layers.DistanceScale)
 			{
 				result = i;
 			}
@@ -121,15 +121,17 @@ public sealed class LayerPlan
 		DistrictSample sample = new DistrictSample { Primary = primary, Secondary = primary };
 		DistrictDef[] districts = Def.Districts;
 		double half = Gen2.BlendWidth * 0.5;
-		if (primary + 1 < districts.Length && districts[primary + 1].From - progress < half)
+		double next = (primary + 1 < districts.Length) ? districts[primary + 1].From * Layers.DistanceScale : 0.0;
+		double from = districts[primary].From * Layers.DistanceScale;
+		if (primary + 1 < districts.Length && next - progress < half)
 		{
 			sample.Secondary = primary + 1;
-			sample.Blend = (float)(0.5 - (districts[primary + 1].From - progress) / Gen2.BlendWidth);
+			sample.Blend = (float)(0.5 - (next - progress) / Gen2.BlendWidth);
 		}
-		else if (primary > 0 && progress - districts[primary].From < half)
+		else if (primary > 0 && progress - from < half)
 		{
 			sample.Secondary = primary - 1;
-			sample.Blend = (float)(0.5 - (progress - districts[primary].From) / Gen2.BlendWidth);
+			sample.Blend = (float)(0.5 - (progress - from) / Gen2.BlendWidth);
 		}
 		return sample;
 	}
@@ -157,7 +159,7 @@ public sealed class LayerPlan
 			return false;
 		}
 		XZ position = PillarPosition(WorldSeed, cellX, cellZ);
-		if (Progress(position.X, position.Z) < Def.ExitMinDistance)
+		if (Progress(position.X, position.Z) < Def.ExitMinDistance * Layers.DistanceScale)
 		{
 			return false;
 		}

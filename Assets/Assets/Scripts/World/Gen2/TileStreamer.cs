@@ -6,12 +6,23 @@ using Unity.Jobs;
 using UnityEngine;
 
 // world gen v2: 128m tiles around both girls, nearest first, built in stages a couple of ms a frame, pooled when out of reach.
+// out to BuildRadius they're whole (colliders, landmarks, lamps, items); out from there to FarRadius the same tiles are
+// only drawn, in thinner fog so the city goes on into the haze, and they're made whole when a girl comes near.
 // a tile is its deck with the voids cut out (DeckMesh), its roads (RoadMesh), its lots' buildings and rubble (LotMesh)
 // and its props from the WorldKit: small landmarks, street lamps, item spawners.
 // everything is in layout coords (world + TotalOffset)
 public class TileStreamer : MonoBehaviour
 {
 	public const float BuildRadius = 700f;
+
+	// drawn only, out to here
+	public const float FarRadius = 3000f;
+
+	// a far tile's share of the world's fog far out, eased in from BuildRadius over this: the horizon still goes into
+	// the haze, the city before it shows
+	private const float farFogShare = 0.35f;
+
+	private const float farFogEase = 900f;
 
 	// tiles stay until this much further out, so they don't flicker at the edge
 	private const float keepMargin = 128f;
@@ -117,6 +128,9 @@ public class TileStreamer : MonoBehaviour
 
 	private readonly List<Area> holes = new List<Area>();
 
+	// the elevator shafts among them, through the deck's underside too
+	private readonly List<Area> shafts = new List<Area>();
+
 	private readonly List<RoadPatch> otherPatches = new List<RoadPatch>();
 
 	// made here at runtime, destroyed with the streamer (never the loaded assets)
@@ -131,6 +145,20 @@ public class TileStreamer : MonoBehaviour
 	private readonly List<long> leaving = new List<long>();
 
 	private readonly HashSet<long> wanted = new HashSet<long>();
+
+	// within BuildRadius of a girl, and the tiles that are whole
+	private readonly HashSet<long> wantedNear = new HashSet<long>();
+
+	private readonly HashSet<long> near = new HashSet<long>();
+
+	private readonly List<long> downgrading = new List<long>();
+
+	// each material's thin-fog twin for far tiles (Resources/FarTile)
+	private readonly Dictionary<Material, Material> farMaterials = new Dictionary<Material, Material>();
+
+	private Shader farShader;
+
+	private MaterialPropertyBlock born;
 
 	private readonly List<Vector3> points = new List<Vector3>();
 
@@ -242,7 +270,7 @@ public class TileStreamer : MonoBehaviour
 		Refresh();
 		if (float.IsNaN(deck) || buildAll)
 		{
-			BuildMissing(double.MaxValue);
+			BuildMissing(double.MaxValue, true);
 		}
 	}
 
@@ -256,21 +284,39 @@ public class TileStreamer : MonoBehaviour
 		// a layer left by the elevator: its tiles go with it
 		if (job != null && job.Tile != null && !tiles.ContainsValue(job.Tile))
 		{
-			DestroyTile(job.Tile);
+			Scrap(job.Tile);
 		}
 		foreach (GameObject tile in tiles.Values)
 		{
-			DestroyTile(tile);
+			Scrap(tile);
 		}
 		foreach (GameObject tile in pool)
 		{
-			DestroyTile(tile);
+			Scrap(tile);
 		}
 		tiles.Clear();
 		pool.Clear();
 		foreach (Material m in made)
 		{
 			Destroy(m);
+		}
+	}
+
+	// out of sight now, destroyed a few a frame (GameSession), all at once froze the frame for half a second
+	private static void Scrap(GameObject tile)
+	{
+		if (tile == null)
+		{
+			return;
+		}
+		tile.SetActive(false);
+		if (GameSession.Current != null)
+		{
+			GameSession.Current.Later(() => DestroyTile(tile));
+		}
+		else
+		{
+			DestroyTile(tile);
 		}
 	}
 
@@ -463,7 +509,22 @@ public class TileStreamer : MonoBehaviour
 			nextRefresh = Time.time + refreshInterval;
 			Refresh();
 		}
-		BuildMissing(LayerTransition.Busy ? rideBudgetMs : budgetMs);
+		BuildMissing(LayerTransition.Busy ? rideBudgetMs : budgetMs, false);
+		FarFog();
+	}
+
+	// the far tiles' fog, the same for every far material
+	private void FarFog()
+	{
+		Vector3 offset = Offset();
+		Vector3 a = (points.Count > 0) ? points[0] - offset : Vector3.zero;
+		Vector3 b = (points.Count > 1) ? points[1] - offset : a;
+		Shader.SetGlobalVector("_FarHide", new Vector4(a.x, a.z, b.x, b.z));
+		Shader.SetGlobalFloat("_FarNear", BuildRadius);
+		Shader.SetGlobalFloat("_FarEase", farFogEase);
+		Shader.SetGlobalFloat("_FarShare", farFogShare);
+		Shader.SetGlobalColor("_FarFogColor", RenderSettings.fogColor);
+		Shader.SetGlobalFloat("_FarDensity", RenderSettings.fog ? RenderSettings.fogDensity : 0f);
 	}
 
 	private static long Key(int x, int z)
@@ -494,68 +555,69 @@ public class TileStreamer : MonoBehaviour
 			points.Add(yuuri.position + offset);
 		}
 		wanted.Clear();
+		wantedNear.Clear();
 		float size = (float)Gen2.TileSize;
 		foreach (Vector3 p in points)
 		{
-			int x0 = Mathf.FloorToInt((p.x - BuildRadius) / size);
-			int x1 = Mathf.FloorToInt((p.x + BuildRadius) / size);
-			int z0 = Mathf.FloorToInt((p.z - BuildRadius) / size);
-			int z1 = Mathf.FloorToInt((p.z + BuildRadius) / size);
+			int x0 = Mathf.FloorToInt((p.x - FarRadius) / size);
+			int x1 = Mathf.FloorToInt((p.x + FarRadius) / size);
+			int z0 = Mathf.FloorToInt((p.z - FarRadius) / size);
+			int z1 = Mathf.FloorToInt((p.z + FarRadius) / size);
 			for (int x = x0; x <= x1; x++)
 			{
 				for (int z = z0; z <= z1; z++)
 				{
-					if (TileDistance(x, z, p) <= BuildRadius)
+					float d = TileDistance(x, z, p);
+					if (d <= FarRadius)
 					{
 						wanted.Add(Key(x, z));
+						if (d <= BuildRadius)
+						{
+							wantedNear.Add(Key(x, z));
+						}
 					}
 				}
 			}
 		}
 		leaving.Clear();
+		downgrading.Clear();
 		foreach (KeyValuePair<long, GameObject> tile in tiles)
 		{
-			if (!wanted.Contains(tile.Key) && NearestDistance(KeyX(tile.Key), KeyZ(tile.Key)) > BuildRadius + keepMargin)
+			float d = NearestDistance(KeyX(tile.Key), KeyZ(tile.Key));
+			if (!wanted.Contains(tile.Key) && d > FarRadius + keepMargin)
 			{
 				leaving.Add(tile.Key);
+			}
+			else if (near.Contains(tile.Key) && !wantedNear.Contains(tile.Key) && d > BuildRadius + keepMargin)
+			{
+				downgrading.Add(tile.Key);
 			}
 		}
 		foreach (long key in leaving)
 		{
 			GameObject tile = tiles[key];
 			tiles.Remove(key);
+			near.Remove(key);
 			ClearProps(tile);
 			tile.SetActive(false);
 			pool.Push(tile);
 		}
+		foreach (long key in downgrading)
+		{
+			near.Remove(key);
+			Far(tiles[key]);
+		}
 		missing.Clear();
 		foreach (long key in wanted)
 		{
-			if (!tiles.ContainsKey(key))
+			// not built, or built far and now wanted whole
+			if (!tiles.ContainsKey(key) || (wantedNear.Contains(key) && !near.Contains(key)))
 			{
 				missing.Add(key);
 			}
 		}
 		// nearest last, built from the end
 		missing.Sort((a, b) => NearestDistance(KeyX(b), KeyZ(b)).CompareTo(NearestDistance(KeyX(a), KeyZ(a))));
-	}
-
-	// every tile nearer either girl than this is built and showing (FarCity stands in out from here)
-	public float BuiltRadius
-	{
-		get
-		{
-			float radius = BuildRadius;
-			if (job != null)
-			{
-				radius = Mathf.Min(radius, NearestDistance(KeyX(job.Key), KeyZ(job.Key)));
-			}
-			if (missing.Count > 0)
-			{
-				radius = Mathf.Min(radius, NearestDistance(KeyX(missing[missing.Count - 1]), KeyZ(missing[missing.Count - 1])));
-			}
-			return radius;
-		}
 	}
 
 	// from p to the closest point of the tile
@@ -579,7 +641,8 @@ public class TileStreamer : MonoBehaviour
 
 	// tiles go one at a time, a stage or more a frame while the budget lasts. budget MaxValue (the first frame, a debug
 	// teleport) finishes everything now
-	private void BuildMissing(double budget)
+	// nearOnly: just the whole tiles (the first frame), the far ones come after
+	private void BuildMissing(double budget, bool nearOnly = true)
 	{
 		stopwatch.Restart();
 		bool now = budget == double.MaxValue;
@@ -592,12 +655,26 @@ public class TileStreamer : MonoBehaviour
 					return;
 				}
 				long key = missing[missing.Count - 1];
+				bool whole = wantedNear.Contains(key);
+				if (nearOnly && !whole)
+				{
+					return;
+				}
 				missing.RemoveAt(missing.Count - 1);
 				if (tiles.ContainsKey(key))
 				{
-					continue;
+					// a far tile come near is built again, whole (a far one keeps no cpu copy of its meshes to cook colliders
+					// from); it stays showing meanwhile
+					if (near.Contains(key) || !whole)
+					{
+						continue;
+					}
+					job = new Job { Key = key, X = KeyX(key), Z = KeyZ(key), Tile = tiles[key], Upgrade = true, Near = true };
 				}
-				job = new Job { Key = key, X = KeyX(key), Z = KeyZ(key) };
+				else
+				{
+					job = new Job { Key = key, X = KeyX(key), Z = KeyZ(key), Near = whole };
+				}
 			}
 			if (job.Stage == baking && !now && !job.Bake.IsCompleted)
 			{
@@ -619,6 +696,10 @@ public class TileStreamer : MonoBehaviour
 			if (done)
 			{
 				tiles[job.Key] = job.Tile;
+				if (job.Near)
+				{
+					near.Add(job.Key);
+				}
 				job = null;
 			}
 		}
@@ -641,6 +722,11 @@ public class TileStreamer : MonoBehaviour
 		public bool AnyRoads;
 
 		public bool AnyLots;
+
+		// made whole (colliders, props), else only drawn; a far tile being built again whole, in place
+		public bool Near;
+
+		public bool Upgrade;
 
 		public NativeArray<int> Meshes;
 
@@ -675,20 +761,27 @@ public class TileStreamer : MonoBehaviour
 		{
 			case 0:
 			{
-				tile = job.Tile = (pool.Count > 0) ? pool.Pop() : NewTile();
-				tile.SetActive(false);
+				if (!job.Upgrade)
+				{
+					tile = job.Tile = (pool.Count > 0) ? pool.Pop() : NewTile();
+					tile.SetActive(false);
+				}
+				Writable(tile, 0, !job.Near);
 				tile.name = "tile " + x + "," + z;
 				float size = (float)Gen2.TileSize;
 				tile.transform.SetPositionAndRotation(new Vector3(x * size, groundY, z * size) - Offset(), Quaternion.identity);
 				ClearProps(tile);
 				Plan.Underground.Holes(x, z, holes);
-				MoreHoles?.Invoke(x, z, holes);
-				deckMesh.Build(tile.transform.GetChild(0).GetComponent<MeshFilter>().sharedMesh, Plan.Chasms, x, z, holes);
+				shafts.Clear();
+				MoreHoles?.Invoke(x, z, shafts);
+				holes.AddRange(shafts);
+				deckMesh.Build(tile.transform.GetChild(0).GetComponent<MeshFilter>().sharedMesh, Plan.Chasms, x, z, holes, shafts);
 				return false;
 			}
 			case 1:
 				Plan.Roads.Collect(x, z, pieces, patches);
 				roadMesh.Voids = Plan.Chasms;
+				Writable(tile, 1, !job.Near);
 				job.AnyRoads = roadMesh.Build(tile.transform.GetChild(1).GetComponent<MeshFilter>().sharedMesh, pieces, patches, x * Gen2.TileSize, z * Gen2.TileSize);
 				return false;
 			case 2:
@@ -726,17 +819,31 @@ public class TileStreamer : MonoBehaviour
 				return false;
 			case 5:
 				Scatter(x, z);
-				PlaceCables(x, z);
+				// too fine to see far out, and the underground's under the deck
+				if (job.Near)
+				{
+					PlaceCables(x, z);
+				}
 				PlaceViaducts(x, z);
 				PlaceRaised(x, z);
 				DressVoids(x, z);
-				PlaceUnderground(x, z);
+				if (job.Near)
+				{
+					PlaceUnderground(x, z);
+				}
 				foreach (Stair stair in stairs)
 				{
 					Vector3 corner = new Vector3((float)(x * Gen2.TileSize), 0f, (float)(z * Gen2.TileSize));
 					lotMesh.AddStair(Local(stair.Foot, corner), new Vector3((float)stair.Dir.X, 0f, (float)stair.Dir.Z), new Vector3((float)stair.Out.X, 0f, (float)stair.Out.Z), (float)stair.Deck);
 				}
+				Writable(tile, 2, !job.Near);
 				job.AnyLots = lotMesh.End(tile.transform.GetChild(2).GetComponent<MeshFilter>().sharedMesh);
+				if (!job.Near)
+				{
+					Far(tile, true);
+					Drop(tile);
+					return true;
+				}
 				return false;
 			case 6:
 			{
@@ -761,6 +868,7 @@ public class TileStreamer : MonoBehaviour
 				job.Meshes.Dispose();
 				// active before the colliders get their meshes: a collider in an inactive pooled tile drops it
 				tile.SetActive(true);
+				Look(tile, false);
 				Collide(tile.transform.GetChild(0).gameObject, true);
 				Collide(tile.transform.GetChild(1).gameObject, job.AnyRoads);
 				Collide(tile.transform.GetChild(2).gameObject, job.AnyLots);
@@ -790,11 +898,127 @@ public class TileStreamer : MonoBehaviour
 		}
 	}
 
+	// drawn only: showing, nothing to stand on, no props, the thin-fog materials. just built, it fades in
+	private void Far(GameObject tile, bool fresh = false)
+	{
+		ClearProps(tile);
+		tile.SetActive(true);
+		for (int i = 0; i < 3; i++)
+		{
+			GameObject part = tile.transform.GetChild(i).gameObject;
+			Mesh mesh = part.GetComponent<MeshFilter>().sharedMesh;
+			part.SetActive(mesh != null && mesh.vertexCount > 0);
+			MeshCollider collider = part.GetComponent<MeshCollider>();
+			collider.sharedMesh = null;
+			collider.enabled = false;
+		}
+		Look(tile, true);
+		if (born == null)
+		{
+			born = new MaterialPropertyBlock();
+		}
+		born.SetFloat("_Born", fresh ? Time.timeSinceLevelLoad : -100f);
+		for (int i = 0; i < 3; i++)
+		{
+			tile.transform.GetChild(i).GetComponent<MeshRenderer>().SetPropertyBlock(born);
+		}
+	}
+
+	// a far tile's meshes go to the gpu alone and can't be written again: a new one, swapped in the step that fills it,
+	// so a tile built again whole in place never shows half done. a far one gets a plain static mesh, a dynamic one is
+	// kept in system memory too
+	private static void Writable(GameObject tile, int part, bool far)
+	{
+		MeshFilter filter = tile.transform.GetChild(part).GetComponent<MeshFilter>();
+		Mesh old = filter.sharedMesh;
+		if (old != null && old.isReadable && !far)
+		{
+			return;
+		}
+		filter.sharedMesh = new Mesh { name = (old != null) ? old.name : "tile" };
+		if (!far)
+		{
+			filter.sharedMesh.MarkDynamic();
+		}
+		if (old != null)
+		{
+			Destroy(old);
+		}
+	}
+
+	// built far: its meshes to the gpu and no copy kept, there's a couple of thousand of them
+	private static void Drop(GameObject tile)
+	{
+		for (int i = 0; i < 3; i++)
+		{
+			Mesh mesh = tile.transform.GetChild(i).GetComponent<MeshFilter>().sharedMesh;
+			if (mesh != null && mesh.isReadable)
+			{
+				mesh.UploadMeshData(true);
+			}
+		}
+	}
+
+
+	// near: the real materials and shadows; far: their thin-fog twins, no shadows
+	private void Look(GameObject tile, bool far)
+	{
+		for (int i = 0; i < 3; i++)
+		{
+			MeshRenderer renderer = tile.transform.GetChild(i).GetComponent<MeshRenderer>();
+			Material[] near = (i == 0) ? new[] { material, roadMaterials[2], lotMaterials[2] } : (i == 1) ? roadMaterials : lotMaterials;
+			if (far)
+			{
+				Material[] twins = new Material[near.Length];
+				for (int k = 0; k < near.Length; k++)
+				{
+					twins[k] = FarOf(near[k]);
+				}
+				renderer.sharedMaterials = twins;
+			}
+			else
+			{
+				renderer.sharedMaterials = near;
+				renderer.SetPropertyBlock(null);
+			}
+			renderer.shadowCastingMode = far ? UnityEngine.Rendering.ShadowCastingMode.Off : UnityEngine.Rendering.ShadowCastingMode.On;
+		}
+	}
+
+	private Material FarOf(Material source)
+	{
+		if (source == null)
+		{
+			return null;
+		}
+		if (farMaterials.TryGetValue(source, out Material twin))
+		{
+			return twin;
+		}
+		if (farShader == null)
+		{
+			farShader = Resources.Load<Shader>("FarTile");
+		}
+		twin = Made(new Material(farShader));
+		Texture texture = source.HasProperty("_BaseMap") ? source.GetTexture("_BaseMap") : source.mainTexture;
+		twin.SetTexture("_BaseMap", texture);
+		if (source.HasProperty("_BaseMap"))
+		{
+			twin.SetTextureScale("_BaseMap", source.GetTextureScale("_BaseMap"));
+			twin.SetTextureOffset("_BaseMap", source.GetTextureOffset("_BaseMap"));
+		}
+		twin.SetColor("_BaseColor", source.HasProperty("_BaseColor") ? source.GetColor("_BaseColor") : source.color);
+		twin.SetColor("_Average", DistantPillar.Albedo(source));
+		farMaterials.Add(source, twin);
+		return twin;
+	}
+
 	// set again so the collider takes the new shape
 	private static void Collide(GameObject part, bool any)
 	{
 		part.SetActive(any);
 		MeshCollider collider = part.GetComponent<MeshCollider>();
+		collider.enabled = true;
 		collider.cookingOptions = Cooking;
 		collider.sharedMesh = null;
 		if (any)

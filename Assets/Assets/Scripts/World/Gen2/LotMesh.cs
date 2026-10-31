@@ -532,6 +532,8 @@ public class LotMesh
 		}
 		random = new WorldRandom(seed);
 		int floors = Mathf.Max(4, Mathf.RoundToInt(body / FloorHeight));
+		// not through the void's floor, the deck's underside: from the layer below it would hang out of the ceiling
+		floors = Mathf.Max(1, Mathf.Min(floors, Mathf.FloorToInt((top + DeckMesh.Abyss - 4f) / FloorHeight)));
 		int first = vertices.Count;
 		Slab(centre, u, half, half * Range(0.7f, 1f), floors);
 		float bottom = top - floors * FloorHeight;

@@ -281,6 +281,7 @@ public class PillarStreamer : MonoBehaviour
 					continue;
 				}
 				spot.Instance = arrived.Instance;
+				Dress(spot.Instance, spot.State);
 				arrived = null;
 				changed = true;
 			}
@@ -342,6 +343,7 @@ public class PillarStreamer : MonoBehaviour
 			Destroy(collider);
 		}
 		tower.GetComponent<Node>().MarkPlaced();
+		Reach(tower);
 		GraphicsTuning.Adopt(tower);
 		return tower;
 	}
@@ -367,8 +369,177 @@ public class PillarStreamer : MonoBehaviour
 			Destroy(box);
 		}
 		tower.GetComponent<Node>().MarkPlaced();
+		Reach(tower);
+		Dress(tower, spot.State);
 		DistantPillar.HideBrokenParts(tower);
 		GraphicsTuning.Adopt(tower);
 		return tower;
+	}
+
+	private const string headName = "shaft head";
+
+	// how high the kerb is, the railings over it, the steel frame over the car's door side
+	private const float kerb = 0.25f;
+
+	private const float rail = 1.1f;
+
+	private const float frame = 5.5f;
+
+	private static Material[] headMaterials;
+
+	// where the car comes up from the layer below: the hole lined with concrete down through the deck to its underside,
+	// a kerb and railings along its sides, a steel frame over the side the car opens on (+x, out from the column).
+	// none where it doesn't come up, a ride moves the tower to a layer where it may not
+	private void Dress(GameObject tower, PillarState state)
+	{
+		Transform old = tower.transform.Find(headName);
+		bool wanted = (state & PillarState.Down) != 0 && carMax.x > carMin.x;
+		if (old != null && !wanted)
+		{
+			old.gameObject.SetActive(false);
+			Destroy(old.GetComponent<MeshFilter>().sharedMesh);
+			Destroy(old.gameObject);
+		}
+		if (old != null || !wanted)
+		{
+			return;
+		}
+		if (headMaterials == null)
+		{
+			Material concrete = Resources.Load<Material>("Roads/Concrete");
+			Material metal = Resources.Load<Material>("Buildings/Metal");
+			headMaterials = new[] { concrete, (metal != null) ? metal : concrete };
+		}
+		List<Vector3> vertices = new List<Vector3>();
+		List<int>[] triangles = { new List<int>(), new List<int>() };
+		float x0 = carMin.x - carMargin;
+		float x1 = carMax.x + carMargin;
+		float z0 = carMin.y - carMargin;
+		float z1 = carMax.y + carMargin;
+		float depth = DeckMesh.UndersideDepth;
+		// the lining, seen from in the shaft and from out of it
+		Lining(vertices, triangles[0], new Vector3(x0, 0f, z0), new Vector3(x1, 0f, z0), depth);
+		Lining(vertices, triangles[0], new Vector3(x1, 0f, z0), new Vector3(x1, 0f, z1), depth);
+		Lining(vertices, triangles[0], new Vector3(x1, 0f, z1), new Vector3(x0, 0f, z1), depth);
+		Lining(vertices, triangles[0], new Vector3(x0, 0f, z1), new Vector3(x0, 0f, z0), depth);
+		// kerbs along the two sides, the column closes the third, the door side stays open
+		HeadBox(vertices, triangles[0], new Vector3(x0, 0f, z0 - 0.5f), new Vector3(x1, kerb, z0));
+		HeadBox(vertices, triangles[0], new Vector3(x0, 0f, z1), new Vector3(x1, kerb, z1 + 0.5f));
+		foreach (float z in new[] { z0 - 0.25f, z1 + 0.25f })
+		{
+			for (float x = x0 + 0.2f; x <= x1 + 0.01f; x += (x1 - x0 - 0.4f) / 3f)
+			{
+				HeadBox(vertices, triangles[1], new Vector3(x - 0.04f, kerb, z - 0.04f), new Vector3(x + 0.04f, kerb + rail, z + 0.04f));
+			}
+			HeadBox(vertices, triangles[1], new Vector3(x0, kerb + rail - 0.06f, z - 0.05f), new Vector3(x1, kerb + rail, z + 0.05f));
+			HeadBox(vertices, triangles[1], new Vector3(x0, kerb + rail * 0.5f - 0.03f, z - 0.03f), new Vector3(x1, kerb + rail * 0.5f + 0.03f, z + 0.03f));
+		}
+		// the frame over the way out
+		HeadBox(vertices, triangles[1], new Vector3(x1 + 0.3f, 0f, z0 - 0.7f), new Vector3(x1 + 0.6f, frame, z0 - 0.4f));
+		HeadBox(vertices, triangles[1], new Vector3(x1 + 0.3f, 0f, z1 + 0.4f), new Vector3(x1 + 0.6f, frame, z1 + 0.7f));
+		HeadBox(vertices, triangles[1], new Vector3(x1 + 0.25f, frame - 0.4f, z0 - 0.75f), new Vector3(x1 + 0.65f, frame, z1 + 0.75f));
+		Mesh mesh = new Mesh { name = headName };
+		mesh.SetVertices(vertices);
+		mesh.subMeshCount = 2;
+		mesh.SetTriangles(triangles[0], 0);
+		mesh.SetTriangles(triangles[1], 1);
+		mesh.RecalculateNormals();
+		mesh.RecalculateBounds();
+		GameObject head = new GameObject(headName, typeof(MeshFilter), typeof(MeshRenderer), typeof(MeshCollider));
+		head.transform.SetParent(tower.transform, false);
+		head.GetComponent<MeshFilter>().sharedMesh = mesh;
+		head.GetComponent<MeshRenderer>().sharedMaterials = headMaterials;
+		head.GetComponent<MeshCollider>().sharedMesh = mesh;
+	}
+
+	// a wall from a to b going down, both faces
+	private static void Lining(List<Vector3> vertices, List<int> triangles, Vector3 a, Vector3 b, float depth)
+	{
+		int at = vertices.Count;
+		vertices.Add(a);
+		vertices.Add(b);
+		vertices.Add(b + Vector3.down * depth);
+		vertices.Add(a + Vector3.down * depth);
+		triangles.AddRange(new[] { at, at + 1, at + 2, at, at + 2, at + 3 });
+		at = vertices.Count;
+		vertices.Add(a);
+		vertices.Add(b);
+		vertices.Add(b + Vector3.down * depth);
+		vertices.Add(a + Vector3.down * depth);
+		triangles.AddRange(new[] { at, at + 2, at + 1, at, at + 3, at + 2 });
+	}
+
+	// an axis box from min to max, faces out
+	private static void HeadBox(List<Vector3> vertices, List<int> triangles, Vector3 min, Vector3 max)
+	{
+		Vector3[] c =
+		{
+			new Vector3(min.x, min.y, min.z), new Vector3(max.x, min.y, min.z), new Vector3(max.x, min.y, max.z), new Vector3(min.x, min.y, max.z),
+			new Vector3(min.x, max.y, min.z), new Vector3(max.x, max.y, min.z), new Vector3(max.x, max.y, max.z), new Vector3(min.x, max.y, max.z)
+		};
+		int[][] faces = { new[] { 4, 7, 6, 5 }, new[] { 0, 1, 5, 4 }, new[] { 1, 2, 6, 5 }, new[] { 2, 3, 7, 6 }, new[] { 3, 0, 4, 7 } };
+		foreach (int[] f in faces)
+		{
+			int at = vertices.Count;
+			foreach (int k in f)
+			{
+				vertices.Add(c[k]);
+			}
+			// faces out of the box: unity's front is Cross(b - a, c - a)
+			Vector3 normal = Vector3.Cross(c[f[1]] - c[f[0]], c[f[2]] - c[f[0]]);
+			Vector3 outward = (c[f[0]] + c[f[2]]) * 0.5f - (min + max) * 0.5f;
+			if (Vector3.Dot(normal, outward) > 0f)
+			{
+				triangles.AddRange(new[] { at, at + 1, at + 2, at, at + 2, at + 3 });
+			}
+			else
+			{
+				triangles.AddRange(new[] { at, at + 2, at + 1, at, at + 3, at + 2 });
+			}
+		}
+	}
+
+	// the column goes on up into the deck above: the piece's is 571 m, a layer is LayerHeight
+	private static void Reach(GameObject tower)
+	{
+		foreach (MeshFilter part in tower.GetComponentsInChildren<MeshFilter>(true))
+		{
+			if (part.name != towerParts[0] || part.sharedMesh == null)
+			{
+				continue;
+			}
+			Bounds b = part.sharedMesh.bounds;
+			float low = float.MaxValue;
+			float high = float.MinValue;
+			for (int i = 0; i < 8; i++)
+			{
+				Vector3 corner = new Vector3((i & 1) == 0 ? b.min.x : b.max.x, (i & 2) == 0 ? b.min.y : b.max.y, (i & 4) == 0 ? b.min.z : b.max.z);
+				float y = tower.transform.InverseTransformPoint(part.transform.TransformPoint(corner)).y;
+				low = Mathf.Min(low, y);
+				high = Mathf.Max(high, y);
+			}
+			float height = high - low;
+			if (height <= 1f || height >= (float)Gen2.LayerHeight)
+			{
+				continue;
+			}
+			// along whichever of its own axes points up
+			Vector3 up = part.transform.InverseTransformDirection(tower.transform.up);
+			Vector3 scale = part.transform.localScale;
+			float stretch = (float)Gen2.LayerHeight / height;
+			if (Mathf.Abs(up.x) > Mathf.Abs(up.y) && Mathf.Abs(up.x) > Mathf.Abs(up.z))
+			{
+				scale.x *= stretch;
+			}
+			else if (Mathf.Abs(up.y) > Mathf.Abs(up.z))
+			{
+				scale.y *= stretch;
+			}
+			else
+			{
+				scale.z *= stretch;
+			}
+			part.transform.localScale = scale;
+		}
 	}
 }

@@ -9,6 +9,10 @@
 // raised cross: cross streets lifted between them, so up there you can turn a corner
 public static class Layers
 {
+	// stretches every layer's district bands and its elevators' distance together: 2 = everything twice as far out.
+	// changes the world (genVersion 2's output): tune it before a v2 release, a bump after
+	public const double DistanceScale = 1.0;
+
 	public static readonly LayerDef[] All =
 	{
 		new LayerDef

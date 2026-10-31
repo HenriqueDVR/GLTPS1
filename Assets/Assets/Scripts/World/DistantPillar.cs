@@ -530,7 +530,12 @@ public class DistantPillar : MonoBehaviour
 		{
 			Destroy(sky.gameObject);
 		}
-		ShowOriginalSky(true);
+		// a ride's end: the next layer's backdrop may already have hidden it again, it's that one's now
+		if (instance == this)
+		{
+			ShowOriginalSky(true);
+			instance = null;
+		}
 		foreach (Distant distant in pillars)
 		{
 			ShowReal(distant, true);

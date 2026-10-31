@@ -100,7 +100,7 @@ public class GameSession : MonoBehaviour
 		StartCoroutine(SaveScene.Register());
 	}
 
-	// v2: the layer the girls are on, its own object (tiles, towers, the far city, the backdrop)
+	// v2: the layer the girls are on, its own object (tiles, towers, the backdrop)
 	public GameObject Layer { get; private set; }
 
 	// v2: one layer's world. deck NaN = from the floor under Chito (the start). a ride builds the next one while it's
@@ -116,7 +116,6 @@ public class GameSession : MonoBehaviour
 		{
 			layer.AddComponent<PillarStreamer>().Init(plan, tiles, floatingOrigin, world.PillarPrefab, arrived);
 		}
-		layer.AddComponent<FarCity>().Init(plan, tiles, floatingOrigin);
 		return layer;
 	}
 
@@ -159,6 +158,24 @@ public class GameSession : MonoBehaviour
 		if (layer != null)
 		{
 			Destroy(layer);
+		}
+	}
+
+	// work that can wait and shouldn't all land in one frame (a layer's tiles going), a few a frame
+	private readonly Queue<Action> later = new Queue<Action>();
+
+	private const int laterPerFrame = 40;
+
+	public void Later(Action work)
+	{
+		later.Enqueue(work);
+	}
+
+	private void Update()
+	{
+		for (int i = 0; i < laterPerFrame && later.Count > 0; i++)
+		{
+			later.Dequeue()();
 		}
 	}
 

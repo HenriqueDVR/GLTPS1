@@ -60,7 +60,13 @@ public class LayerTransition : MonoBehaviour
 
 	private Rigidbody ketBody;
 
-	private bool ketWasKinematic;
+	// frozen by constraints like a parked one, kinematic it complained every step its speed was clamped
+	private RigidbodyConstraints ketConstraints;
+
+	private bool ketGravity;
+
+	// how high it stood over the ground, so it's put down the same (a parked ket is frozen and doesn't settle)
+	private float ketHeight = 0.5f;
 
 	private Rigidbody barrelBody;
 
@@ -251,7 +257,7 @@ public class LayerTransition : MonoBehaviour
 		to = null;
 	}
 
-	private void RestoreAgents()
+	private void RestoreAgents(Vector3? outside = null)
 	{
 		foreach (KeyValuePair<Girl, bool> agent in agents)
 		{
@@ -262,7 +268,11 @@ public class LayerTransition : MonoBehaviour
 			if (agent.Key.Control == GirlControl.AI)
 			{
 				agent.Key.Agent.enabled = true;
-				agent.Key.Agent.Warp(agent.Key.transform.position);
+				// the navmesh round her may not be the car's floor yet (it had her standing on something in the car, 0.8 m
+				// up): on the floor if it's there, else just out of the door
+				Vector3 at = agent.Key.transform.position;
+				bool floor = UnityEngine.AI.NavMesh.SamplePosition(at, out UnityEngine.AI.NavMeshHit hit, 0.5f, UnityEngine.AI.NavMesh.AllAreas) && Mathf.Abs(hit.position.y - at.y) < 0.25f;
+				agent.Key.Agent.Warp(floor || outside == null ? at : outside.Value);
 				if (agent.Key.Follow != null)
 				{
 					agent.Key.Follow.follow = true;
@@ -352,16 +362,11 @@ public class LayerTransition : MonoBehaviour
 		{
 			below = streamer.Bare(new Pose(spot.Pose.position - Vector3.up * (float)Gen2.LayerHeight, spot.Pose.rotation));
 		}
-		// the layer it goes to, from now: below it's in view all the way down, above it's a ceiling over the tower.
-		// its far city waits till they're over its deck, from under it the boxes would hang in the air
+		// the layer it goes to, from now: below it's in view all the way down, above it's a ceiling over the tower
 		TileStreamer tiles = GameSession.Get<TileStreamer>();
 		from = GameSession.Current.Layer;
 		arriving = new PillarStreamer.Spot { CellX = spot.CellX, CellZ = spot.CellZ };
 		next = GameSession.Current.BeginLayer(to, tiles.GroundY + way * (float)Gen2.LayerHeight, tiles.GroundLayer, arriving);
-		if (way > 0)
-		{
-			next.GetComponent<FarCity>().Show(false);
-		}
 		Debug.Log("LayerTransition: riding " + (way > 0 ? "up" : "down") + " from layer " + world.Layer + " to " + to.Layer + " at pillar " + spot.CellX + "," + spot.CellZ);
 		return true;
 	}
@@ -402,8 +407,11 @@ public class LayerTransition : MonoBehaviour
 		ketBody = (ket != null && !CoopKettenkrad.FollowsRemote) ? ket.GetComponent<Rigidbody>() : null;
 		if (ketBody != null)
 		{
-			ketWasKinematic = ketBody.isKinematic;
-			ketBody.isKinematic = true;
+			ketConstraints = ketBody.constraints;
+			ketGravity = ketBody.useGravity;
+			ketBody.constraints = RigidbodyConstraints.FreezeAll;
+			ketBody.useGravity = false;
+			ketHeight = GroundUnder(ketBody.transform, out float height) ? height : 0.5f;
 		}
 		GameObject barrel = GameObject.FindWithTag("Barrel");
 		ParentConstraint carried = (barrel != null) ? barrel.GetComponent<ParentConstraint>() : null;
@@ -431,7 +439,6 @@ public class LayerTransition : MonoBehaviour
 		Ride();
 		arriving.Instance = tower;
 		session.UseLayer(next);
-		next.GetComponent<FarCity>().Show(true);
 		Physics.SyncTransforms();
 		Debug.Log("LayerTransition: now on layer " + to.Layer + " (" + to.Def.Name + "), deck " + deck.ToString("F1") + ", origin " + to.Origin + (brought.Count > 0 ? ", brought " + brought.Count + " girl(s) aboard" : ""));
 		if (CoopSession.Together)
@@ -465,13 +472,17 @@ public class LayerTransition : MonoBehaviour
 		if (ketBody != null)
 		{
 			Vector3 at = Ground(door);
-			ketBody.position = at + Vector3.up * 0.5f;
+			ketBody.position = at + Vector3.up * ketHeight;
 			ketBody.rotation = outward;
 			ketBody.transform.SetPositionAndRotation(ketBody.position, ketBody.rotation);
-			ketBody.isKinematic = ketWasKinematic;
-			ketBody.velocity = Vector3.zero;
-			ketBody.angularVelocity = Vector3.zero;
-			ketBody.WakeUp();
+			ketBody.constraints = ketConstraints;
+			ketBody.useGravity = ketGravity;
+			if (!ketBody.isKinematic)
+			{
+				ketBody.velocity = Vector3.zero;
+				ketBody.angularVelocity = Vector3.zero;
+				ketBody.WakeUp();
+			}
 		}
 		if (barrelBody != null)
 		{
@@ -486,7 +497,7 @@ public class LayerTransition : MonoBehaviour
 		from = null;
 		next = null;
 		arriving = null;
-		RestoreAgents();
+		RestoreAgents(Ground(tower.transform.TransformPoint(Door(2.5f))) + Vector3.up * 0.1f);
 		foreach (InputContextStack.Token token in held)
 		{
 			token.Release();
@@ -551,6 +562,22 @@ public class LayerTransition : MonoBehaviour
 	{
 		Vector3 car = tower.transform.InverseTransformPoint(events.transform.position);
 		return new Vector3(car.x + 2f + distance, 0f, car.z);
+	}
+
+	// how high it stands over whatever's under it, not counting itself
+	private static bool GroundUnder(Transform body, out float height)
+	{
+		height = 0f;
+		float best = float.MaxValue;
+		foreach (RaycastHit hit in Physics.RaycastAll(body.position + Vector3.up * 2f, Vector3.down, 10f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+		{
+			if (!hit.collider.transform.IsChildOf(body.root) && hit.distance < best)
+			{
+				best = hit.distance;
+				height = body.position.y - hit.point.y;
+			}
+		}
+		return best < float.MaxValue;
 	}
 
 	private static Vector3 Ground(Vector3 at)

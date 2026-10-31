@@ -47,6 +47,13 @@ public class EndingCinematic : MonoBehaviour
 
 	private Vector3 outward;
 
+	// the column's middle (flat, relative to the elevator) and how far out its wall is, the camera keeps outside it
+	private Vector3 columnFromCar;
+
+	private float columnRadius;
+
+	private const float columnMargin = 8f;
+
 	private Vector3 startFlat;
 
 	private float startUp;
@@ -72,6 +79,23 @@ public class EndingCinematic : MonoBehaviour
 
 	private const float hudFadeTime = 2f;
 
+	// from the player's camera into the shot, and back to it at a ride's end, this long
+	private const float easeIn = 2f;
+
+	private const float easeOut = 2f;
+
+	// the player's camera as the ride started, from the elevator (it moves)
+	private Vector3 startFromCar;
+
+	private Quaternion startRotation;
+
+	// a ride's end: when the blend back started, nothing moves the shot after
+	private float leaving = -1f;
+
+	private CinemachineBrain brain;
+
+	private CinemachineBlendDefinition oldBlend;
+
 	public static void Begin(Transform elevator, float fog = fogShare)
 	{
 		Camera camera = Camera.main;
@@ -84,27 +108,52 @@ public class EndingCinematic : MonoBehaviour
 		running.Setup(elevator, camera);
 	}
 
-	// a ride between layers ends on the next deck, not in the credits: the camera goes back to the player,
-	// the fog and the hud come back
+	// a ride between layers ends on the next deck, not in the credits: the camera blends back to the player's, the fog
+	// and the hud come back over the same time
 	public static void End()
 	{
 		if (running == null)
 		{
 			return;
 		}
-		if (running.writtenFog >= 0f && Mathf.Approximately(RenderSettings.fogDensity, running.writtenFog))
+		running.Leave();
+		running = null;
+	}
+
+	private void Leave()
+	{
+		leaving = Time.time;
+		if (brain != null)
 		{
-			RenderSettings.fogDensity = running.baseFog;
+			brain.m_DefaultBlend = new CinemachineBlendDefinition(CinemachineBlendDefinition.Style.EaseInOut, easeOut);
 		}
-		foreach (CanvasGroup group in running.hud)
+		shot.m_Priority = -1000;
+	}
+
+	// the blend back: the fog thickens again, the hud comes up, then it's gone
+	private void Leaving()
+	{
+		float done = Mathf.Clamp01((Time.time - leaving) / easeOut);
+		if (writtenFog >= 0f)
+		{
+			if (!Mathf.Approximately(RenderSettings.fogDensity, writtenFog))
+			{
+				baseFog = RenderSettings.fogDensity;
+			}
+			writtenFog = baseFog * Mathf.Lerp(fogTo, 1f, Mathf.SmoothStep(0f, 1f, done));
+			RenderSettings.fogDensity = writtenFog;
+		}
+		foreach (CanvasGroup group in hud)
 		{
 			if (group != null)
 			{
-				group.alpha = 1f;
+				group.alpha = Mathf.Max(group.alpha, done);
 			}
 		}
-		Destroy(running.gameObject);
-		running = null;
+		if (done >= 1f)
+		{
+			Destroy(gameObject);
+		}
 	}
 
 	private void Setup(Transform rideOn, Camera camera)
@@ -117,6 +166,8 @@ public class EndingCinematic : MonoBehaviour
 		startUp = startOffset.y;
 		// the elevator runs up the outside of the column, out from its middle is open air
 		Vector3 radial = anchor - TowerCentre();
+		columnFromCar = new Vector3(-radial.x, 0f, -radial.z);
+		columnRadius = ColumnRadius();
 		radial.y = 0f;
 		radial = radial.sqrMagnitude > 1f ? radial.normalized : elevator.root.right;
 		Vector3 tangent = Vector3.Cross(Vector3.up, radial);
@@ -135,11 +186,17 @@ public class EndingCinematic : MonoBehaviour
 		startFov = lens.FieldOfView;
 		shot.m_Lens = lens;
 		shot.m_Priority = 1000;
+		startFromCar = camera.transform.position - Anchor();
+		startRotation = camera.transform.rotation;
 		// blocks in the gaps out to the haze
 		EndingCity.Build(transform, elevator.root);
 		FindHud();
 		// the listener goes on the live camera's look at target, with none it sat out here and everything went quiet
-		CinemachineBrain brain = camera.GetComponent<CinemachineBrain>();
+		brain = camera.GetComponent<CinemachineBrain>();
+		if (brain != null)
+		{
+			oldBlend = brain.m_DefaultBlend;
+		}
 		ICinemachineCamera player = brain != null ? brain.ActiveVirtualCamera : null;
 		if (player != null)
 		{
@@ -159,6 +216,24 @@ public class EndingCinematic : MonoBehaviour
 	private Vector3 Anchor()
 	{
 		return elevator.position + Vector3.up * 1.5f;
+	}
+
+	// half the column's width, from its mesh like TowerCentre
+	private float ColumnRadius()
+	{
+		foreach (MeshFilter part in elevator.root.GetComponentsInChildren<MeshFilter>(includeInactive: true))
+		{
+			if (part.name == "Cylinder" && part.sharedMesh != null)
+			{
+				Vector3 size = Vector3.Scale(part.sharedMesh.bounds.size, part.transform.lossyScale);
+				// lying on its side in the model, the two smallest of its sizes are across
+				float a = Mathf.Abs(size.x);
+				float b = Mathf.Abs(size.y);
+				float c = Mathf.Abs(size.z);
+				return (a + b + c - Mathf.Max(a, Mathf.Max(b, c))) * 0.25f;
+			}
+		}
+		return 0f;
 	}
 
 	// middle of the column, from its mesh so it works while the piece's renderers are off
@@ -181,6 +256,11 @@ public class EndingCinematic : MonoBehaviour
 			Destroy(gameObject);
 			return;
 		}
+		if (leaving >= 0f)
+		{
+			Leaving();
+			return;
+		}
 		float t = Mathf.SmoothStep(0f, 1f, (Time.time - started) / pullTime);
 		angle += drift * Time.deltaTime;
 		// round the girls from where the player had it, then out and up
@@ -189,9 +269,20 @@ public class EndingCinematic : MonoBehaviour
 		Vector3 flat = Vector3.Slerp(from, goal, t) * Mathf.Lerp(startFlat.magnitude, pullBack, t);
 		Vector3 anchor = Anchor();
 		Vector3 position = anchor + flat + Vector3.up * Mathf.Lerp(startUp, rise, t);
+		// never inside the tower, the player's camera could have been in its wall when the ride started
+		Vector3 column = anchor + columnFromCar;
+		Vector3 off = new Vector3(position.x - column.x, 0f, position.z - column.z);
+		if (columnRadius > 0f && off.magnitude < columnRadius + columnMargin)
+		{
+			off = (off.sqrMagnitude > 0.01f ? off.normalized : -columnFromCar.normalized) * (columnRadius + columnMargin);
+			position = new Vector3(column.x + off.x, position.y, column.z + off.z);
+		}
 		float fov = startFov + widen * t;
 		shot.m_Lens.FieldOfView = fov;
-		shot.transform.SetPositionAndRotation(position, Framed(anchor - position, fov, t));
+		// out of the player's camera gently, not a jump to the shot's first frame
+		float into = Mathf.SmoothStep(0f, 1f, (Time.time - started) / easeIn);
+		Quaternion framed = Framed(anchor - position, fov, t);
+		shot.transform.SetPositionAndRotation(Vector3.Lerp(anchor + startFromCar, position, into), Quaternion.Slerp(startRotation, framed, into));
 		// weather keeps writing its own fog while it changes, go off whatever it last set
 		if (!Mathf.Approximately(RenderSettings.fogDensity, writtenFog))
 		{
@@ -252,6 +343,10 @@ public class EndingCinematic : MonoBehaviour
 		if (running == this)
 		{
 			running = null;
+		}
+		if (brain != null)
+		{
+			brain.m_DefaultBlend = oldBlend;
 		}
 		// static, it would carry into the next game
 		WorldGenerator.HideDistance = oldHide;
