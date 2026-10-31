@@ -37,6 +37,13 @@ public class WeatherManager : MonoBehaviour
 
     private WeatherData weatherData;
 
+    // for UndergroundAtmosphere, which hides them and dims the light under the deck
+    public ParticleSystem SnowParticles => snowParticleSystem;
+
+    public ParticleSystem[] WeatherParticles => weatherParticleSystem;
+
+    public Light Sun => directionalLight;
+
 
     void Start()
     {

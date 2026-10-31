@@ -950,7 +950,7 @@ public class TileStreamer : MonoBehaviour
 
 	// the bays of every viaduct whose middle is in this tile, and the piers that stand in it. a pier is left out
 	// where a road runs, the bays either side of it get a girder instead of an arch
-	// the underground's halls (with their shafts) and gallery pieces this tile owns
+	// the underground's halls (with their ways in) and gallery pieces this tile owns
 	private void PlaceUnderground(int x, int z)
 	{
 		Plan.Underground.Collect(x, z, halls, galleries);
@@ -958,35 +958,49 @@ public class TileStreamer : MonoBehaviour
 		float[] gaps = new float[4];
 		foreach (Hall hall in halls)
 		{
-			Vector3 centre = Local(hall.Center, corner);
 			double[] at = { hall.GalleryPX - hall.Center.Z, -(hall.GalleryNX - hall.Center.Z), -(hall.GalleryPZ - hall.Center.X), hall.GalleryNZ - hall.Center.X };
+			int door = -1;
+			if (hall.Entrance)
+			{
+				door = (hall.Out.X > 0.5) ? 0 : (hall.Out.X < -0.5) ? 1 : (hall.Out.Z > 0.5) ? 2 : 3;
+				at[door] = hall.EntranceAt;
+				Hall way = hall;
+				lotMesh.AddWayIn((s, across) => Local(way.PassagePoint(s, across), corner), new Vector3((float)hall.Out.X, 0f, (float)hall.Out.Z));
+			}
 			for (int side = 0; side < 4; side++)
 			{
 				gaps[side] = (float)at[side];
 			}
-			int door = -1;
-			float doorFrom = 0f, doorTo = 0f;
-			if (hall.Shaft)
-			{
-				door = (hall.Out.X > 0.5) ? 0 : (hall.Out.X < -0.5) ? 1 : (hall.Out.Z > 0.5) ? 2 : 3;
-				// the shaft's door: its near wall from its left end, a gallery wide, along the hall's wall from its middle
-				double h = UndergroundPlan.Shaft * 0.5;
-				XZ along = hall.Along;
-				XZ from = hall.ShaftPoint(-h, -h);
-				doorFrom = (float)((from.X - hall.Center.X) * along.X + (from.Z - hall.Center.Z) * along.Z);
-				doorTo = doorFrom + (float)UndergroundPlan.GalleryWidth;
-				Hall shaft = hall;
-				lotMesh.AddShaft((p, q) => Local(shaft.ShaftPoint(p, q), corner), new Vector3((float)hall.Out.X, 0f, (float)hall.Out.Z));
-			}
-			lotMesh.AddHall(centre, (float)hall.HalfX, (float)hall.HalfZ, gaps, door, doorFrom, doorTo);
+			lotMesh.AddHall(Local(hall.Center, corner), (float)hall.HalfX, (float)hall.HalfZ, gaps, hall.Seed, FanSide(hall, gaps));
 		}
 		foreach (GalleryPiece piece in galleries)
 		{
-			lotMesh.AddGallery(Local(piece.A, corner), Local(piece.B, corner));
+			lotMesh.AddGallery(Local(piece.A, corner), Local(piece.B, corner), WorldRandom.Derive(Plan.LayerSeed, Gen2.StreamUnder + 3, Gen2.Pack((int)System.Math.Round(piece.A.X), (int)System.Math.Round(piece.A.Z))));
 		}
 	}
 
-	// a lamp or two on each hall's floor, near its corners, and one in the middle of its shaft's floor, under the hole
+	// a fan in one of the hall's end walls with no mouth in it, some halls
+	private static Vector3 FanSide(Hall hall, float[] gaps)
+	{
+		ulong roll = WorldRandom.Derive(hall.Seed, Gen2.StreamUnder, 3uL);
+		if (Gen2.Unit(roll) >= 0.5)
+		{
+			return Vector3.zero;
+		}
+		// the ends: across the hall's long way
+		int first = (hall.HalfX >= hall.HalfZ) ? 0 : 2;
+		for (int n = 0; n < 2; n++)
+		{
+			int side = first + (int)(((roll >> 8) + (ulong)n) % 2uL);
+			if (float.IsNaN(gaps[side]))
+			{
+				return (side == 0) ? Vector3.right : (side == 1) ? Vector3.left : (side == 2) ? Vector3.forward : Vector3.back;
+			}
+		}
+		return Vector3.zero;
+	}
+
+	// a lamp or two on each hall's ledge near its corners, one down each way in's passage and one in its ramp house
 	private void PlaceUnderLamps(int x, int z, Transform props)
 	{
 		if (kit == null || kit.Lamps == null || kit.Lamps.Length == 0)
@@ -994,7 +1008,7 @@ public class TileStreamer : MonoBehaviour
 			return;
 		}
 		Plan.Underground.Collect(x, z, halls, galleries);
-		float floor = groundY - (float)UndergroundPlan.Depth;
+		float level = groundY - (float)UndergroundPlan.Level;
 		foreach (Hall hall in halls)
 		{
 			WorldRandom random = new WorldRandom(WorldRandom.Derive(hall.Seed, Gen2.StreamUnder, 2uL));
@@ -1004,13 +1018,16 @@ public class TileStreamer : MonoBehaviour
 				int c = random.Next(4);
 				float sx = ((c & 1) == 0) ? -1f : 1f;
 				float sz = ((c & 2) == 0) ? -1f : 1f;
-				Vector3 at = new Vector3((float)hall.Center.X + sx * ((float)hall.HalfX - 2f), floor, (float)hall.Center.Z + sz * ((float)hall.HalfZ - 2f));
+				Vector3 at = new Vector3((float)hall.Center.X + sx * ((float)hall.HalfX - 2.5f), level, (float)hall.Center.Z + sz * ((float)hall.HalfZ - 2.5f));
 				UnderLamp(at, new Vector3(-sx, 0f, -sz), random, props);
 			}
-			if (hall.Shaft)
+			if (hall.Entrance)
 			{
-				XZ foot = hall.ShaftPoint(0.0, 0.0);
-				UnderLamp(new Vector3((float)foot.X, floor, (float)foot.Z), new Vector3((float)-hall.Out.X, 0f, (float)-hall.Out.Z), random, props);
+				Vector3 back = new Vector3((float)-hall.Out.X, 0f, (float)-hall.Out.Z);
+				XZ foot = hall.PassagePoint(UndergroundPlan.Flat * 0.5, UndergroundPlan.GalleryWidth * 0.5 - 1.2);
+				UnderLamp(new Vector3((float)foot.X, level, (float)foot.Z), back, random, props);
+				XZ inside = hall.PassagePoint(UndergroundPlan.HoleFrom - 1.0, UndergroundPlan.GalleryWidth * 0.5 - 0.8);
+				UnderLamp(new Vector3((float)inside.X, groundY, (float)inside.Z), back, random, props);
 			}
 		}
 	}
@@ -1251,7 +1268,7 @@ public class TileStreamer : MonoBehaviour
 		float edge = street ? Mathf.Min(2.5f, (float)Plan.Def.Districts[Plan.DistrictAt(mid.X, mid.Z)].Sidewalk * 0.5f) : 3f;
 		at = new Vector3((float)mid.X, 0f, (float)mid.Z) + across * (side * ((float)piece.Width * 0.5f + edge));
 		tall = street ? 8.5f : 7f;
-		return Plan.Chasms.Inside(at.x, at.z) < -1.0;
+		return Plan.Chasms.Inside(at.x, at.z) < -1.0 && !Plan.Underground.Blocks(new XZ(at.x, at.z), 1.0);
 	}
 
 	private bool Blocked(XZ p, double clear)
@@ -1375,7 +1392,7 @@ public class TileStreamer : MonoBehaviour
 			// on the sidewalk, or against the wall where there's hardly one
 			float sidewalk = (float)Plan.Def.Districts[Plan.DistrictAt(mid.X, mid.Z)].Sidewalk;
 			Vector3 at = new Vector3((float)mid.X, groundY, (float)mid.Z) + left * (side * ((float)piece.Width * 0.5f + Mathf.Min(1.5f, sidewalk * 0.5f)));
-			if (Plan.Chasms.Inside(at.x, at.z) > -1.0)
+			if (Plan.Chasms.Inside(at.x, at.z) > -1.0 || Plan.Underground.Blocks(new XZ(at.x, at.z), 1.0))
 			{
 				continue;
 			}

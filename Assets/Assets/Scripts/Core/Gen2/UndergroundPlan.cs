@@ -24,11 +24,22 @@ public struct Area
 		double dz = Math.Max(0.0, Math.Max(Z0 - z, z - Z1));
 		return Math.Sqrt(dx * dx + dz * dz);
 	}
+
+	public Area Grown(double margin)
+	{
+		return new Area { X0 = X0 - margin, Z0 = Z0 - margin, X1 = X1 + margin, Z1 = Z1 + margin };
+	}
+
+	public bool Overlaps(Area other)
+	{
+		return other.X0 < X1 && other.X1 > X0 && other.Z0 < Z1 && other.Z1 > Z0;
+	}
 }
 
-// a hall of the underground, layout coords, its sides along x and z, the floor UndergroundPlan.Depth under the deck.
-// where a gallery comes in on a side, the gallery's middle line (z on an x side, x on a z side), NaN where none.
-// maybe a shaft beside it with a ramp from the deck spiralling down its walls
+// a hall of the underground, layout coords, its sides along x and z. a deep dark pit with a ledge round its walls
+// at the underground's level (UndergroundPlan.Level under the deck) and a bridge across, the galleries' mouths on
+// the ledge. where a gallery comes in on a side, the gallery's middle line (z on an x side, x on a z side), NaN
+// where none. maybe a way in: a passage from one side up a ramp to a ramp house on the deck
 public struct Hall
 {
 	public int CellX;
@@ -49,25 +60,42 @@ public struct Hall
 
 	public double GalleryNZ;
 
-	public bool Shaft;
+	public bool Entrance;
 
-	public XZ ShaftCenter;
-
-	// unit, from the hall to the shaft (along x or z). the shaft's own frame: q along Out, p along Left(Out)
+	// unit, from the hall to the passage (along x or z), and where the passage's middle is along that side, from the
+	// hall's middle along Along
 	public XZ Out;
+
+	public double EntranceAt;
+
+	// from the ramp house's doorway to the middle of the road it opens onto
+	public double Apron;
 
 	public ulong Seed;
 
 	public XZ Along => new XZ(-Out.Z, Out.X);
 
-	// a point in the shaft's frame, (-Shaft/2, -Shaft/2) the corner by the hall where the ramp starts at the deck
-	// and ends on the floor
-	public XZ ShaftPoint(double p, double q)
-	{
-		return new XZ(ShaftCenter.X - Out.Z * p + Out.X * q, ShaftCenter.Z + Out.X * p + Out.Z * q);
-	}
+	public double HalfOut => (Math.Abs(Out.X) > 0.5) ? HalfX : HalfZ;
+
+	public double HalfAlong => (Math.Abs(Out.X) > 0.5) ? HalfZ : HalfX;
 
 	public Area Inner => new Area { X0 = Center.X - HalfX, Z0 = Center.Z - HalfZ, X1 = Center.X + HalfX, Z1 = Center.Z + HalfZ };
+
+	// s along the passage from the hall's wall, across it to the left (Along)
+	public XZ PassagePoint(double s, double across)
+	{
+		double o = HalfOut + UndergroundPlan.Wall + s;
+		double a = EntranceAt + across;
+		return new XZ(Center.X + Out.X * o - Out.Z * a, Center.Z + Out.Z * o + Out.X * a);
+	}
+
+	// the passage's stretch from s0 to s1, half wide either side
+	public Area PassageArea(double s0, double s1, double half)
+	{
+		XZ a = PassagePoint(s0, -half);
+		XZ b = PassagePoint(s1, half);
+		return new Area { X0 = Math.Min(a.X, b.X), Z0 = Math.Min(a.Z, b.Z), X1 = Math.Max(a.X, b.X), Z1 = Math.Max(a.Z, b.Z) };
+	}
 }
 
 // a stretch of gallery (a ket-wide tunnel between two halls), along x or z, layout coords
@@ -78,20 +106,24 @@ public struct GalleryPiece
 	public XZ B;
 }
 
-// world gen v2: the underground (01, the raised city and the underground; episode 1's dark industrial interior).
-// one level UndergroundPlan.Depth under the deck: halls on a coarse grid of cells, a district's share of cells
-// (DistrictDef.Underground), joined to the next cell's hall by straight galleries. the way in for now: shafts beside
-// some halls in open districts, a ramp spiralling down their walls from the deck to the floor, the ket fits.
-// halls keep clear of voids, pillars and the start; shafts of roads, lots and viaducts too.
+// world gen v2: the underground (01, the raised city and the underground; episode 1's dark industrial interior:
+// Yuuri wants to go into a building, they get lost inside, and leave by a doorway at the end of a passage).
+// one level Level under the deck: halls on a coarse grid of cells, a district's share of cells
+// (DistrictDef.Underground), joined to the next cell's hall by straight galleries. the ways in for now: ramp houses,
+// a concrete building by a road with a big doorway and a straight ramp down a passage to a hall.
+// halls keep clear of voids, pillars and the start; ramp houses of everything on the deck.
 // a pure function of (layer seed, cell), cached
 public sealed class UndergroundPlan
 {
 	public const double Cell = 256.0;
 
-	// the floor this far under the deck, the halls' ceiling under a slab this thick
-	public const double Depth = 25.0;
+	// the level the ket drives on this far under the deck; the ceilings under a slab this thick; the halls' pits
+	// go down this far
+	public const double Level = 11.0;
 
 	public const double Slab = 4.0;
+
+	public const double Bottom = 45.0;
 
 	public const double Wall = 1.0;
 
@@ -99,31 +131,51 @@ public sealed class UndergroundPlan
 
 	public const double MaxHalf = 60.0;
 
+	// the ledge round a hall's walls; a hall too small for a pit is all floor
+	public const double Ledge = 9.0;
+
+	public const double MinPit = 6.0;
+
+	public const double BridgeWidth = 8.0;
+
 	// from a hall to its cell's edge
 	public const double CellMargin = 10.0;
 
 	public const double GalleryWidth = 10.0;
 
-	public const double GalleryHeight = 7.0;
+	public const double GalleryHeight = Level - Slab;
 
 	public const double GalleryChance = 0.8;
 
-	// the shaft: its inside, the ramp's width along the walls, laps of the walls the ramp goes down in (four flights
-	// a lap, a flat landing in each corner). 2 laps of 56 m: 320 m of ramp, 7.8%
-	public const double Shaft = 56.0;
+	// the passage of a way in: flat out of the hall, then up a ramp (11% but its short eased ends), its roof a thin
+	// slab just under the deck, the last of it in the ramp house where the deck's open over it
+	public const double Flat = 8.0;
 
-	public const double Ramp = 8.0;
+	public const double Grade = 0.11;
 
-	public const int Laps = 2;
+	public const double RampEase = 0.1;
 
-	public const double ShaftChance = 0.5;
+	public static readonly double RampLength = Level / (Grade * (1.0 - RampEase));
 
-	// kept from voids, pillars, the start; a shaft from roads and lots
+	public static readonly double PassageLength = Flat + RampLength;
+
+	public const double Roof = 0.6;
+
+	// a ket and its riders under the roof
+	public const double Headroom = 3.2;
+
+	public const double HouseHeight = 8.0;
+
+	public const double EntranceChance = 0.6;
+
+	public const double MaxApron = 30.0;
+
+	// kept from voids, pillars, the start; a ramp house from roads and lots
 	public const double VoidGap = 16.0;
 
 	public const double PillarGap = 120.0;
 
-	public const double RoadGap = 12.0;
+	public const double RoadGap = 6.0;
 
 	private readonly LayerPlan plan;
 
@@ -136,14 +188,75 @@ public sealed class UndergroundPlan
 		this.plan = plan;
 	}
 
-	public static int Flights => Laps * 4;
+	// the passage's floor s metres from the hall's wall, from -Level up to the deck
+	public static double PassageFloor(double s)
+	{
+		double u = (s - Flat) / RampLength;
+		if (u <= 0.0)
+		{
+			return -Level;
+		}
+		if (u >= 1.0)
+		{
+			return 0.0;
+		}
+		double m = 1.0 / (1.0 - RampEase);
+		double share;
+		if (u < RampEase)
+		{
+			share = m * u * u / (2.0 * RampEase);
+		}
+		else if (u <= 1.0 - RampEase)
+		{
+			share = m * (u - RampEase * 0.5);
+		}
+		else
+		{
+			double rest = 1.0 - u;
+			share = 1.0 - m * rest * rest / (2.0 * RampEase);
+		}
+		return -Level + Level * share;
+	}
 
-	public static double FlightLength => Shaft - 2.0 * Ramp;
+	private static double holeFrom = -1.0;
 
-	// how far each flight goes down
-	public static double Drop => Depth / Flights;
+	// the passage's roof: a gallery's height over its floor, at most up to the thin slab under the deck
+	public static double PassageRoof(double s)
+	{
+		return Math.Min(-Roof, PassageFloor(s) + GalleryHeight);
+	}
 
-	// the hall in this cell, if there is one, with its galleries and shaft
+	// where the passage's floor comes up within Headroom of its roof under the deck: from there on the deck is open
+	// over it, under the ramp house's roof
+	public static double HoleFrom
+	{
+		get
+		{
+			if (holeFrom < 0.0)
+			{
+				double lo = Flat;
+				double hi = PassageLength;
+				for (int i = 0; i < 60; i++)
+				{
+					double mid = (lo + hi) * 0.5;
+					if (PassageFloor(mid) < -(Roof + Headroom))
+					{
+						lo = mid;
+					}
+					else
+					{
+						hi = mid;
+					}
+				}
+				holeFrom = lo;
+			}
+			return holeFrom;
+		}
+	}
+
+	public static double HouseFrom => HoleFrom - 2.0;
+
+	// the hall in this cell, if there is one, with its galleries and way in
 	public bool HallAt(int cellX, int cellZ, out Hall hall)
 	{
 		long key = ((long)cellX << 32) ^ (uint)cellZ;
@@ -164,7 +277,7 @@ public sealed class UndergroundPlan
 			hall.GalleryNX = Gallery(cellX - 1, cellZ, false, out GalleryPiece west) ? west.A.Z : double.NaN;
 			hall.GalleryPZ = Gallery(cellX, cellZ, true, out GalleryPiece north) ? north.A.X : double.NaN;
 			hall.GalleryNZ = Gallery(cellX, cellZ - 1, true, out GalleryPiece south) ? south.A.X : double.NaN;
-			ShaftFor(ref hall);
+			EntranceFor(ref hall);
 			halls[key] = hall;
 		}
 		else
@@ -175,7 +288,7 @@ public sealed class UndergroundPlan
 		return found;
 	}
 
-	// the room alone, no galleries or shaft yet
+	// the room alone, no galleries or way in yet
 	private bool Room(int cellX, int cellZ, out Hall hall)
 	{
 		hall = default(Hall);
@@ -194,8 +307,7 @@ public sealed class UndergroundPlan
 		{
 			return false;
 		}
-		Area inner = hall.Inner;
-		return Clear(inner, VoidGap + Wall);
+		return Clear(hall.Inner, VoidGap + Wall);
 	}
 
 	// the area and a margin round it clear of voids, pillars and the start
@@ -254,7 +366,6 @@ public sealed class UndergroundPlan
 			return false;
 		}
 		double half = GalleryWidth * 0.5 + Wall + 2.0;
-		Area area;
 		if (north)
 		{
 			double x0 = Math.Max(a.Center.X - a.HalfX, b.Center.X - b.HalfX) + half;
@@ -266,7 +377,6 @@ public sealed class UndergroundPlan
 			double x = (x0 + x1) * 0.5;
 			gallery.A = new XZ(x, a.Center.Z + a.HalfZ + Wall);
 			gallery.B = new XZ(x, b.Center.Z - b.HalfZ - Wall);
-			area = new Area { X0 = x - GalleryWidth * 0.5, Z0 = gallery.A.Z, X1 = x + GalleryWidth * 0.5, Z1 = gallery.B.Z };
 		}
 		else
 		{
@@ -279,132 +389,251 @@ public sealed class UndergroundPlan
 			double z = (z0 + z1) * 0.5;
 			gallery.A = new XZ(a.Center.X + a.HalfX + Wall, z);
 			gallery.B = new XZ(b.Center.X - b.HalfX - Wall, z);
-			area = new Area { X0 = gallery.A.X, Z0 = z - GalleryWidth * 0.5, X1 = gallery.B.X, Z1 = z + GalleryWidth * 0.5 };
 		}
-		return Clear(area, VoidGap + Wall);
+		return Clear(GalleryArea(gallery), VoidGap + Wall);
 	}
 
-	// a shaft on a side of the hall with no gallery, long enough, in the hall's own cell, where nothing on the deck
-	// is in the way of its hole: an open district, no road, site, viaduct or void near
-	private void ShaftFor(ref Hall hall)
+	// ---- ways in
+
+	// a passage on a side of the hall with no gallery, up to a ramp house on the deck whose doorway opens onto a road a
+	// few metres off, where nothing on the deck is in the way. under the deck the passage keeps to its own cell and
+	// to neighbouring cells with no hall (so it never meets another's galleries)
+	private void EntranceFor(ref Hall hall)
 	{
 		WorldRandom random = new WorldRandom(WorldRandom.Derive(hall.Seed, Gen2.StreamUnder, 1uL));
-		if (Gen2.Unit(random.NextULong()) >= ShaftChance)
+		if (Gen2.Unit(random.NextULong()) >= EntranceChance)
 		{
 			return;
 		}
 		int first = random.Next(4);
+		double slide = Gen2.Unit(random.NextULong()) * 2.0 - 1.0;
 		for (int n = 0; n < 4; n++)
 		{
 			int side = (first + n) % 4;
-			XZ out_ = (side == 0) ? new XZ(1.0, 0.0) : (side == 1) ? new XZ(-1.0, 0.0) : (side == 2) ? new XZ(0.0, 1.0) : new XZ(0.0, -1.0);
 			double gallery = (side == 0) ? hall.GalleryPX : (side == 1) ? hall.GalleryNX : (side == 2) ? hall.GalleryPZ : hall.GalleryNZ;
-			double halfAlong = (side < 2) ? hall.HalfZ : hall.HalfX;
-			double halfOut = (side < 2) ? hall.HalfX : hall.HalfZ;
-			if (!double.IsNaN(gallery) || halfAlong < Shaft * 0.5 + Wall)
+			if (!double.IsNaN(gallery))
 			{
 				continue;
 			}
-			// slid along the side so it stays within the hall's
-			double room = halfAlong - Shaft * 0.5 - Wall;
-			double slide = (Gen2.Unit(random.NextULong()) * 2.0 - 1.0) * room;
-			XZ along = new XZ(-out_.Z, out_.X);
-			double reach = halfOut + Wall + Shaft * 0.5;
-			hall.ShaftCenter = new XZ(hall.Center.X + out_.X * reach + along.X * slide, hall.Center.Z + out_.Z * reach + along.Z * slide);
-			hall.Out = out_;
-			Area outer = ShaftArea(hall, Wall);
-			Area cell = new Area { X0 = hall.CellX * Cell + CellMargin, Z0 = hall.CellZ * Cell + CellMargin, X1 = (hall.CellX + 1) * Cell - CellMargin, Z1 = (hall.CellZ + 1) * Cell - CellMargin };
-			if (outer.X0 < cell.X0 || outer.Z0 < cell.Z0 || outer.X1 > cell.X1 || outer.Z1 > cell.Z1 || !Open(outer))
+			for (int k = 0; k < 3; k++)
 			{
-				continue;
+				Hall at = hall;
+				at.Out = (side == 0) ? new XZ(1.0, 0.0) : (side == 1) ? new XZ(-1.0, 0.0) : (side == 2) ? new XZ(0.0, 1.0) : new XZ(0.0, -1.0);
+				at.EntranceAt = ((k == 0) ? slide : (k == 1) ? -0.6 : 0.6) * (at.HalfAlong - GalleryWidth * 0.5 - Wall);
+				Area passage = at.PassageArea(0.0, PassageLength, GalleryWidth * 0.5 + Wall);
+				if (!Free(at, passage) || !Clear(passage, VoidGap) || !Opens(ref at))
+				{
+					continue;
+				}
+				at.Entrance = true;
+				hall = at;
+				return;
 			}
-			hall.Shaft = true;
-			return;
 		}
 	}
 
-	// the shaft's inside, grown by margin
-	public static Area ShaftArea(Hall hall, double margin)
+	// the passage's cells: its hall's own, or ones with no hall in them
+	private bool Free(Hall hall, Area passage)
 	{
-		double half = Shaft * 0.5 + margin;
-		return new Area { X0 = hall.ShaftCenter.X - half, Z0 = hall.ShaftCenter.Z - half, X1 = hall.ShaftCenter.X + half, Z1 = hall.ShaftCenter.Z + half };
-	}
-
-	// nothing on the deck round a shaft's hole: all of it in open districts, far from voids (the tiles round it are
-	// plain deck), from expressways, buried roads, sites' lots, viaducts, pillars and the start
-	private bool Open(Area area)
-	{
-		XZ middle = new XZ((area.X0 + area.X1) * 0.5, (area.Z0 + area.Z1) * 0.5);
-		double radius = Shaft * 0.75 + Wall;
-		for (int c = 0; c < 4; c++)
+		int cx0 = Gen2.Cell(passage.X0 - CellMargin, Cell);
+		int cx1 = Gen2.Cell(passage.X1 + CellMargin, Cell);
+		int cz0 = Gen2.Cell(passage.Z0 - CellMargin, Cell);
+		int cz1 = Gen2.Cell(passage.Z1 + CellMargin, Cell);
+		for (int cx = cx0; cx <= cx1; cx++)
 		{
-			double x = ((c & 1) == 0) ? area.X0 : area.X1;
-			double z = ((c & 2) == 0) ? area.Z0 : area.Z1;
-			if (plan.Def.Districts[plan.DistrictAt(x, z)].Roads != DistrictRoads.Open)
+			for (int cz = cz0; cz <= cz1; cz++)
 			{
-				return false;
-			}
-		}
-		if (plan.Chasms.Inside(middle.X, middle.Z) > -(Gen2.TileSize * 2.0 + Shaft) || plan.Roads.HighwayNear(middle, radius + RoadGap) || area.Distance(plan.Origin.X, plan.Origin.Z) < RoadPlan.StartClearance + RoadGap)
-		{
-			return false;
-		}
-		XZ pillar = plan.PillarNear(middle.X, middle.Z).Position;
-		if (area.Distance(pillar.X, pillar.Z) < PillarGap)
-		{
-			return false;
-		}
-		plan.Viaducts.Near(middle.X, middle.Z, viaducts);
-		if (plan.Viaducts.Blocks(middle, radius, viaducts))
-		{
-			return false;
-		}
-		int sx = Gen2.Cell(middle.X, RoadPlan.SiteCell);
-		int sz = Gen2.Cell(middle.Z, RoadPlan.SiteCell);
-		for (int cx = sx - 2; cx <= sx + 1; cx++)
-		{
-			for (int cz = sz - 2; cz <= sz + 1; cz++)
-			{
-				if (plan.Roads.Site(cx, cz, out XZ site) && area.Distance(site.X, site.Z) < LotPlan.SiteLot * 1.42 + RoadGap)
+				if ((cx != hall.CellX || cz != hall.CellZ) && Room(cx, cz, out _))
 				{
 					return false;
-				}
-				for (int d = 0; d < 2; d++)
-				{
-					if (plan.Roads.Track(cx, cz, d == 1, out XZ p0, out XZ c1, out XZ c2, out XZ p1) && CurveNear(area, p0, c1, c2, p1, RoadPlan.TrackWidth * 0.5 + RoadGap))
-					{
-						return false;
-					}
 				}
 			}
 		}
 		return true;
 	}
 
-	private readonly List<Viaduct> viaducts = new List<Viaduct>();
-
-	// a bezier passing within distance of the area, sampled every few metres (buried roads bend round pillars too,
-	// which these samples don't see, but those bends are far from any shaft: shafts keep PillarGap)
-	private static bool CurveNear(Area area, XZ p0, XZ c1, XZ c2, XZ p1, double distance)
+	public static Area HouseArea(Hall hall)
 	{
-		int steps = Math.Max(8, (int)(p0.DistanceTo(p1) / 4.0));
-		for (int i = 0; i <= steps; i++)
+		return hall.PassageArea(HouseFrom, PassageLength, GalleryWidth * 0.5 + Wall);
+	}
+
+	public static Area HoleArea(Hall hall)
+	{
+		return hall.PassageArea(HoleFrom, PassageLength, GalleryWidth * 0.5);
+	}
+
+	public static Area ApronArea(Hall hall)
+	{
+		return hall.PassageArea(PassageLength, PassageLength + hall.Apron, GalleryWidth * 0.5 + 1.0);
+	}
+
+	// the ramp house and its apron clear of everything on the deck, the apron ending on a road (sets Apron): a ground
+	// street of the block the house stands in, or a buried road out in the open
+	private bool Opens(ref Hall hall)
+	{
+		Area house = HouseArea(hall);
+		XZ door = hall.PassagePoint(PassageLength, 0.0);
+		XZ middle = new XZ((house.X0 + house.X1) * 0.5, (house.Z0 + house.Z1) * 0.5);
+		if (plan.Chasms.Inside(middle.X, middle.Z) > -(Gen2.TileSize * 1.6 + 30.0) || house.Distance(plan.Origin.X, plan.Origin.Z) < RoadPlan.StartClearance + RoadGap)
 		{
-			double t = (double)i / steps;
-			double s = 1.0 - t;
-			double x = s * s * s * p0.X + 3.0 * s * s * t * c1.X + 3.0 * s * t * t * c2.X + t * t * t * p1.X;
-			double z = s * s * s * p0.Z + 3.0 * s * s * t * c1.Z + 3.0 * s * t * t * c2.Z + t * t * t * p1.Z;
-			if (area.Distance(x, z) < distance)
+			return false;
+		}
+		XZ pillar = plan.PillarNear(middle.X, middle.Z).Position;
+		double reach = (house.X1 - house.X0 + house.Z1 - house.Z0) * 0.5 + MaxApron;
+		if (house.Distance(pillar.X, pillar.Z) < PillarGap || plan.Roads.HighwayNear(middle, reach))
+		{
+			return false;
+		}
+		plan.Viaducts.Near(middle.X, middle.Z, viaducts);
+		if (plan.Viaducts.Blocks(middle, reach, viaducts))
+		{
+			return false;
+		}
+		int district = plan.DistrictAt(door.X, door.Z);
+		for (int c = 0; c < 4; c++)
+		{
+			if (plan.DistrictAt(((c & 1) == 0) ? house.X0 : house.X1, ((c & 2) == 0) ? house.Z0 : house.Z1) != district)
 			{
-				return true;
+				return false;
 			}
 		}
-		return false;
+		return (plan.Def.Districts[district].Roads == DistrictRoads.Streets) ? OntoStreet(ref hall, district, house, door) : OntoTrack(ref hall, house, door);
 	}
+
+	// the house inside one block, clear of its edges' strips; the apron straight out of the doorway to the middle of
+	// the first street line it meets, a ground street there
+	private bool OntoStreet(ref Hall hall, int district, Area house, XZ door)
+	{
+		plan.Roads.GridFrame(district, out XZ origin, out XZ u, out XZ v, out _);
+		DistrictDef def = plan.Def.Districts[district];
+		double half = def.StreetWidth * 0.5;
+		double inset = Math.Max(half + def.Sidewalk, half + LotPlan.StairWidth + LotPlan.StairGap);
+		double du = (door.X - origin.X) * u.X + (door.Z - origin.Z) * u.Z;
+		double dv = (door.X - origin.X) * v.X + (door.Z - origin.Z) * v.Z;
+		int k = Line(district, 0, du);
+		int j = Line(district, 1, dv);
+		double u0 = plan.Roads.GridLine(district, 0, k);
+		double u1 = plan.Roads.GridLine(district, 0, k + 1);
+		double v0 = plan.Roads.GridLine(district, 1, j);
+		double v1 = plan.Roads.GridLine(district, 1, j + 1);
+		// all of the house well inside the block
+		for (int c = 0; c < 4; c++)
+		{
+			double x = ((c & 1) == 0) ? house.X0 : house.X1;
+			double z = ((c & 2) == 0) ? house.Z0 : house.Z1;
+			double gu = (x - origin.X) * u.X + (z - origin.Z) * u.Z;
+			double gv = (x - origin.X) * v.X + (z - origin.Z) * v.Z;
+			if (gu < u0 + inset || gu > u1 - inset || gv < v0 + inset || gv > v1 - inset)
+			{
+				return false;
+			}
+		}
+		// the first line the apron meets
+		double ou = hall.Out.X * u.X + hall.Out.Z * u.Z;
+		double ov = hall.Out.X * v.X + hall.Out.Z * v.Z;
+		double tu = (ou > 1e-9) ? (u1 - du) / ou : (ou < -1e-9) ? (u0 - du) / ou : double.MaxValue;
+		double tv = (ov > 1e-9) ? (v1 - dv) / ov : (ov < -1e-9) ? (v0 - dv) / ov : double.MaxValue;
+		bool acrossU = tu < tv;
+		double t = Math.Min(tu, tv);
+		if (t > MaxApron)
+		{
+			return false;
+		}
+		XZ end = new XZ(door.X + hall.Out.X * t, door.Z + hall.Out.Z * t);
+		double eu = (end.X - origin.X) * u.X + (end.Z - origin.Z) * u.Z;
+		double ev = (end.X - origin.X) * v.X + (end.Z - origin.Z) * v.Z;
+		if (acrossU)
+		{
+			// a line across U is a cross street (line k or k + 1, along V), block j of it
+			int line = (ou > 0.0) ? k + 1 : k;
+			if (!plan.Roads.Street(district, line, j, 1) || plan.Roads.CrossHeight(district, line, j, ev) > 0.3 || ev < v0 + half + 2.0 || ev > v1 - half - 2.0)
+			{
+				return false;
+			}
+		}
+		else
+		{
+			int line = (ov > 0.0) ? j + 1 : j;
+			if (!plan.Roads.Street(district, k, line, 0) || plan.Roads.RaisedHeight(district, line, k + (eu - u0) / (u1 - u0)) > 0.3 || eu < u0 + half + 2.0 || eu > u1 - half - 2.0)
+			{
+				return false;
+			}
+		}
+		hall.Apron = t;
+		return true;
+	}
+
+	// the grid line at or below g on that axis
+	private int Line(int district, int axis, double g)
+	{
+		int k = (int)Math.Floor(g / RoadPlan.StreetSpacing);
+		while (plan.Roads.GridLine(district, axis, k) > g)
+		{
+			k--;
+		}
+		while (plan.Roads.GridLine(district, axis, k + 1) <= g)
+		{
+			k++;
+		}
+		return k;
+	}
+
+	// out in the open: a buried road crossing the apron's line a few metres in front of the doorway, none near the
+	// house itself, no site's lot near either
+	private bool OntoTrack(ref Hall hall, Area house, XZ door)
+	{
+		double best = double.MaxValue;
+		XZ middle = new XZ((house.X0 + house.X1) * 0.5, (house.Z0 + house.Z1) * 0.5);
+		int sx = Gen2.Cell(middle.X, RoadPlan.SiteCell);
+		int sz = Gen2.Cell(middle.Z, RoadPlan.SiteCell);
+		for (int cx = sx - 2; cx <= sx + 1; cx++)
+		{
+			for (int cz = sz - 2; cz <= sz + 1; cz++)
+			{
+				if (plan.Roads.Site(cx, cz, out XZ site) && house.Distance(site.X, site.Z) < LotPlan.SiteLot * 1.42 + MaxApron)
+				{
+					return false;
+				}
+				for (int d = 0; d < 2; d++)
+				{
+					if (!plan.Roads.Track(cx, cz, d == 1, out XZ p0, out XZ c1, out XZ c2, out XZ p1))
+					{
+						continue;
+					}
+					int steps = Math.Max(8, (int)(p0.DistanceTo(p1) / 2.0));
+					for (int i = 0; i <= steps; i++)
+					{
+						double t = (double)i / steps;
+						double s = 1.0 - t;
+						double x = s * s * s * p0.X + 3.0 * s * s * t * c1.X + 3.0 * s * t * t * c2.X + t * t * t * p1.X;
+						double z = s * s * s * p0.Z + 3.0 * s * s * t * c1.Z + 3.0 * s * t * t * c2.Z + t * t * t * p1.Z;
+						if (house.Distance(x, z) < RoadPlan.TrackWidth * 0.5 + RoadGap)
+						{
+							return false;
+						}
+						double ahead = (x - door.X) * hall.Out.X + (z - door.Z) * hall.Out.Z;
+						double aside = Math.Abs(-(x - door.X) * hall.Out.Z + (z - door.Z) * hall.Out.X);
+						if (ahead > 6.0 && ahead < MaxApron && aside < 4.0)
+						{
+							best = Math.Min(best, ahead);
+						}
+					}
+				}
+			}
+		}
+		if (best == double.MaxValue)
+		{
+			return false;
+		}
+		hall.Apron = best;
+		return true;
+	}
+
+	private readonly List<Viaduct> viaducts = new List<Viaduct>();
 
 	// ---- for tiles
 
-	// the halls whose middle is in the tile (with their shafts), and the gallery pieces (at most PieceLength long)
+	// the halls whose middle is in the tile (with their ways in), and the gallery pieces (at most PieceLength long)
 	// whose middle is
 	public void Collect(int tileX, int tileZ, List<Hall> hallsOut, List<GalleryPiece> pieces)
 	{
@@ -447,42 +676,36 @@ public sealed class UndergroundPlan
 		}
 	}
 
-	// the holes in the deck over shafts that reach into the tile: each shaft's inside but the corner the ramp starts
-	// from, which stays deck
+	// the holes in the deck over the passages' top ends that reach into the tile, under the ramp houses' roofs
 	public void Holes(int tileX, int tileZ, List<Area> holes)
 	{
 		holes.Clear();
 		double x0 = tileX * Gen2.TileSize;
 		double z0 = tileZ * Gen2.TileSize;
-		int cx0 = Gen2.Cell(x0 - Cell, Cell);
-		int cx1 = Gen2.Cell(x0 + Gen2.TileSize + Cell, Cell);
-		int cz0 = Gen2.Cell(z0 - Cell, Cell);
-		int cz1 = Gen2.Cell(z0 + Gen2.TileSize + Cell, Cell);
+		Area tile = new Area { X0 = x0, Z0 = z0, X1 = x0 + Gen2.TileSize, Z1 = z0 + Gen2.TileSize };
+		int cx0 = Gen2.Cell(x0, Cell) - 1;
+		int cx1 = Gen2.Cell(tile.X1, Cell) + 1;
+		int cz0 = Gen2.Cell(z0, Cell) - 1;
+		int cz1 = Gen2.Cell(tile.Z1, Cell) + 1;
 		for (int cx = cx0; cx <= cx1; cx++)
 		{
 			for (int cz = cz0; cz <= cz1; cz++)
 			{
-				if (!HallAt(cx, cz, out Hall hall) || !hall.Shaft)
+				if (!HallAt(cx, cz, out Hall hall) || !hall.Entrance)
 				{
 					continue;
 				}
-				double h = Shaft * 0.5;
-				AddHole(holes, hall.ShaftPoint(-h + Ramp, -h), hall.ShaftPoint(h, h), x0, z0);
-				AddHole(holes, hall.ShaftPoint(-h, -h + Ramp), hall.ShaftPoint(-h + Ramp, h), x0, z0);
+				Area hole = HoleArea(hall);
+				Area part = new Area { X0 = Math.Max(hole.X0, tile.X0), Z0 = Math.Max(hole.Z0, tile.Z0), X1 = Math.Min(hole.X1, tile.X1), Z1 = Math.Min(hole.Z1, tile.Z1) };
+				if (part.X1 > part.X0 && part.Z1 > part.Z0)
+				{
+					holes.Add(part);
+				}
 			}
 		}
 	}
 
-	private static void AddHole(List<Area> holes, XZ a, XZ b, double x0, double z0)
-	{
-		Area area = new Area { X0 = Math.Max(Math.Min(a.X, b.X), x0), Z0 = Math.Max(Math.Min(a.Z, b.Z), z0), X1 = Math.Min(Math.Max(a.X, b.X), x0 + Gen2.TileSize), Z1 = Math.Min(Math.Max(a.Z, b.Z), z0 + Gen2.TileSize) };
-		if (area.X1 > area.X0 && area.Z1 > area.Z0)
-		{
-			holes.Add(area);
-		}
-	}
-
-	// whether something round p with this radius would stand in a shaft's hole or on its walls
+	// whether something round p with this radius would stand in a ramp house or on its apron
 	public bool Blocks(XZ p, double radius)
 	{
 		int cx = Gen2.Cell(p.X, Cell);
@@ -491,7 +714,7 @@ public sealed class UndergroundPlan
 		{
 			for (int z = cz - 1; z <= cz + 1; z++)
 			{
-				if (HallAt(x, z, out Hall hall) && hall.Shaft && ShaftArea(hall, Wall).Distance(p.X, p.Z) < radius + 2.0)
+				if (HallAt(x, z, out Hall hall) && hall.Entrance && (HouseArea(hall).Distance(p.X, p.Z) < radius + 2.0 || ApronArea(hall).Distance(p.X, p.Z) < radius))
 				{
 					return true;
 				}
@@ -500,14 +723,25 @@ public sealed class UndergroundPlan
 		return false;
 	}
 
-	// whether (x, z) is over the underground's floor: in a hall, a gallery or a shaft
+	// whether (x, z) is over the underground: a hall (its walls too), a gallery or a passage
 	public bool Under(double x, double z)
 	{
 		int cx = Gen2.Cell(x, Cell);
 		int cz = Gen2.Cell(z, Cell);
-		if (HallAt(cx, cz, out Hall hall) && (hall.Inner.Contains(x, z) || (hall.Shaft && ShaftArea(hall, 0.0).Contains(x, z))))
+		if (HallAt(cx, cz, out Hall hall) && hall.Inner.Grown(Wall).Contains(x, z))
 		{
 			return true;
+		}
+		// passages reach into the next cells
+		for (int dx = -1; dx <= 1; dx++)
+		{
+			for (int dz = -1; dz <= 1; dz++)
+			{
+				if (HallAt(cx + dx, cz + dz, out Hall way) && way.Entrance && way.PassageArea(0.0, PassageLength, GalleryWidth * 0.5 + Wall).Contains(x, z))
+				{
+					return true;
+				}
+			}
 		}
 		for (int dx = -1; dx <= 0; dx++)
 		{
@@ -525,13 +759,37 @@ public sealed class UndergroundPlan
 		return false;
 	}
 
-	private static Area GalleryArea(GalleryPiece g)
+	// over a hall's pit, off the ledge and the bridge
+	public bool Pit(double x, double z)
+	{
+		if (!HallAt(Gen2.Cell(x, Cell), Gen2.Cell(z, Cell), out Hall hall) || !PitArea(hall, out Area pit) || !pit.Contains(x, z))
+		{
+			return false;
+		}
+		return !BridgeArea(hall).Contains(x, z);
+	}
+
+	// the pit inside the ledge, if the hall's big enough for one
+	public static bool PitArea(Hall hall, out Area pit)
+	{
+		pit = hall.Inner.Grown(-Ledge);
+		return pit.X1 - pit.X0 >= 2.0 * MinPit && pit.Z1 - pit.Z0 >= 2.0 * MinPit;
+	}
+
+	// the bridge across the pit's short way, through the hall's middle
+	public static Area BridgeArea(Hall hall)
+	{
+		double w = BridgeWidth * 0.5;
+		return (hall.HalfX >= hall.HalfZ) ? new Area { X0 = hall.Center.X - w, Z0 = hall.Center.Z - hall.HalfZ, X1 = hall.Center.X + w, Z1 = hall.Center.Z + hall.HalfZ } : new Area { X0 = hall.Center.X - hall.HalfX, Z0 = hall.Center.Z - w, X1 = hall.Center.X + hall.HalfX, Z1 = hall.Center.Z + w };
+	}
+
+	public static Area GalleryArea(GalleryPiece g)
 	{
 		double w = GalleryWidth * 0.5;
 		return (Math.Abs(g.A.X - g.B.X) < 1e-9) ? new Area { X0 = g.A.X - w, Z0 = Math.Min(g.A.Z, g.B.Z), X1 = g.A.X + w, Z1 = Math.Max(g.A.Z, g.B.Z) } : new Area { X0 = Math.Min(g.A.X, g.B.X), Z0 = g.A.Z - w, X1 = Math.Max(g.A.X, g.B.X), Z1 = g.A.Z + w };
 	}
 
-	// halls and shafts round centre, for the co-op check
+	// halls and ways in round centre, for the co-op check
 	public ulong Hash(XZ center, int radius)
 	{
 		ulong hash = 14695981039346656037uL;
@@ -545,7 +803,7 @@ public sealed class UndergroundPlan
 				{
 					hash = LayerPlan.Mix(hash, LayerPlan.Centimetres(hall.Center.X * 1000.0 + hall.Center.Z));
 					hash = LayerPlan.Mix(hash, LayerPlan.Centimetres(hall.HalfX * 1000.0 + hall.HalfZ));
-					hash = LayerPlan.Mix(hash, hall.Shaft ? LayerPlan.Centimetres(hall.ShaftCenter.X * 1000.0 + hall.ShaftCenter.Z) : 0);
+					hash = LayerPlan.Mix(hash, hall.Entrance ? LayerPlan.Centimetres(hall.Out.X * 1000.0 + hall.Out.Z * 100.0 + hall.EntranceAt + hall.Apron * 1e-3) : 0);
 				}
 			}
 		}

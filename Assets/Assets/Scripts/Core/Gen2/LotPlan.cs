@@ -649,7 +649,7 @@ public sealed class LotPlan
 	private void AddLot(int district, XZ centre, XZ axis, double hu, double hv, ulong seed, List<XZ> highway, List<Viaduct> viaducts, List<Lot> lots)
 	{
 		double reach = Math.Sqrt(hu * hu + hv * hv);
-		if (HighwayNear(centre, reach + HighwayGap, highway) || plan.Viaducts.Blocks(centre, reach, viaducts) || plan.Chasms.Blocks(centre, reach))
+		if (HighwayNear(centre, reach + HighwayGap, highway) || plan.Viaducts.Blocks(centre, reach, viaducts) || plan.Chasms.Blocks(centre, reach) || plan.Underground.Blocks(centre, reach))
 		{
 			return;
 		}

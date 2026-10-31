@@ -71,6 +71,7 @@ public class GameSession : MonoBehaviour
 				gameObject.AddComponent<DistantPillar>();
 			}
 			Add<SafeGround>().Init(world.Plan, tiles, floatingOrigin);
+			Add<UndergroundAtmosphere>().Init(world.Plan, tiles, floatingOrigin);
 			// an endless world needs it, v1 never goes far enough
 			if (floatingOrigin != null)
 			{

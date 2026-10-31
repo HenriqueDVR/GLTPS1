@@ -8,8 +8,8 @@ using UnityEngine.UI;
 // an AI girl who falls is put by the girl she follows
 public class SafeGround : MonoBehaviour
 {
-	// this far under the deck and she's gone
-	private const float fallDepth = 20f;
+	// this far under the deck and she's gone: well under the underground's level, so off a ledge into a hall's pit too
+	private const float fallDepth = (float)UndergroundPlan.Level + 6f;
 
 	private const float keepInterval = 0.5f;
 
@@ -114,14 +114,9 @@ public class SafeGround : MonoBehaviour
 		}
 	}
 
-	// under the deck, or under the underground's floor where there's one (UndergroundPlan)
-	private bool Fallen(Vector3 at, float deck)
+	private static bool Fallen(Vector3 at, float deck)
 	{
-		if (at.y >= deck - fallDepth)
-		{
-			return false;
-		}
-		return !plan.Underground.Under(at.x, at.z) || at.y < deck - (float)UndergroundPlan.Depth - 5f;
+		return at.y < deck - fallDepth;
 	}
 
 	private static bool Driving(Girl girl)

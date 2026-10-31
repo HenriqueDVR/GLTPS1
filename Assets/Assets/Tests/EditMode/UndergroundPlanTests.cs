@@ -4,7 +4,7 @@ using System.Text;
 using NUnit.Framework;
 
 // world gen v2 underground: halls in their cells clear of voids, pillars and the start, galleries between them,
-// shafts with their ramp down where nothing on the deck is in the way
+// ways in with a ramp up to a ramp house where nothing on the deck is in the way
 public class UndergroundPlanTests
 {
 	private const ulong seed = 12345uL;
@@ -50,8 +50,9 @@ public class UndergroundPlanTests
 				bool hb = b.Underground.HallAt(x, z, out Hall two);
 				Assert.AreEqual(ha, hb);
 				Assert.AreEqual(one.Center.X, two.Center.X);
-				Assert.AreEqual(one.Shaft, two.Shaft);
-				Assert.AreEqual(one.ShaftCenter.Z, two.ShaftCenter.Z);
+				Assert.AreEqual(one.Entrance, two.Entrance);
+				Assert.AreEqual(one.EntranceAt, two.EntranceAt);
+				Assert.AreEqual(one.Apron, two.Apron);
 			}
 		}
 	}
@@ -111,8 +112,8 @@ public class UndergroundPlanTests
 						Assert.GreaterOrEqual(g.A.X - half, System.Math.Max(a.Center.X - a.HalfX, b.Center.X - b.HalfX));
 						Assert.AreEqual(a.GalleryPZ, g.A.X);
 						Assert.AreEqual(b.GalleryNZ, g.A.X);
-						Assert.IsFalse(a.Shaft && a.Out.Z > 0.5);
-						Assert.IsFalse(b.Shaft && b.Out.Z < -0.5);
+						Assert.IsFalse(a.Entrance && a.Out.Z > 0.5);
+						Assert.IsFalse(b.Entrance && b.Out.Z < -0.5);
 					}
 					else
 					{
@@ -120,8 +121,8 @@ public class UndergroundPlanTests
 						Assert.AreEqual(b.Center.X - b.HalfX - UndergroundPlan.Wall, g.B.X, 1e-9);
 						Assert.AreEqual(a.GalleryPX, g.A.Z);
 						Assert.AreEqual(b.GalleryNX, g.A.Z);
-						Assert.IsFalse(a.Shaft && a.Out.X > 0.5);
-						Assert.IsFalse(b.Shaft && b.Out.X < -0.5);
+						Assert.IsFalse(a.Entrance && a.Out.X > 0.5);
+						Assert.IsFalse(b.Entrance && b.Out.X < -0.5);
 					}
 					XZ middle = new XZ((g.A.X + g.B.X) * 0.5, (g.A.Z + g.B.Z) * 0.5);
 					Assert.IsTrue(plan.Underground.Under(middle.X, middle.Z));
@@ -131,32 +132,66 @@ public class UndergroundPlanTests
 		Assert.Greater(count, 20);
 	}
 
-	// a shaft's hole: nothing on the deck reaches into it, no road, lot or void, and the ramp's grade suits the ket
+	// the ramp's floor: flat out of the hall, up to the deck, never steeper than Grade, the deck open
+	// over it where there's no more room under its roof
 	[Test]
-	public void ShaftsWhereTheDeckIsClear()
+	public void PassageFloor()
+	{
+		Assert.AreEqual(-UndergroundPlan.Level, UndergroundPlan.PassageFloor(0.0), 1e-9);
+		Assert.AreEqual(-UndergroundPlan.Level, UndergroundPlan.PassageFloor(UndergroundPlan.Flat), 1e-9);
+		Assert.AreEqual(0.0, UndergroundPlan.PassageFloor(UndergroundPlan.PassageLength), 1e-9);
+		for (double s = 0.0; s < UndergroundPlan.PassageLength; s += 0.5)
+		{
+			double grade = UndergroundPlan.PassageFloor(s + 0.5) - UndergroundPlan.PassageFloor(s);
+			Assert.GreaterOrEqual(grade, -1e-9);
+			Assert.LessOrEqual(grade / 0.5, UndergroundPlan.Grade + 0.002);
+		}
+		Assert.AreEqual(-(UndergroundPlan.Roof + UndergroundPlan.Headroom), UndergroundPlan.PassageFloor(UndergroundPlan.HoleFrom), 1e-6);
+		Assert.Less(UndergroundPlan.PassageLength - UndergroundPlan.HouseFrom, 50.0);
+		Assert.Less(UndergroundPlan.HouseFrom, UndergroundPlan.HoleFrom);
+	}
+
+	// a ramp house: nothing on the deck in it or on its apron, its apron ending on a road, the deck open over the top of
+	// its ramp only, the passage under the deck all the way
+	[Test]
+	public void WaysInWhereTheDeckIsClear()
 	{
 		LayerPlan plan = Layer0();
-		Assert.Less(UndergroundPlan.Depth / (UndergroundPlan.Flights * UndergroundPlan.FlightLength), 0.094);
-		Assert.Greater(UndergroundPlan.Drop * 4.0 - 0.6, 3.0, "room under the lap above");
 		List<Lot> lots = new List<Lot>();
 		List<RoadPiece> pieces = new List<RoadPiece>();
 		List<RoadPatch> patches = new List<RoadPatch>();
 		List<Area> holes = new List<Area>();
-		int shafts = 0;
-		foreach (Hall hall in All(plan, 10))
+		int ways = 0;
+		foreach (Hall hall in All(plan, 12))
 		{
-			if (!hall.Shaft)
+			if (!hall.Entrance)
 			{
 				continue;
 			}
-			shafts++;
-			Area area = UndergroundPlan.ShaftArea(hall, UndergroundPlan.Wall);
-			Assert.Less(plan.Chasms.Inside(hall.ShaftCenter.X, hall.ShaftCenter.Z), -Gen2.TileSize);
-			int tx0 = Gen2.Cell(area.X0, Gen2.TileSize) - 1;
-			int tx1 = Gen2.Cell(area.X1, Gen2.TileSize) + 1;
-			int tz0 = Gen2.Cell(area.Z0, Gen2.TileSize) - 1;
-			int tz1 = Gen2.Cell(area.Z1, Gen2.TileSize) + 1;
+			ways++;
+			Area house = UndergroundPlan.HouseArea(hall);
+			Area apron = UndergroundPlan.ApronArea(hall);
+			Area passage = hall.PassageArea(0.0, UndergroundPlan.PassageLength, UndergroundPlan.GalleryWidth * 0.5 + UndergroundPlan.Wall);
+			// under the deck it meets no other hall
+			foreach (Hall other in All(plan, 12))
+			{
+				if (other.CellX != hall.CellX || other.CellZ != hall.CellZ)
+				{
+					Assert.IsFalse(passage.Overlaps(other.Inner.Grown(UndergroundPlan.Wall)), "passage into another hall");
+				}
+			}
+			for (double s = 0.0; s < UndergroundPlan.PassageLength; s += 4.0)
+			{
+				XZ p = hall.PassagePoint(s, 0.0);
+				Assert.IsTrue(plan.Underground.Under(p.X, p.Z));
+			}
+			XZ end = hall.PassagePoint(UndergroundPlan.PassageLength + hall.Apron, 0.0);
+			int tx0 = Gen2.Cell(System.Math.Min(house.X0, apron.X0), Gen2.TileSize) - 1;
+			int tx1 = Gen2.Cell(System.Math.Max(house.X1, apron.X1), Gen2.TileSize) + 1;
+			int tz0 = Gen2.Cell(System.Math.Min(house.Z0, apron.Z0), Gen2.TileSize) - 1;
+			int tz1 = Gen2.Cell(System.Math.Max(house.Z1, apron.Z1), Gen2.TileSize) + 1;
 			double hole = 0.0;
+			bool onRoad = false;
 			for (int tx = tx0; tx <= tx1; tx++)
 			{
 				for (int tz = tz0; tz <= tz1; tz++)
@@ -164,33 +199,40 @@ public class UndergroundPlanTests
 					plan.Lots.Collect(tx, tz, lots);
 					foreach (Lot lot in lots)
 					{
-						Assert.Greater(area.Distance(lot.Center.X, lot.Center.Z), System.Math.Sqrt(lot.HalfU * lot.HalfU + lot.HalfV * lot.HalfV), "lot in a shaft");
+						double reach = System.Math.Sqrt(lot.HalfU * lot.HalfU + lot.HalfV * lot.HalfV);
+						Assert.Greater(house.Distance(lot.Center.X, lot.Center.Z), reach, "lot in a ramp house");
+						Assert.Greater(apron.Distance(lot.Center.X, lot.Center.Z), reach - 2.0, "lot on an apron");
 					}
 					plan.Roads.Collect(tx, tz, pieces, patches);
 					foreach (RoadPiece piece in pieces)
 					{
-						for (double t = 0.0; t <= 1.0; t += 0.25)
+						for (double t = 0.0; t <= 1.0; t += 0.125)
 						{
 							double x = piece.A.X + (piece.B.X - piece.A.X) * t;
 							double z = piece.A.Z + (piece.B.Z - piece.A.Z) * t;
-							Assert.Greater(area.Distance(x, z), piece.Width * 0.5, "road in a shaft");
+							Assert.Greater(house.Distance(x, z), piece.Width * 0.5, "road through a ramp house");
+						}
+						if (RoadPlan.SegmentDistance(end, piece.A, piece.B) < piece.Width * 0.5 + 0.5 && piece.HeightA < 0.3 && piece.HeightB < 0.3)
+						{
+							onRoad = true;
 						}
 					}
 					plan.Underground.Holes(tx, tz, holes);
 					foreach (Area h in holes)
 					{
-						hole += (h.X1 - h.X0) * (h.Z1 - h.Z0);
+						if (h.Overlaps(house))
+						{
+							hole += (h.X1 - h.X0) * (h.Z1 - h.Z0);
+						}
 					}
 				}
 			}
-			// every tile cuts its part of the hole once: the shaft but its start corner (other shafts may share tiles)
-			double expected = UndergroundPlan.Shaft * UndergroundPlan.Shaft - UndergroundPlan.Ramp * UndergroundPlan.Ramp;
-			Assert.GreaterOrEqual(hole, expected - 1e-6);
-			// the start corner is deck, the far corner is open
-			double h2 = UndergroundPlan.Shaft * 0.5;
-			Assert.IsTrue(plan.Underground.Under(hall.ShaftPoint(h2 - 1.0, h2 - 1.0).X, hall.ShaftPoint(h2 - 1.0, h2 - 1.0).Z));
+			Assert.IsTrue(onRoad, "apron from " + hall.PassagePoint(UndergroundPlan.PassageLength, 0.0) + " ends off any road at " + end);
+			Area expected = UndergroundPlan.HoleArea(hall);
+			Assert.AreEqual((expected.X1 - expected.X0) * (expected.Z1 - expected.Z0), hole, 1e-6);
+			Assert.Less(plan.Chasms.Inside(house.X0, house.Z0), -Gen2.TileSize);
 		}
-		Assert.Greater(shafts, 2);
+		Assert.Greater(ways, 3);
 	}
 
 	[Test]
@@ -208,14 +250,14 @@ public class UndergroundPlanTests
 		StringBuilder text = new StringBuilder();
 		foreach (Hall hall in All(Layer0(), 8))
 		{
-			text.Append(hall.CellX).Append(',').Append(hall.CellZ).Append(' ').Append(F(hall.Center.X)).Append(',').Append(F(hall.Center.Z)).Append(' ').Append(F(hall.HalfX)).Append(' ').Append(F(hall.HalfZ)).Append(' ').Append(F(hall.GalleryPX)).Append(' ').Append(F(hall.GalleryPZ)).Append(' ').Append(hall.Shaft).Append(' ').Append(F(hall.ShaftCenter.X)).Append(',').Append(F(hall.ShaftCenter.Z)).Append('\n');
+			text.Append(hall.CellX).Append(',').Append(hall.CellZ).Append(' ').Append(F(hall.Center.X)).Append(',').Append(F(hall.Center.Z)).Append(' ').Append(F(hall.HalfX)).Append(' ').Append(F(hall.HalfZ)).Append(' ').Append(F(hall.GalleryPX)).Append(' ').Append(F(hall.GalleryPZ)).Append(' ').Append(hall.Entrance).Append(' ').Append(F(hall.Out.X)).Append(',').Append(F(hall.Out.Z)).Append(' ').Append(F(hall.EntranceAt)).Append(' ').Append(F(hall.Apron)).Append('\n');
 		}
 		ulong hash = 14695981039346656037uL;
 		foreach (char c in text.ToString())
 		{
 			hash = (hash ^ c) * 1099511628211uL;
 		}
-		Assert.AreEqual(0x4f683314edfbb06auL, hash, "layer 0 underground");
+		Assert.AreEqual(0xc8f248d0e2c0f762uL, hash, "layer 0 underground");
 	}
 
 	private static string F(double v)
