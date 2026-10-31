@@ -1,7 +1,7 @@
 using UnityEngine;
 
 // world gen v2: under the deck the light goes (episode 1's dark interior): the fog closes in and goes near black, the
-// sky's light and the ambient fade, no snow or rain falls. eased in by how far under the deck the camera is, so
+// sky's light and the ambient fade, no snow or rain falls. eased in by how far under the deck the local girl is, so
 // driving down a ramp the dark comes on with no cut, and back out the same. it works over whatever the weather last
 // wrote, like EndingCinematic. local only, each peer its own camera
 public class UndergroundAtmosphere : MonoBehaviour
@@ -72,12 +72,14 @@ public class UndergroundAtmosphere : MonoBehaviour
 
 	private void LateUpdate()
 	{
+		// by where the girl is, not the camera, which swings up over her when looking down
+		Girl girl = Girls.Local;
 		Camera camera = Camera.main;
-		if (plan == null || camera == null)
+		if (plan == null || (girl == null && camera == null))
 		{
 			return;
 		}
-		Vector3 at = camera.transform.position + Offset();
+		Vector3 at = ((girl != null) ? girl.transform.position + Vector3.up * 1.5f : camera.transform.position) + Offset();
 		float depth = tiles.GroundY - at.y;
 		float target = plan.Underground.Under(at.x, at.z) ? Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(from, full, depth)) : 0f;
 		if (dark == 0f && target == 0f)

@@ -237,7 +237,7 @@ public sealed class UndergroundPlan
 
 	public const double HouseHeight = 8.0;
 
-	public const double EntranceChance = 0.6;
+	public const double EntranceChance = 0.8;
 
 	public const double MaxApron = 30.0;
 
@@ -327,8 +327,86 @@ public sealed class UndergroundPlan
 
 	public static double HouseFrom => HoleFrom - 2.0;
 
-	// the hall in this cell, if there is one, with its galleries and way in
+	// the hall in this cell, if there is one and it can be reached: with its galleries and way in
 	public bool HallAt(int cellX, int cellZ, out Hall hall)
+	{
+		if (!RawHall(cellX, cellZ, out hall) || !Kept(cellX, cellZ))
+		{
+			hall = default(Hall);
+			return false;
+		}
+		return true;
+	}
+
+	// ---- networks: galleries keep within blocks of Network cells a side, and the halls of a block that no way in
+	// leads to (by its galleries) are left out, so nothing down there is out of reach
+
+	public const int Network = 4;
+
+	private readonly Dictionary<long, HashSet<long>> networks = new Dictionary<long, HashSet<long>>();
+
+	private static long Key(int x, int z)
+	{
+		return ((long)x << 32) ^ (uint)z;
+	}
+
+	private static int Block(int cell)
+	{
+		return (int)Math.Floor((double)cell / Network);
+	}
+
+	private bool Kept(int cellX, int cellZ)
+	{
+		int bx = Block(cellX);
+		int bz = Block(cellZ);
+		long key = Key(bx, bz);
+		if (!networks.TryGetValue(key, out HashSet<long> kept))
+		{
+			if (networks.Count > 1024)
+			{
+				networks.Clear();
+			}
+			kept = Reached(bx, bz);
+			networks[key] = kept;
+		}
+		return kept.Contains(Key(cellX, cellZ));
+	}
+
+	// the block's halls joined by galleries, the groups with a way in (or the start's hall) kept
+	private HashSet<long> Reached(int bx, int bz)
+	{
+		HashSet<long> kept = new HashSet<long>();
+		Queue<(int, int)> open = new Queue<(int, int)>();
+		for (int i = 0; i < Network; i++)
+		{
+			for (int j = 0; j < Network; j++)
+			{
+				int cx = bx * Network + i;
+				int cz = bz * Network + j;
+				bool start = Start(out StartWay way) && way.Hall.CellX == cx && way.Hall.CellZ == cz;
+				if (RawHall(cx, cz, out Hall hall) && (hall.Entrance || start) && kept.Add(Key(cx, cz)))
+				{
+					open.Enqueue((cx, cz));
+				}
+			}
+		}
+		while (open.Count > 0)
+		{
+			(int cx, int cz) = open.Dequeue();
+			(int, int, int, int, bool)[] links = { (cx, cz, cx + 1, cz, false), (cx - 1, cz, cx - 1, cz, false), (cx, cz, cx, cz + 1, true), (cx, cz - 1, cx, cz - 1, true) };
+			foreach ((int gx, int gz, int nx, int nz, bool north) in links)
+			{
+				if (Block(nx) == bx && Block(nz) == bz && RawGallery(gx, gz, north, out _) && kept.Add(Key(nx, nz)))
+				{
+					open.Enqueue((nx, nz));
+				}
+			}
+		}
+		return kept;
+	}
+
+	// the hall in this cell whether it can be reached or not
+	private bool RawHall(int cellX, int cellZ, out Hall hall)
 	{
 		long key = ((long)cellX << 32) ^ (uint)cellZ;
 		if (have.TryGetValue(key, out bool known))
@@ -344,10 +422,10 @@ public sealed class UndergroundPlan
 		bool found = Room(cellX, cellZ, out hall);
 		if (found)
 		{
-			hall.GalleryPX = Gallery(cellX, cellZ, false, out GalleryPiece east) ? east.A.Z : double.NaN;
-			hall.GalleryNX = Gallery(cellX - 1, cellZ, false, out GalleryPiece west) ? west.A.Z : double.NaN;
-			hall.GalleryPZ = Gallery(cellX, cellZ, true, out GalleryPiece north) ? north.A.X : double.NaN;
-			hall.GalleryNZ = Gallery(cellX, cellZ - 1, true, out GalleryPiece south) ? south.A.X : double.NaN;
+			hall.GalleryPX = RawGallery(cellX, cellZ, false, out GalleryPiece east) ? east.A.Z : double.NaN;
+			hall.GalleryNX = RawGallery(cellX - 1, cellZ, false, out GalleryPiece west) ? west.A.Z : double.NaN;
+			hall.GalleryPZ = RawGallery(cellX, cellZ, true, out GalleryPiece north) ? north.A.X : double.NaN;
+			hall.GalleryNZ = RawGallery(cellX, cellZ - 1, true, out GalleryPiece south) ? south.A.X : double.NaN;
 			if (Start(out StartWay start) && start.Hall.CellX == cellX && start.Hall.CellZ == cellZ)
 			{
 				if (start.Out.X > 0.5)
@@ -436,6 +514,17 @@ public sealed class UndergroundPlan
 	// face each other, from one's wall to the other's. a share of the pairs, clear of everything
 	public bool Gallery(int cellX, int cellZ, bool north, out GalleryPiece gallery)
 	{
+		if (!RawGallery(cellX, cellZ, north, out gallery) || !Kept(cellX, cellZ))
+		{
+			gallery = default(GalleryPiece);
+			return false;
+		}
+		return true;
+	}
+
+	// whether reached or not. within a block only
+	private bool RawGallery(int cellX, int cellZ, bool north, out GalleryPiece gallery)
+	{
 		(int, int, bool) key = (cellX, cellZ, north);
 		if (galleries.TryGetValue(key, out (bool, GalleryPiece) known))
 		{
@@ -456,7 +545,9 @@ public sealed class UndergroundPlan
 	private bool FindGallery(int cellX, int cellZ, bool north, out GalleryPiece gallery)
 	{
 		gallery = default(GalleryPiece);
-		if (!Room(cellX, cellZ, out Hall a) || !Room(north ? cellX : cellX + 1, north ? cellZ + 1 : cellZ, out Hall b))
+		int toX = north ? cellX : cellX + 1;
+		int toZ = north ? cellZ + 1 : cellZ;
+		if (Block(toX) != Block(cellX) || Block(toZ) != Block(cellZ) || !Room(cellX, cellZ, out Hall a) || !Room(toX, toZ, out Hall b))
 		{
 			return false;
 		}
@@ -669,7 +760,28 @@ public sealed class UndergroundPlan
 		else
 		{
 			int line = (ov > 0.0) ? j + 1 : j;
-			if (!plan.Roads.Street(district, k, line, 0) || plan.Roads.RaisedHeight(district, line, k + (eu - u0) / (u1 - u0)) > 0.3 || eu < u0 + half + 2.0 || eu > u1 - half - 2.0)
+			if (!plan.Roads.Street(district, k, line, 0) || eu < u0 + half + 2.0 || eu > u1 - half - 2.0)
+			{
+				return false;
+			}
+			// on the ground there and either side, not where a raised street's ramp starts up
+			for (int n = -1; n <= 1; n++)
+			{
+				if (plan.Roads.RaisedHeight(district, line, k + (eu + n * RoadPlan.PieceLength - u0) / (u1 - u0)) > 0.01)
+				{
+					return false;
+				}
+			}
+		}
+		// the street there is drawn: its pieces stop at the district's edge (RoadPlan.Inside), so the strip round the
+		// apron's end all in the district
+		XZ street = acrossU ? v : u;
+		XZ side = acrossU ? u : v;
+		for (int c = 0; c < 4; c++)
+		{
+			double a = ((c & 1) == 0) ? -RoadPlan.PieceLength : RoadPlan.PieceLength;
+			double b = ((c & 2) == 0) ? -half : half;
+			if (plan.DistrictAt(end.X + street.X * a + side.X * b, end.Z + street.Z * a + side.Z * b) != district)
 			{
 				return false;
 			}

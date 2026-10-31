@@ -977,6 +977,11 @@ public class TileStreamer : MonoBehaviour
 		{
 			lotMesh.AddGallery(Local(piece.A, corner), Local(piece.B, corner), WorldRandom.Derive(Plan.LayerSeed, Gen2.StreamUnder + 3, Gen2.Pack((int)System.Math.Round(piece.A.X), (int)System.Math.Round(piece.A.Z))));
 		}
+		Fixtures(x, z, fixtures);
+		foreach (Fixture fixture in fixtures)
+		{
+			lotMesh.AddFixture(Local(fixture.At, corner) + Vector3.up * fixture.Height, new Vector3((float)fixture.Facing.X, 0f, (float)fixture.Facing.Z));
+		}
 		// the start tunnel's chamber and its gallery to the hall, with the tile the chamber's in
 		if (StartChamberIn(x, z, out StartWay start))
 		{
@@ -1011,50 +1016,116 @@ public class TileStreamer : MonoBehaviour
 		return Vector3.zero;
 	}
 
-	// a lamp or two on each hall's ledge near its corners, one down each way in's passage and one in its ramp house
-	private void PlaceUnderLamps(int x, int z, Transform props)
+	// a light fitting on an underground wall: where (layout), how high over the deck, which way it faces (out of the wall)
+	private struct Fixture
 	{
-		if (kit == null || kit.Lamps == null || kit.Lamps.Length == 0)
-		{
-			return;
-		}
+		public XZ At;
+
+		public float Height;
+
+		public XZ Facing;
+	}
+
+	private readonly List<Fixture> fixtures = new List<Fixture>();
+
+	// the tile's light fittings down there: a few on each hall's walls above the ledge (not the fan's), one on every
+	// other stretch of gallery, at the foot and the top of each way in, one in the start's chamber. a pure function of
+	// the tile, so the housings (lot mesh) and the lights (props) agree
+	private void Fixtures(int x, int z, List<Fixture> into)
+	{
+		into.Clear();
 		Plan.Underground.Collect(x, z, halls, galleries);
-		float level = groundY - (float)UndergroundPlan.Level;
+		float level = -(float)UndergroundPlan.Level;
+		float wallTop = -(float)UndergroundPlan.Slab;
+		float[] gaps = new float[4];
 		foreach (Hall hall in halls)
 		{
 			WorldRandom random = new WorldRandom(WorldRandom.Derive(hall.Seed, Gen2.StreamUnder, 2uL));
-			int count = 1 + random.Next(2);
-			for (int i = 0; i < count; i++)
+			double[] at = { hall.GalleryPX - hall.Center.Z, -(hall.GalleryNX - hall.Center.Z), -(hall.GalleryPZ - hall.Center.X), hall.GalleryNZ - hall.Center.X };
+			if (hall.Entrance)
 			{
-				int c = random.Next(4);
-				float sx = ((c & 1) == 0) ? -1f : 1f;
-				float sz = ((c & 2) == 0) ? -1f : 1f;
-				Vector3 at = new Vector3((float)hall.Center.X + sx * ((float)hall.HalfX - 2.5f), level, (float)hall.Center.Z + sz * ((float)hall.HalfZ - 2.5f));
-				UnderLamp(at, new Vector3(-sx, 0f, -sz), random, props);
+				at[(hall.Out.X > 0.5) ? 0 : (hall.Out.X < -0.5) ? 1 : (hall.Out.Z > 0.5) ? 2 : 3] = hall.EntranceAt;
+			}
+			for (int side = 0; side < 4; side++)
+			{
+				gaps[side] = (float)at[side];
+			}
+			Vector3 fan = FanSide(hall, gaps);
+			for (int side = 0; side < 4; side++)
+			{
+				XZ out_ = (side == 0) ? new XZ(1.0, 0.0) : (side == 1) ? new XZ(-1.0, 0.0) : (side == 2) ? new XZ(0.0, 1.0) : new XZ(0.0, -1.0);
+				if (fan.x * (float)out_.X + fan.z * (float)out_.Z > 0.5f)
+				{
+					continue;
+				}
+				double halfAlong = (side < 2) ? hall.HalfZ : hall.HalfX;
+				double halfOut = (side < 2) ? hall.HalfX : hall.HalfZ;
+				// every 36 m or so along the wall, clear of a mouth in it
+				int count = System.Math.Max(1, (int)(halfAlong * 2.0 / 36.0));
+				double shift = (Gen2.Unit(random.NextULong()) - 0.5) * 6.0;
+				for (int i = 0; i < count; i++)
+				{
+					double along = -halfAlong + halfAlong * 2.0 * (i + 0.5) / count + shift;
+					if (!double.IsNaN(at[side]) && System.Math.Abs(along - at[side]) < UndergroundPlan.GalleryWidth)
+					{
+						continue;
+					}
+					XZ point = new XZ(hall.Center.X + out_.X * (halfOut - 0.1) - out_.Z * along, hall.Center.Z + out_.Z * (halfOut - 0.1) + out_.X * along);
+					into.Add(new Fixture { At = point, Height = level + 4.5f, Facing = new XZ(-out_.X, -out_.Z) });
+				}
 			}
 			if (hall.Entrance)
 			{
-				Vector3 back = new Vector3((float)-hall.Out.X, 0f, (float)-hall.Out.Z);
-				XZ foot = hall.PassagePoint(UndergroundPlan.Flat * 0.5, UndergroundPlan.GalleryWidth * 0.5 - 1.2);
-				UnderLamp(new Vector3((float)foot.X, level, (float)foot.Z), back, random, props);
-				double s = UndergroundPlan.PassageLength - 5.0;
-				XZ inside = hall.PassagePoint(s, UndergroundPlan.GalleryWidth * 0.5 - 0.8);
-				UnderLamp(new Vector3((float)inside.X, groundY + (float)UndergroundPlan.PassageFloor(s), (float)inside.Z), back, random, props);
+				double half = UndergroundPlan.GalleryWidth * 0.5 - 0.1;
+				XZ back = new XZ(-hall.Out.X, -hall.Out.Z);
+				XZ left = new XZ(-hall.Out.Z, hall.Out.X);
+				into.Add(new Fixture { At = hall.PassagePoint(UndergroundPlan.Flat * 0.5, half), Height = level + 4.5f, Facing = new XZ(-left.X, -left.Z) });
+				double s = UndergroundPlan.PassageLength - 6.0;
+				into.Add(new Fixture { At = hall.PassagePoint(s, -half), Height = (float)UndergroundPlan.PassageFloor(s) + 4.5f, Facing = left });
 			}
 		}
-		// one in the start tunnel's chamber, against its wall
+		foreach (GalleryPiece piece in galleries)
+		{
+			ulong roll = WorldRandom.Derive(Plan.LayerSeed, Gen2.StreamUnder + 3, Gen2.Pack((int)System.Math.Round(piece.A.X), (int)System.Math.Round(piece.A.Z)));
+			if ((roll >> 8) % 2uL != 0uL)
+			{
+				continue;
+			}
+			XZ along = new XZ(piece.B.X - piece.A.X, piece.B.Z - piece.A.Z);
+			double length = System.Math.Sqrt(along.X * along.X + along.Z * along.Z);
+			XZ side = new XZ(-along.Z / length, along.X / length);
+			double s = ((roll & 1uL) == 0uL) ? 1.0 : -1.0;
+			double reach = UndergroundPlan.GalleryWidth * 0.5 - 0.1;
+			into.Add(new Fixture { At = new XZ((piece.A.X + piece.B.X) * 0.5 + side.X * s * reach, (piece.A.Z + piece.B.Z) * 0.5 + side.Z * s * reach), Height = wallTop - 1.2f, Facing = new XZ(-side.X * s, -side.Z * s) });
+		}
 		if (StartChamberIn(x, z, out StartWay start))
 		{
-			WorldRandom random = new WorldRandom(WorldRandom.Derive(start.Hall.Seed, Gen2.StreamUnder, 5uL));
-			XZ side = new XZ(start.Chamber.X - start.Out.Z * (UndergroundPlan.ChamberRadius - 2.0), start.Chamber.Z + start.Out.X * (UndergroundPlan.ChamberRadius - 2.0));
-			UnderLamp(new Vector3((float)side.X, level, (float)side.Z), new Vector3((float)start.Out.Z, 0f, (float)-start.Out.X), random, props);
+			XZ left = new XZ(-start.Out.Z, start.Out.X);
+			double r = UndergroundPlan.ChamberRadius - 0.1;
+			into.Add(new Fixture { At = new XZ(start.Chamber.X + left.X * r, start.Chamber.Z + left.Z * r), Height = level + 4.5f, Facing = new XZ(-left.X, -left.Z) });
 		}
 	}
 
-	private void UnderLamp(Vector3 at, Vector3 facing, WorldRandom random, Transform props)
+	// the lights under the tile's fittings: warm, a wide cone down and out from the wall, a dim glow on the housing
+	private void PlaceUnderLamps(int x, int z, Transform props)
 	{
-		GameObject prefab = kit.Lamps[random.Next(kit.Lamps.Length)];
-		GraphicsTuning.Adopt(Instantiate(prefab, at - Offset(), Quaternion.LookRotation(facing.normalized) * prefab.transform.rotation, props));
+		Fixtures(x, z, fixtures);
+		foreach (Fixture fixture in fixtures)
+		{
+			Vector3 facing = new Vector3((float)fixture.Facing.X, 0f, (float)fixture.Facing.Z);
+			Vector3 at = new Vector3((float)fixture.At.X, groundY + fixture.Height - 0.45f, (float)fixture.At.Z) + facing * 0.6f;
+			GameObject lamp = new GameObject("under light");
+			lamp.transform.SetParent(props, false);
+			lamp.transform.SetPositionAndRotation(at - Offset(), Quaternion.LookRotation(facing * 0.6f + Vector3.down));
+			Light light = lamp.AddComponent<Light>();
+			light.type = LightType.Spot;
+			light.spotAngle = 110f;
+			light.range = 22f;
+			light.intensity = 30f;
+			light.color = new Color(1f, 0.8f, 0.55f);
+			light.shadows = LightShadows.Soft;
+			GraphicsTuning.Adopt(lamp);
+		}
 	}
 
 	private void PlaceViaducts(int x, int z)

@@ -469,8 +469,8 @@ public class LotPlanTests
 	[Test]
 	public void GoldenValues()
 	{
-		Assert.AreEqual(0xa60eba89e991fd83uL, Fold(Layer0(), -12, -12, 24), "layer 0 lots");
-		Assert.AreEqual(0x22d7ccb2d3a404fduL, Fold(Layer1(), 50, -20, 12), "layer 1 lots");
+		Assert.AreEqual(0x4cc05ad33b67f01duL, Fold(Layer0(), -12, -12, 24), "layer 0 lots");
+		Assert.AreEqual(0x39752b320365bbc0uL, Fold(Layer1(), 50, -20, 12), "layer 1 lots");
 	}
 
 	private static ulong Fold(LayerPlan plan, int x0, int z0, int size)

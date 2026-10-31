@@ -118,8 +118,8 @@ public static class OriginTunnel
 				Box(new Vector3(w - 0.4f, height * 0.5f, z), new Vector3(0.8f, height, 1f), concrete);
 			}
 			// a pipe run along one wall, a cable tray along the other
-			Box(new Vector3(-w + 1.2f, height - 2.2f, (front + back) * 0.5f), new Vector3(0.8f, 0.8f, front - back - 2f), dark);
-			Box(new Vector3(-w + 1.2f, height - 3.4f, (front + back) * 0.5f), new Vector3(0.6f, 0.6f, front - back - 2f), dark);
+			Tube(new Vector3(-w + 1.2f, height - 2.2f, back + 1f), new Vector3(-w + 1.2f, height - 2.2f, front - 1f), 0.4f);
+			Tube(new Vector3(-w + 1.2f, height - 3.4f, back + 1f), new Vector3(-w + 1.2f, height - 3.4f, front - 1f), 0.3f);
 			Box(new Vector3(w - 0.9f, height - 2.6f, (front + back) * 0.5f), new Vector3(0.6f, 0.25f, front - back - 2f), dark);
 			// the dead end: the roof came down. open, the rubble's pushed to the walls and the tunnel goes on down
 			WorldRandom random = new WorldRandom(0x54554E4E454CuL);
@@ -195,8 +195,27 @@ public static class OriginTunnel
 				Quad(concrete, new Vector3(-w, fa, za), new Vector3(-w, fb, zb), new Vector3(-w, rb, zb), new Vector3(-w, ra, za), Vector3.right);
 				Quad(concrete, new Vector3(w, fa, za), new Vector3(w, fb, zb), new Vector3(w, rb, zb), new Vector3(w, ra, za), Vector3.left);
 				Quad(dark, new Vector3(-w, ra, za), new Vector3(w, ra, za), new Vector3(w, rb, zb), new Vector3(-w, rb, zb), Vector3.down);
-				// a pipe on along the wall, just under the roof
-				Box(new Vector3(-w + 1.2f, (ra + rb) * 0.5f - 1.4f, (za + zb) * 0.5f), new Vector3(0.6f, 0.6f, e - s), dark);
+				// the pipes on along the wall, coming down with the roof
+				float pa = Mathf.Min(height - 2.2f, ra - 1.4f);
+				float pb = Mathf.Min(height - 2.2f, rb - 1.4f);
+				Tube(new Vector3(-w + 1.2f, pa, za), new Vector3(-w + 1.2f, pb, zb), 0.4f);
+				Tube(new Vector3(-w + 1.2f, pa - 1.2f, za), new Vector3(-w + 1.2f, pb - 1.2f, zb), 0.3f);
+			}
+		}
+
+		// a round pipe from a to b, eight sided, like LotMesh's
+		private void Tube(Vector3 a, Vector3 b, float radius)
+		{
+			Vector3 d = (b - a).normalized;
+			Vector3 s = Vector3.Cross(d, (Mathf.Abs(d.y) > 0.9f) ? Vector3.right : Vector3.up).normalized;
+			Vector3 t = Vector3.Cross(d, s).normalized;
+			for (int i = 0; i < 8; i++)
+			{
+				float a0 = i * Mathf.PI / 4f;
+				float a1 = (i + 1) * Mathf.PI / 4f;
+				Vector3 o0 = (s * Mathf.Cos(a0) + t * Mathf.Sin(a0)) * radius;
+				Vector3 o1 = (s * Mathf.Cos(a1) + t * Mathf.Sin(a1)) * radius;
+				Quad(dark, a + o0, a + o1, b + o1, b + o0, (o0 + o1).normalized);
 			}
 		}
 

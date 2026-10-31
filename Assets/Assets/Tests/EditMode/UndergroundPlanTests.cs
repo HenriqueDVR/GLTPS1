@@ -129,7 +129,7 @@ public class UndergroundPlanTests
 				}
 			}
 		}
-		Assert.Greater(count, 20);
+		Assert.Greater(count, 10);
 	}
 
 	// the ramp's floor: flat out of the hall, up to the deck, never steeper than Grade, the deck open
@@ -192,6 +192,8 @@ public class UndergroundPlanTests
 			int tz1 = Gen2.Cell(System.Math.Max(house.Z1, apron.Z1), Gen2.TileSize) + 1;
 			double hole = 0.0;
 			bool onRoad = false;
+			string nearest = "";
+			double near = double.MaxValue;
 			for (int tx = tx0; tx <= tx1; tx++)
 			{
 				for (int tz = tz0; tz <= tz1; tz++)
@@ -212,6 +214,11 @@ public class UndergroundPlanTests
 							double z = piece.A.Z + (piece.B.Z - piece.A.Z) * t;
 							Assert.Greater(house.Distance(x, z), piece.Width * 0.5, "road through a ramp house");
 						}
+						if (RoadPlan.SegmentDistance(end, piece.A, piece.B) < near)
+						{
+							near = RoadPlan.SegmentDistance(end, piece.A, piece.B);
+							nearest = piece.Kind + " " + piece.A + "-" + piece.B + " w " + piece.Width + " h " + piece.HeightA + "/" + piece.HeightB + " at " + near;
+						}
 						if (RoadPlan.SegmentDistance(end, piece.A, piece.B) < piece.Width * 0.5 + 0.5 && piece.HeightA < 0.3 && piece.HeightB < 0.3)
 						{
 							onRoad = true;
@@ -227,12 +234,58 @@ public class UndergroundPlanTests
 					}
 				}
 			}
-			Assert.IsTrue(onRoad, "apron from " + hall.PassagePoint(UndergroundPlan.PassageLength, 0.0) + " ends off any road at " + end);
+			Assert.IsTrue(onRoad, "apron from " + hall.PassagePoint(UndergroundPlan.PassageLength, 0.0) + " ends off any road at " + end + " (" + plan.Def.Districts[plan.DistrictAt(end.X, end.Z)].Id + ", nearest " + nearest + ")");
 			Area expected = UndergroundPlan.HoleArea(hall);
 			Assert.AreEqual((expected.X1 - expected.X0) * (expected.Z1 - expected.Z0), hole, 1e-6);
 			Assert.Less(plan.Chasms.Inside(house.X0, house.Z0), -Gen2.TileSize);
 		}
 		Assert.Greater(ways, 3);
+	}
+
+	// nothing down there out of reach: from the halls with a way in, through galleries, every hall is reached
+	[Test]
+	public void EveryHallCanBeReached()
+	{
+		foreach (LayerPlan plan in new[] { Layer0(), new LayerPlan(seed, 0, new XZ(0.0, 0.0), null, new XZ(0.0, 1.0)) })
+		{
+			HashSet<(int, int)> reached = new HashSet<(int, int)>();
+			Queue<(int, int)> open = new Queue<(int, int)>();
+			List<Hall> all = All(plan, 12);
+			plan.Underground.Start(out StartWay start);
+			foreach (Hall hall in all)
+			{
+				bool isStart = plan.Underground.Start(out _) && hall.CellX == start.Hall.CellX && hall.CellZ == start.Hall.CellZ;
+				if ((hall.Entrance || isStart) && reached.Add((hall.CellX, hall.CellZ)))
+				{
+					open.Enqueue((hall.CellX, hall.CellZ));
+				}
+			}
+			while (open.Count > 0)
+			{
+				(int x, int z) = open.Dequeue();
+				if (plan.Underground.Gallery(x, z, false, out _) && reached.Add((x + 1, z)))
+				{
+					open.Enqueue((x + 1, z));
+				}
+				if (plan.Underground.Gallery(x - 1, z, false, out _) && reached.Add((x - 1, z)))
+				{
+					open.Enqueue((x - 1, z));
+				}
+				if (plan.Underground.Gallery(x, z, true, out _) && reached.Add((x, z + 1)))
+				{
+					open.Enqueue((x, z + 1));
+				}
+				if (plan.Underground.Gallery(x, z - 1, true, out _) && reached.Add((x, z - 1)))
+				{
+					open.Enqueue((x, z - 1));
+				}
+			}
+			Assert.Greater(all.Count, 15);
+			foreach (Hall hall in all)
+			{
+				Assert.IsTrue(reached.Contains((hall.CellX, hall.CellZ)), "hall at " + hall.Center + " out of reach");
+			}
+		}
 	}
 
 	// the start tunnel's dead end goes on down: whichever way the tunnel faces, the ramp, the chamber and the gallery
@@ -314,7 +367,7 @@ public class UndergroundPlanTests
 		{
 			hash = (hash ^ c) * 1099511628211uL;
 		}
-		Assert.AreEqual(0xc8f248d0e2c0f762uL, hash, "layer 0 underground");
+		Assert.AreEqual(0xef184758685a5ed7uL, hash, "layer 0 underground");
 	}
 
 	private static string F(double v)

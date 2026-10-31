@@ -1282,6 +1282,25 @@ public class LotMesh
 		}
 	}
 
+	// a light fitting on an underground wall at at, facing out of it: a bracket, a steel housing with a guard over its
+	// lamp (the light itself is the streamer's)
+	public void AddFixture(Vector3 at, Vector3 facing)
+	{
+		Vector3 housing = at + facing * 0.6f - Vector3.up * 0.2f;
+		Beam(at, housing + Vector3.up * 0.1f, 0.05f, metal);
+		Box(at + facing * 0.05f, Left(facing), 0.2f, 0.05f, -0.25f, 0.25f, metal, metal, true);
+		Box(housing, facing, 0.25f, 0.32f, -0.12f, 0.12f, metal, metal, true);
+		Box(housing - Vector3.up * 0.2f, facing, 0.2f, 0.26f, -0.1f, 0f, dark, dark, true);
+		for (int i = -1; i <= 1; i++)
+		{
+			Vector3 bar = housing + Left(facing) * (i * 0.15f);
+			Beam(bar - facing * 0.22f - Vector3.up * 0.12f, bar + facing * 0.22f - Vector3.up * 0.12f, 0.015f, metal);
+			Beam(bar - facing * 0.22f - Vector3.up * 0.12f, bar - facing * 0.22f - Vector3.up * 0.32f, 0.015f, metal);
+			Beam(bar + facing * 0.22f - Vector3.up * 0.12f, bar + facing * 0.22f - Vector3.up * 0.32f, 0.015f, metal);
+			Beam(bar - facing * 0.22f - Vector3.up * 0.32f, bar + facing * 0.22f - Vector3.up * 0.32f, 0.015f, metal);
+		}
+	}
+
 	// whether the wall towards dir is in the mouth of an opening towards towards
 	private static bool Opening(Vector3 dir, Vector3 towards, float radius, float mouth)
 	{
@@ -1309,29 +1328,68 @@ public class LotMesh
 		}
 	}
 
-	// a still ventilation fan in a wall, facing along facing: the ring, a hub, five broad blades, a grille in front
+	// a still ventilation fan in a wall, facing along facing (the reference shot of the ket on a bridge before one): a
+	// deep ring it turns in, struts from the ring to the bearing behind, a hub, five broad blades that twist from steep
+	// at the root to flat at the tip and sweep back the way they turn
 	private void Fan(Vector3 hub, Vector3 facing, float radius)
 	{
 		Vector3 right = Left(facing);
-		const int segments = 24;
+		const int segments = 32;
+		const float depth = 2.6f;
+		const float rim = 0.9f;
 		for (int i = 0; i < segments; i++)
 		{
 			float a0 = i * Mathf.PI * 2f / segments;
 			float a1 = (i + 1) * Mathf.PI * 2f / segments;
-			Beam(hub + (right * Mathf.Cos(a0) + Vector3.up * Mathf.Sin(a0)) * radius, hub + (right * Mathf.Cos(a1) + Vector3.up * Mathf.Sin(a1)) * radius, 0.6f, metal);
+			Vector3 d0 = right * Mathf.Cos(a0) + Vector3.up * Mathf.Sin(a0);
+			Vector3 d1 = right * Mathf.Cos(a1) + Vector3.up * Mathf.Sin(a1);
+			Vector3 front = facing * (depth * 0.5f);
+			Vector3 i0 = hub + d0 * radius;
+			Vector3 i1 = hub + d1 * radius;
+			Vector3 o0 = hub + d0 * (radius + rim);
+			Vector3 o1 = hub + d1 * (radius + rim);
+			Quad(metal, i0 - front, i1 - front, i1 + front, i0 + front, -(d0 + d1).normalized);
+			Quad(metal, o0 - front, o1 - front, o1 + front, o0 + front, (d0 + d1).normalized);
+			Quad(metal, i0 + front, i1 + front, o1 + front, o0 + front, facing);
 		}
-		Tube(hub - facing * 1.2f, hub + facing * 1.2f, radius * 0.12f, metal);
+		// the bearing behind, held by struts to the ring
+		Vector3 bearing = hub - facing * 1.6f;
+		Tube(bearing - facing * 0.8f, hub + facing * 0.9f, radius * 0.13f, metal);
+		Tube(hub + facing * 0.9f, hub + facing * 1.2f, radius * 0.08f, metal);
+		for (int i = 0; i < 3; i++)
+		{
+			float angle = (i * 120f + 30f) * Mathf.Deg2Rad;
+			Vector3 d = right * Mathf.Cos(angle) + Vector3.up * Mathf.Sin(angle);
+			Beam(bearing + d * (radius * 0.12f), bearing + d * radius - facing * 0.4f, 0.25f, metal);
+		}
 		float turn = Range(0f, 72f);
-		for (int i = 0; i < 5; i++)
+		const int sections = 5;
+		for (int b = 0; b < 5; b++)
 		{
-			Vector3 dir = Quaternion.AngleAxis(turn + i * 72f, facing) * right;
-			Quaternion blade = Quaternion.AngleAxis(25f, dir) * Quaternion.LookRotation(Vector3.Cross(dir, facing), facing);
-			OrientedBox(hub + dir * (radius * 0.55f), blade, new Vector3(radius * 0.18f, 0.12f, radius * 0.42f), metal);
-		}
-		for (float t = -radius * 0.8f; t <= radius * 0.8f + 0.01f; t += radius * 0.4f)
-		{
-			Beam(hub + facing * 2f + right * t - Vector3.up * (radius * 0.9f), hub + facing * 2f + right * t + Vector3.up * (radius * 0.9f), 0.08f, metal);
-			Beam(hub + facing * 2f + Vector3.up * t - right * (radius * 0.9f), hub + facing * 2f + Vector3.up * t + right * (radius * 0.9f), 0.08f, metal);
+			float theta = (turn + b * 72f) * Mathf.Deg2Rad;
+			Vector3[] lead = new Vector3[sections + 1];
+			Vector3[] trail = new Vector3[sections + 1];
+			for (int k = 0; k <= sections; k++)
+			{
+				float t = (float)k / sections;
+				float r = radius * Mathf.Lerp(0.12f, 0.93f, t);
+				// swept back as it goes out
+				float a = theta + t * 0.35f;
+				Vector3 d = right * Mathf.Cos(a) + Vector3.up * Mathf.Sin(a);
+				Vector3 tangent = -right * Mathf.Sin(a) + Vector3.up * Mathf.Cos(a);
+				float chord = radius * Mathf.Lerp(0.22f, 0.46f, t);
+				float pitch = Mathf.Lerp(48f, 16f, t) * Mathf.Deg2Rad;
+				Vector3 across = (tangent * Mathf.Cos(pitch) + facing * Mathf.Sin(pitch)) * (chord * 0.5f);
+				Vector3 centre = hub + d * r;
+				lead[k] = centre + across;
+				trail[k] = centre - across;
+			}
+			for (int k = 0; k < sections; k++)
+			{
+				Vector3 normal = Vector3.Cross(lead[k + 1] - trail[k], trail[k + 1] - lead[k]).normalized;
+				Quad(metal, trail[k], lead[k], lead[k + 1], trail[k + 1], normal);
+				Quad(metal, trail[k], lead[k], lead[k + 1], trail[k + 1], -normal);
+			}
 		}
 	}
 
