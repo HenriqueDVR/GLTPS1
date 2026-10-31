@@ -105,4 +105,7 @@ public sealed class DistrictDef
 
 	// share of runs of a street line lifted onto arches (raised city, RoadPlan)
 	public double Raised;
+
+	// share of the cross streets between two raised streets that are lifted too, joining them (RoadPlan)
+	public double RaisedCross;
 }

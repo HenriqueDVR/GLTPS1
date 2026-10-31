@@ -318,6 +318,47 @@ public class RoadPlanTests
 		return hash;
 	}
 
+	// raised cross streets meet the raised streets in junctions up top
+	[Test]
+	public void RaisedStreetsJoin()
+	{
+		// a raised piece ending on another's edge, square to it: same height there, that parapet open
+		List<RoadPiece> pieces = Area(Layer0(), 20, 12, 16);
+		int junctions = 0;
+		foreach (RoadPiece piece in pieces)
+		{
+			if (piece.Kind != RoadKind.Street || System.Math.Min(piece.HeightA, piece.HeightB) < RoadPlan.RaisedMin - 0.01)
+			{
+				continue;
+			}
+			for (int end = 0; end < 2; end++)
+			{
+				XZ p = (end == 0) ? piece.A : piece.B;
+				double h = (end == 0) ? piece.HeightA : piece.HeightB;
+				foreach (RoadPiece other in pieces)
+				{
+					if (other.Kind != RoadKind.Street || System.Math.Abs(piece.TangentA.X * other.TangentA.X + piece.TangentA.Z * other.TangentA.Z) > 0.2)
+					{
+						continue;
+					}
+					double length = other.A.DistanceTo(other.B);
+					double s = ((p.X - other.A.X) * other.TangentA.X + (p.Z - other.A.Z) * other.TangentA.Z) / length;
+					double across = -(p.X - other.A.X) * other.TangentA.Z + (p.Z - other.A.Z) * other.TangentA.X;
+					if (s < 0.0 || s > 1.0 || System.Math.Abs(System.Math.Abs(across) - other.Width * 0.5) > 0.05)
+					{
+						continue;
+					}
+					junctions++;
+					Assert.AreEqual(other.HeightA + (other.HeightB - other.HeightA) * s, h, 1e-6, "junction at " + p);
+					double from = (across > 0.0) ? other.LeftFrom2 : other.RightFrom2;
+					double to = (across > 0.0) ? other.LeftTo2 : other.RightTo2;
+					Assert.IsTrue(s >= from - 1e-6 && s <= to + 1e-6, "junction at " + p + " but the parapet's closed");
+				}
+			}
+		}
+		Assert.Greater(junctions, 3);
+	}
+
 	// the raised city: whole runs of street on arches in the dense districts, ramps the ket can climb
 	[Test]
 	public void RaisedStreets()
