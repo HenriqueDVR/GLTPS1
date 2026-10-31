@@ -63,15 +63,10 @@ public class GameSession : MonoBehaviour
 		}
 		if (WorldGenerator.GenVersion == 2)
 		{
-			TileStreamer tiles = Add<TileStreamer>();
-			tiles.Init(world.Plan, floatingOrigin);
-			if (world.PillarPrefab != null)
-			{
-				Add<PillarStreamer>().Init(world.Plan, tiles, floatingOrigin, world.PillarPrefab);
-				gameObject.AddComponent<DistantPillar>();
-			}
+			TileStreamer tiles = BeginLayer(world.Plan, float.NaN, 0, null);
 			Add<SafeGround>().Init(world.Plan, tiles, floatingOrigin);
 			Add<UndergroundAtmosphere>().Init(world.Plan, tiles, floatingOrigin);
+			Add<LayerTransition>();
 			// an endless world needs it, v1 never goes far enough
 			if (floatingOrigin != null)
 			{
@@ -100,6 +95,54 @@ public class GameSession : MonoBehaviour
 		}
 		CoopItem.TrackScenePickups();
 		StartCoroutine(SaveScene.Register());
+	}
+
+	// v2: what's built for the layer the girls are on. deck NaN = from the floor under Chito (the start).
+	// a tower the ride brought along goes on standing in its cell
+	public TileStreamer BeginLayer(LayerPlan plan, float deck, int groundLayer, PillarStreamer.Spot arrived)
+	{
+		WorldGenerator world = Get<WorldGenerator>();
+		FloatingOrigin floatingOrigin = Get<FloatingOrigin>();
+		TileStreamer tiles = Add<TileStreamer>();
+		tiles.Init(plan, floatingOrigin, deck, groundLayer);
+		if (world.PillarPrefab != null)
+		{
+			Add<PillarStreamer>().Init(plan, tiles, floatingOrigin, world.PillarPrefab, arrived);
+			gameObject.AddComponent<DistantPillar>();
+		}
+		SafeGround safe = Get<SafeGround>();
+		if (safe != null)
+		{
+			safe.Init(plan, tiles, floatingOrigin);
+		}
+		UndergroundAtmosphere under = Get<UndergroundAtmosphere>();
+		if (under != null)
+		{
+			under.Init(plan, tiles, floatingOrigin);
+		}
+		return tiles;
+	}
+
+	// the layer's tiles, towers and backdrop go
+	public void EndLayer()
+	{
+		Drop<TileStreamer>();
+		Drop<PillarStreamer>();
+		DistantPillar backdrop = GetComponent<DistantPillar>();
+		if (backdrop != null)
+		{
+			Destroy(backdrop);
+		}
+	}
+
+	private void Drop<T>() where T : Component
+	{
+		T service = Get<T>();
+		if (service != null)
+		{
+			services.Remove(typeof(T));
+			Destroy(service);
+		}
 	}
 
 	private void OnDestroy()

@@ -76,6 +76,11 @@ public class PillarNodeAnimationEvents : MonoBehaviour
         SmoothRide();
         // the camera leaves the mouse and pulls back over the city
         EndingCinematic.Begin(transform);
+        // a ride to another layer keeps the music, LayerTransition pauses the rest
+        if (LayerTransition.Begin(this))
+        {
+            return;
+        }
         // ending has its own song, fade the radio
         PlaylistPlayer playlistPlayer = FindObjectOfType<PlaylistPlayer>();
         if (playlistPlayer != null)
@@ -95,6 +100,10 @@ public class PillarNodeAnimationEvents : MonoBehaviour
 #if DUMP_WORLDGEN
         Debug.Log("CoopTour ending event DisableCamera");
 #endif
+        if (LayerTransition.Arrive(this))
+        {
+            return;
+        }
         GameObject freeLookCamera = GameObject.FindWithTag("CMFreeLookCamera");
         if (freeLookCamera != null)
         {
@@ -107,6 +116,10 @@ public class PillarNodeAnimationEvents : MonoBehaviour
 #if DUMP_WORLDGEN
         Debug.Log("CoopTour ending event PlayEndingSequence");
 #endif
+        if (LayerTransition.Swap(this))
+        {
+            return;
+        }
         endScreen.SetActive(true);
     }
     public void QuitToMenu()

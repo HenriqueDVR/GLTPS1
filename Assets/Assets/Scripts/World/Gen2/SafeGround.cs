@@ -49,11 +49,14 @@ public class SafeGround : MonoBehaviour
 
 	private GameObject overlay;
 
+	// again for each layer reached, where last stood was on the one before
 	public void Init(LayerPlan plan, TileStreamer tiles, FloatingOrigin origin)
 	{
 		this.plan = plan;
 		this.tiles = tiles;
 		floatingOrigin = origin;
+		haveGirl = false;
+		haveKet = false;
 	}
 
 	private void Start()
@@ -85,7 +88,8 @@ public class SafeGround : MonoBehaviour
 	private void Update()
 	{
 		Girl girl = Girls.Local;
-		if (plan == null || girl == null || busy)
+		// the elevator takes them far over or under a deck
+		if (plan == null || girl == null || busy || tiles == null || LayerTransition.Busy)
 		{
 			return;
 		}

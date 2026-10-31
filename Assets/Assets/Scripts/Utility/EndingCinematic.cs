@@ -78,6 +78,29 @@ public class EndingCinematic : MonoBehaviour
 		running.Setup(elevator, camera);
 	}
 
+	// a ride between layers ends on the next deck, not in the credits: the camera goes back to the player,
+	// the fog and the hud come back
+	public static void End()
+	{
+		if (running == null)
+		{
+			return;
+		}
+		if (running.writtenFog >= 0f && Mathf.Approximately(RenderSettings.fogDensity, running.writtenFog))
+		{
+			RenderSettings.fogDensity = running.baseFog;
+		}
+		foreach (CanvasGroup group in running.hud)
+		{
+			if (group != null)
+			{
+				group.alpha = 1f;
+			}
+		}
+		Destroy(running.gameObject);
+		running = null;
+	}
+
 	private void Setup(Transform rideOn, Camera camera)
 	{
 		elevator = rideOn;

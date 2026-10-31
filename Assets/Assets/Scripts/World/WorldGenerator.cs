@@ -51,8 +51,13 @@ public class WorldGenerator : MonoBehaviour
 	// null in v2
 	public WorldLayout Layout { get; private set; }
 
-	// v2 only, layer 0 for now
+	// v2 only, the layer the girls are on
 	public LayerPlan Plan { get; private set; }
+
+	// v2 only, every layer reached so far
+	public LayerStack Layers { get; private set; }
+
+	public int Layer => (Plan != null) ? Plan.Layer : 0;
 
 	public uint LayoutHash { get; private set; }
 
@@ -84,6 +89,7 @@ public class WorldGenerator : MonoBehaviour
 			Vector3 centre = OriginTunnel.Centre(girls + Offset(), node.transform.rotation);
 			Vector3 facing = node.transform.rotation * Vector3.forward;
 			Plan = new LayerPlan(Seed, 0, new XZ(centre.x, centre.z), null, new XZ(facing.x, facing.z));
+			Layers = new LayerStack(Plan);
 			// roads, voids, viaducts and the underground too, so peers on different world code see the mismatch warning
 			ulong planHash = Plan.PlanHash(Plan.Origin, 1) ^ Plan.Roads.Hash(Plan.Origin, 1) ^ Plan.Chasms.Hash(Plan.Origin, 1) ^ Plan.Underground.Hash(Plan.Origin, 3);
 			LayoutHash = (uint)(planHash ^ (planHash >> 32));
@@ -113,6 +119,12 @@ public class WorldGenerator : MonoBehaviour
 	private void OnDestroy()
 	{
 		Active = false;
+	}
+
+	// LayerTransition, on the ride's swap
+	public void SetLayer(LayerPlan plan)
+	{
+		Plan = plan;
 	}
 
 	private void Update()

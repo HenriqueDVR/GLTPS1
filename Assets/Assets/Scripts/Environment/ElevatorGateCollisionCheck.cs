@@ -12,9 +12,10 @@ public class ElevatorGateCollisionCheck : MonoBehaviour
     [SerializeField] private Vector3 startPosition;
     private float elasped = 0f;
     [SerializeField] private float duration = 2f;
+    // local, the tower can move (floating origin, a ride between layers)
     void Start()
     {
-        startPosition = transform.position;
+        startPosition = transform.localPosition;
     }
     void Update()
     {
@@ -24,7 +25,7 @@ public class ElevatorGateCollisionCheck : MonoBehaviour
         {
             if (!hit.collider.gameObject.CompareTag("Elevator"))
             {
-                currentPosition = transform.position;
+                currentPosition = transform.localPosition;
                 elevatorAnim.SetBool("CloseGate", false);
                 elevatorAnim.enabled = false;
                 pillarNodeAnimationEventsScript.index = 0;
@@ -35,8 +36,8 @@ public class ElevatorGateCollisionCheck : MonoBehaviour
         if (triggerOpenGate)
         {
             elasped += Time.deltaTime;
-            transform.position = Vector3.Lerp(currentPosition, startPosition, elasped / duration);
-            if (Vector3.Distance(transform.position, startPosition) < 0.001f)
+            transform.localPosition = Vector3.Lerp(currentPosition, startPosition, elasped / duration);
+            if (Vector3.Distance(transform.localPosition, startPosition) < 0.001f)
             {
                 elevatorAnim.enabled = true;
                 elevatorAnim.SetBool("isGateOpen", true);

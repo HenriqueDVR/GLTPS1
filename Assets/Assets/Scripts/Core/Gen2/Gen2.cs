@@ -60,6 +60,10 @@ public static class Gen2
 
 	public const double BlendWidth = 100.0;
 
+	// deck to deck, layer k's deck is k of these over layer 0's. the top of the level above as DistantPillar draws it
+	// (the column's slab 546 m, +2, +80 lift, +54 to the deck's top). tuned in WP-WORLD-7
+	public const double LayerHeight = 682.0;
+
 	// rng streams, never renumber
 	public const ulong StreamLayer = 0x4C41594552uL;
 

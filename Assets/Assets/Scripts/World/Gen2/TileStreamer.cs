@@ -142,11 +142,28 @@ public class TileStreamer : MonoBehaviour
 
 	private float nextRefresh;
 
-	public void Init(LayerPlan plan, FloatingOrigin origin)
+	// layout y of the deck when the layer's reached by a ride, NaN at the start (from the floor under Chito)
+	private float deck = float.NaN;
+
+	// a layer reached by a ride builds while they're still in the elevator
+	private const double rideBudgetMs = 6.0;
+
+	// more holes in a tile's deck, besides the underground's shafts: the elevators' shafts (PillarStreamer)
+	public System.Action<int, int, List<Area>> MoreHoles;
+
+	public void Init(LayerPlan plan, FloatingOrigin origin, float deck = float.NaN, int groundLayer = 0)
 	{
 		Plan = plan;
 		floatingOrigin = origin;
+		this.deck = deck;
+		this.groundLayer = groundLayer;
+		if (!float.IsNaN(deck))
+		{
+			groundY = deck;
+		}
 	}
+
+	public int GroundLayer => groundLayer;
 
 	private void Start()
 	{
@@ -154,10 +171,9 @@ public class TileStreamer : MonoBehaviour
 		chito = Girl("ChitoParent");
 		yuuri = Girl("YuuriParent");
 		Vector3 start = (chito != null) ? chito.position : transform.position;
-		groundY = start.y + Offset().y;
-		groundLayer = 0;
+		groundY = float.IsNaN(deck) ? start.y + Offset().y : deck;
 		Material floor = null;
-		if (Physics.Raycast(start + Vector3.up, Vector3.down, out RaycastHit hit, 50f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+		if (float.IsNaN(deck) && Physics.Raycast(start + Vector3.up, Vector3.down, out RaycastHit hit, 50f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
 		{
 			groundY = hit.point.y + Offset().y;
 			groundLayer = hit.collider.gameObject.layer;
@@ -212,9 +228,12 @@ public class TileStreamer : MonoBehaviour
 			runSpeed = speed;
 		}
 #endif
-		// everything in reach before the first frame, like the legacy BuildAround
+		// everything in reach before the first frame, like the legacy BuildAround. not mid-ride
 		Refresh();
-		BuildMissing(double.MaxValue);
+		if (float.IsNaN(deck))
+		{
+			BuildMissing(double.MaxValue);
+		}
 	}
 
 	private void OnDestroy()
@@ -224,10 +243,42 @@ public class TileStreamer : MonoBehaviour
 			job.Bake.Complete();
 			job.Meshes.Dispose();
 		}
+		// a layer left by the elevator: its tiles go with it
+		if (job != null && job.Tile != null && !tiles.ContainsValue(job.Tile))
+		{
+			DestroyTile(job.Tile);
+		}
+		foreach (GameObject tile in tiles.Values)
+		{
+			DestroyTile(tile);
+		}
+		foreach (GameObject tile in pool)
+		{
+			DestroyTile(tile);
+		}
+		tiles.Clear();
+		pool.Clear();
 		foreach (Material m in made)
 		{
 			Destroy(m);
 		}
+	}
+
+	private static void DestroyTile(GameObject tile)
+	{
+		if (tile == null)
+		{
+			return;
+		}
+		ClearProps(tile);
+		foreach (MeshFilter filter in tile.GetComponentsInChildren<MeshFilter>(true))
+		{
+			if (filter.sharedMesh != null)
+			{
+				Destroy(filter.sharedMesh);
+			}
+		}
+		Destroy(tile);
 	}
 
 	// Resources/Buildings/<name>, a flat colour if it's missing
@@ -402,7 +453,7 @@ public class TileStreamer : MonoBehaviour
 			nextRefresh = Time.time + refreshInterval;
 			Refresh();
 		}
-		BuildMissing(budgetMs);
+		BuildMissing(LayerTransition.Busy ? rideBudgetMs : budgetMs);
 	}
 
 	private static long Key(int x, int z)
@@ -603,6 +654,7 @@ public class TileStreamer : MonoBehaviour
 				tile.transform.SetPositionAndRotation(new Vector3(x * size, groundY, z * size) - Offset(), Quaternion.identity);
 				ClearProps(tile);
 				Plan.Underground.Holes(x, z, holes);
+				MoreHoles?.Invoke(x, z, holes);
 				deckMesh.Build(tile.transform.GetChild(0).GetComponent<MeshFilter>().sharedMesh, Plan.Chasms, x, z, holes);
 				return false;
 			}
