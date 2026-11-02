@@ -1,6 +1,7 @@
 using Cinemachine;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
@@ -78,6 +79,8 @@ public class PSXScreenFit : MonoBehaviour
     void Awake()
     {
         screenCamera = GetComponent<Camera>();
+        // it only draws the quad: msaa here was ~140 MB of full-window buffers for nothing
+        screenCamera.allowMSAA = false;
         MeshRenderer quadRenderer = transform.parent.GetComponentInChildren<MeshRenderer>();
         if (quadRenderer == null)
         {
@@ -85,6 +88,12 @@ public class PSXScreenFit : MonoBehaviour
         }
         quad = quadRenderer.transform;
         quadHeight = quad.localScale.y;
+        // the quad stands in the scene by the start: on its own layer, which no other camera draws, or the world
+        // camera saw the picture inside itself (and flickered, drawing into the texture it was reading)
+        quad.gameObject.layer = screenLayer;
+        // and this camera drew everything too, so chito walking past the quad ended up over the picture.
+        // ui stays, the esc menu's canvas is on this camera
+        screenCamera.cullingMask = (1 << screenLayer) | (1 << uiLayer);
         picture = quadRenderer.sharedMaterial.mainTexture as RenderTexture;
         // material might call it something else, grab it from the cameras
         foreach (Camera camera in FindObjectsOfType<Camera>(true))
@@ -96,21 +105,52 @@ public class PSXScreenFit : MonoBehaviour
         }
     }
 
+    // msaa on the low rt: thin things far off (window bands, beams) are under a pixel and flickered as the view moved.
+    // urp only takes the rt's samples when the pipeline asset has msaa on, put back when we go
+    private const int samples = 4;
+    private UniversalRenderPipelineAsset pipeline;
+    private int oldSamples;
+
     void OnEnable()
     {
         RenderPipelineManager.beginCameraRendering += NarrowView;
         RenderPipelineManager.endCameraRendering += RestoreView;
+        pipeline = GraphicsSettings.currentRenderPipeline as UniversalRenderPipelineAsset;
+        if (pipeline != null)
+        {
+            oldSamples = pipeline.msaaSampleCount;
+            pipeline.msaaSampleCount = samples;
+        }
     }
 
     void OnDisable()
     {
         RenderPipelineManager.beginCameraRendering -= NarrowView;
         RenderPipelineManager.endCameraRendering -= RestoreView;
+        if (pipeline != null)
+        {
+            pipeline.msaaSampleCount = oldSamples;
+        }
     }
+
+    // free in the tag manager (MapPaper has 31)
+    private const int screenLayer = 30;
+
+    private const int uiLayer = 5;
 
     // cinemachine sets fov every frame, so only narrow it for the render
     private void NarrowView(ScriptableRenderContext context, Camera camera)
     {
+        if (camera != screenCamera)
+        {
+            camera.cullingMask &= ~(1 << screenLayer);
+        }
+        // with msaa a shader can make a NaN at a thin edge, and bloom blew one pixel up into a white flash over the
+        // screen. URP puts black there first
+        if (camera.targetTexture == picture && camera.TryGetComponent(out UniversalAdditionalCameraData data))
+        {
+            data.stopNaN = true;
+        }
         if (camera.targetTexture != picture || camera.aspect <= widestView || camera.GetComponent<CinemachineBrain>() == null)
         {
             return;
@@ -149,11 +189,12 @@ public class PSXScreenFit : MonoBehaviour
         int renderHeight = DisplaySettings.RenderHeight;
         int height = Mathf.Clamp(Screen.height, 1, (renderHeight > 0) ? renderHeight : Screen.height);
         int width = Mathf.Max(1, Mathf.RoundToInt(height * windowAspect));
-        if (picture.width != width || picture.height != height)
+        if (picture.width != width || picture.height != height || picture.antiAliasing != samples)
         {
             picture.Release();
             picture.width = width;
             picture.height = height;
+            picture.antiAliasing = samples;
             picture.Create();
         }
         foreach (Camera camera in FindObjectsOfType<Camera>())
