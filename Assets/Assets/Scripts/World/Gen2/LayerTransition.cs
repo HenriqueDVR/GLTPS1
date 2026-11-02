@@ -689,6 +689,12 @@ public class LayerTransition : MonoBehaviour
 	// how high it stands over whatever's under it, not counting itself
 	private static float KetLift(Rigidbody body)
 	{
+		// it stands on its springs, its hull's clear of the ground
+		VehicleMovement ket = body.GetComponent<VehicleMovement>();
+		if (ket != null)
+		{
+			return ket.Ride;
+		}
 		float bottom = float.MaxValue;
 		foreach (Collider part in body.GetComponentsInChildren<Collider>())
 		{

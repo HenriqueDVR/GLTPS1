@@ -1,0 +1,52 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2b61dbdf1407983408234e8f5657553c, type: 3}
+  m_Name: KetTuning
+  m_EditorClassIdentifier: 
+  mass: 1200
+  centerOfMass: {x: 0, y: 0.28, z: -0.3}
+  inertia: {x: 981, y: 1021, z: 350}
+  angularDrag: 0.5
+  hullBottom: 0.28
+  castFrom: 0.6
+  castRadius: 0.1
+  ride: 0.02
+  sag: 0.1
+  damping: 0.6
+  bumpStop: 0.18
+  fallPull: 8
+  leastLoad: 0.4
+  grip: 0.9
+  sideGrip: 0.8
+  sideStiffness: 16
+  holdSlip: 0.25
+  lockedSide: 0.25
+  snowGrip: 0.4
+  snowSide: 0.7
+  engine: 8
+  brake: 9
+  rolling: 2.5
+  reverseShare: 0.6
+  stoppedSpeed: 0.3
+  reversePause: 0.2
+  topFade: 1.5
+  overspeed: 3
+  pivotRate: 1
+  turnRate: 1.3
+  turnAccel: 10
+  turnResponse: 0.1
+  steerRise: 8
+  brakeYaw: 0.3
+  tippedUp: 0.3
+  rightedUp: 0.85
+  rightAfter: 3
+  rightRate: 1.2
