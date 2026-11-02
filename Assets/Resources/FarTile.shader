@@ -1,8 +1,9 @@
-// a tile out past the whole ones (TileStreamer.FarRadius): its own texture and colour, lit evenly with a little of the
-// sun's side, and the world's fog where it meets the whole tiles, thinning out past them so the city goes on into the
-// haze. the textures have no mipmaps, so where a texel is smaller than a pixel it's the texture's average colour (the
-// windows shimmered as the view moved). a tile just built fades in, dithered. the fog's numbers are globals, set once
-// a frame by TileStreamer
+// a tile out past the whole ones (TileStreamer.FarRadius): its own texture and colour, lit the way URP Lit lights the
+// whole ones (the sky's ambient and the sun on its face, no shadows that far), and the world's fog where it meets the
+// whole tiles (by view depth like URP's), thinning out past them so the city goes on into the haze. the texture's
+// mipmaps blend smoothly (trilinear), so its stripes average out far off instead of shimmering. the fog closes in whole
+// by the far edge, so the city has no end to see. a tile just built fades in, dithered. the fog's numbers are
+// globals, set once a frame by TileStreamer
 Shader "Hidden/FarTile"
 {
 	Properties
@@ -25,7 +26,7 @@ Shader "Hidden/FarTile"
 			#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
 			TEXTURE2D(_BaseMap);
-			SAMPLER(sampler_BaseMap);
+			SAMPLER(sampler_trilinear_repeat);
 
 			CBUFFER_START(UnityPerMaterial)
 			float4 _BaseMap_ST;
@@ -39,6 +40,7 @@ Shader "Hidden/FarTile"
 			float _FarNear;
 			float _FarEase;
 			float _FarShare;
+			float _FarEnd;
 			float4 _FarFogColor;
 			float _FarDensity;
 
@@ -78,19 +80,18 @@ Shader "Hidden/FarTile"
 			half4 frag(Varyings input) : SV_Target
 			{
 				clip(saturate((_Time.y - _Born) / 0.8) - Dither(input.position.xy));
-				float2 texels = input.uv * _BaseMap_TexelSize.zw;
-				float footprint = max(length(ddx(texels)), length(ddy(texels)));
-				float3 albedo = lerp(_Average.rgb, SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, input.uv).rgb * _BaseColor.rgb, saturate(1.5 - footprint));
-				Light sun = GetMainLight();
-				float3 sky = SampleSH(normalize(input.normal));
-				float facing = saturate(dot(normalize(input.normal), sun.direction));
-				float3 colour = albedo * (sky + sun.color * (0.25 + 0.5 * facing));
 				float2 a = input.world.xz - _FarHide.xy;
 				float2 b = input.world.xz - _FarHide.zw;
 				float near = sqrt(min(dot(a, a), dot(b, b)));
-				float seen = length(input.world - _WorldSpaceCameraPos);
+				float depth = -TransformWorldToView(input.world).z;
+				float3 albedo = SAMPLE_TEXTURE2D(_BaseMap, sampler_trilinear_repeat, input.uv).rgb * _BaseColor.rgb;
+				// with msaa a pixel can be shaded off its triangle, where the normal can pass through zero
+				float3 normal = SafeNormalize(input.normal);
+				Light sun = GetMainLight();
+				float3 colour = albedo * (SampleSH(normal) + sun.color * sun.distanceAttenuation * saturate(dot(normal, sun.direction)));
 				float density = _FarDensity * lerp(1, _FarShare, smoothstep(_FarNear, _FarNear + _FarEase, near));
-				return half4(lerp(_FarFogColor.rgb, colour, exp(-density * seen)), 1);
+				float clear = exp(-density * depth) * (1.0 - smoothstep(_FarEnd * 0.6, _FarEnd, near));
+				return half4(lerp(_FarFogColor.rgb, colour, clear), 1);
 			}
 			ENDHLSL
 		}

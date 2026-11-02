@@ -61,6 +61,29 @@ public class LotMesh
 
 	public int Triangles { get; private set; }
 
+	// a far tile's: nothing thinner than this (traces, panels, rails, steps, thin beams, small windows). they were most of
+	// the triangles, a pixel or less from 700 m out, and flickered. the same random draws, so the buildings are the same
+	public bool Far;
+
+	private const float thin = 0.6f;
+
+	// dark faces at least this big each way stay far
+	private const float darkKept = 1f;
+
+	// what far left out, where it would have started in vertices and how high it reached: roofs and raises still count
+	// it, so what's stacked on a building stands where it does near
+	private readonly List<Vector2> ghosts = new List<Vector2>();
+
+	private bool Skipped(float smallest, float top)
+	{
+		if (!Far || smallest >= thin)
+		{
+			return false;
+		}
+		ghosts.Add(new Vector2(vertices.Count, top));
+		return true;
+	}
+
 	public enum Debris
 	{
 		// a few small slabs and chunks
@@ -78,6 +101,7 @@ public class LotMesh
 	public void Begin()
 	{
 		roofs.Clear();
+		ghosts.Clear();
 		vertices.Clear();
 		uvs.Clear();
 		foreach (List<int> list in triangles)
@@ -369,6 +393,13 @@ public class LotMesh
 		{
 			top = Mathf.Max(top, vertices[i].y);
 		}
+		foreach (Vector2 ghost in ghosts)
+		{
+			if (ghost.x >= first)
+			{
+				top = Mathf.Max(top, ghost.y);
+			}
+		}
 		return top;
 	}
 
@@ -493,6 +524,13 @@ public class LotMesh
 		for (int i = first; i < vertices.Count; i++)
 		{
 			vertices[i] += Vector3.up * by;
+		}
+		for (int i = 0; i < ghosts.Count; i++)
+		{
+			if (ghosts[i].x >= first)
+			{
+				ghosts[i] = new Vector2(ghosts[i].x, ghosts[i].y + by);
+			}
 		}
 	}
 
@@ -1512,6 +1550,10 @@ public class LotMesh
 	// a slab from a to b (their y ignored), half wide, underside and top sloping from the a end to the b end
 	private void Sloped(int submesh, Vector3 a, Vector3 b, float half, float bottomA, float topA, float bottomB, float topB)
 	{
+		if (Skipped(half * 2f, Mathf.Max(topA, topB)))
+		{
+			return;
+		}
 		Vector3 along = b - a;
 		along.y = 0f;
 		along.Normalize();
@@ -1626,6 +1668,10 @@ public class LotMesh
 	// four walls and a top, a bottom too if it hangs in the air
 	private void Box(Vector3 centre, Vector3 u, float hu, float hv, float y0, float y1, int sides, int top, bool bottom)
 	{
+		if (Skipped(Mathf.Min(Mathf.Min(hu, hv) * 2f, y1 - y0), y1))
+		{
+			return;
+		}
 		Vector3 v = Left(u);
 		Vector3 lo = Vector3.up * y0;
 		Vector3 hi = Vector3.up * y1;
@@ -1647,6 +1693,10 @@ public class LotMesh
 	// a box turned any way, half its size each way
 	private void OrientedBox(Vector3 centre, Quaternion turn, Vector3 half, int submesh)
 	{
+		if (Skipped(Mathf.Min(half.x, Mathf.Min(half.y, half.z)) * 2f, centre.y + half.magnitude))
+		{
+			return;
+		}
 		Vector3 x = turn * Vector3.right * half.x;
 		Vector3 y = turn * Vector3.up * half.y;
 		Vector3 z = turn * Vector3.forward * half.z;
@@ -1667,7 +1717,7 @@ public class LotMesh
 	private void Beam(Vector3 a, Vector3 b, float half, int submesh)
 	{
 		Vector3 d = b - a;
-		if (d.sqrMagnitude < 1e-6f)
+		if (d.sqrMagnitude < 1e-6f || Skipped(half * 2f, Mathf.Max(a.y, b.y) + half))
 		{
 			return;
 		}
@@ -1689,6 +1739,11 @@ public class LotMesh
 	// an upright many-sided cylinder, capped on top if asked
 	private void Cylinder(Vector3 centre, float radius, float y0, float y1, int submesh, bool cap)
 	{
+		// a tank's bands
+		if (Skipped(y1 - y0, y1))
+		{
+			return;
+		}
 		for (int i = 0; i < tankSides; i++)
 		{
 			float a0 = i * Mathf.PI * 2f / tankSides;
@@ -1711,6 +1766,12 @@ public class LotMesh
 	// tops get planar uvs, walls run along the wall and up a floor per repeat
 	private void Quad(int submesh, Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, Vector3 outward)
 	{
+		// far, the dark is windows, traces and bands on faces: the bands and bigger windows stay, they're much of how
+		// dark a building reads from afar (without them far ones stood out whiter), the thin traces go
+		if (Far && submesh == dark && Mathf.Min((p1 - p0).magnitude, (p3 - p0).magnitude) < darkKept)
+		{
+			return;
+		}
 		int first = vertices.Count;
 		Add(p0, outward);
 		Add(p1, outward);

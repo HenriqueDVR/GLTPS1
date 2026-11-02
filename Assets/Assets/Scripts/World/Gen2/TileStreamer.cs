@@ -18,11 +18,33 @@ public class TileStreamer : MonoBehaviour
 	// drawn only, out to here
 	public const float FarRadius = 3000f;
 
+	// how far this layer builds now: less while a ride is on its way to it (LayerTransition), the deck above hides most
+	// of it going up and the fog going down, and building all 3 km of it in the ride's few seconds was the boarding hitch
+	public float FarReach
+	{
+		get => farReach;
+		set
+		{
+			if (farReach != value)
+			{
+				farReach = value;
+				nextRefresh = 0f;
+			}
+		}
+	}
+
+	private float farReach = FarRadius;
+
 	// a far tile's share of the world's fog far out, eased in from BuildRadius over this: the horizon still goes into
 	// the haze, the city before it shows
-	private const float farFogShare = 0.35f;
+	private const float farFogShare = 0.5f;
 
 	private const float farFogEase = 900f;
+
+	// the camera this high over the deck (or under it) thins the far tiles' fog to farFogShare by farFogHigh
+	private const float farFogLow = 40f;
+
+	private const float farFogHigh = 300f;
 
 	// tiles stay until this much further out, so they don't flicker at the edge
 	private const float keepMargin = 128f;
@@ -160,9 +182,17 @@ public class TileStreamer : MonoBehaviour
 
 	private MaterialPropertyBlock born;
 
+	// far tiles fading in, and when they were built: the block comes off after, a renderer with one isn't SRP batched
+	private readonly List<KeyValuePair<GameObject, float>> fading = new List<KeyValuePair<GameObject, float>>();
+
+	private const float fadeTime = 0.8f;
+
 	private readonly List<Vector3> points = new List<Vector3>();
 
 	private readonly Stopwatch stopwatch = new Stopwatch();
+
+	// this frame's build budget, a stage that goes a lot at a time stops when it's spent
+	private double frameBudget;
 
 	private Transform chito;
 
@@ -173,8 +203,9 @@ public class TileStreamer : MonoBehaviour
 	// layout y of the deck when the layer's reached by a ride, NaN at the start (from the floor under Chito)
 	private float deck = float.NaN;
 
-	// a layer reached by a ride builds while they're still in the elevator
-	private const double rideBudgetMs = 6.0;
+	// a layer reached by a ride builds while they're still in the elevator, nearest first; what's left by the end goes on
+	// at the usual budget (6 ms had the ride at 45-50 fps)
+	private const double rideBudgetMs = 3.0;
 
 	// more holes in a tile's deck, besides the underground's shafts: the elevators' shafts (PillarStreamer)
 	public System.Action<int, int, List<Area>> MoreHoles;
@@ -329,9 +360,15 @@ public class TileStreamer : MonoBehaviour
 		ClearProps(tile);
 		foreach (MeshFilter filter in tile.GetComponentsInChildren<MeshFilter>(true))
 		{
-			if (filter.sharedMesh != null)
+			// ~1.7 ms each (the gpu's side), one a frame
+			Mesh mesh = filter.sharedMesh;
+			if (mesh != null && GameSession.Current != null)
 			{
-				Destroy(filter.sharedMesh);
+				GameSession.Current.Later(() => Destroy(mesh));
+			}
+			else if (mesh != null)
+			{
+				Destroy(mesh);
 			}
 		}
 		Destroy(tile);
@@ -510,20 +547,83 @@ public class TileStreamer : MonoBehaviour
 			Refresh();
 		}
 		BuildMissing(LayerTransition.Busy ? rideBudgetMs : budgetMs, false);
+		Faded();
 		FarFog();
+		Underneath();
 	}
 
-	// the far tiles' fog, the same for every far material
+	// the camera under the deck's underside (riding up to it, or down from it) sees only that: the roads and the
+	// buildings aren't drawn, a ride drew two layers whole
+	private bool under;
+
+	private void Underneath()
+	{
+		Camera camera = Camera.main;
+		bool now = camera != null && camera.transform.position.y + Offset().y < groundY - DeckMesh.UndersideDepth - 1f;
+		if (now == under)
+		{
+			return;
+		}
+		under = now;
+		foreach (GameObject tile in tiles.Values)
+		{
+			Above(tile);
+		}
+	}
+
+	private void Above(GameObject tile)
+	{
+		tile.transform.GetChild(1).GetComponent<MeshRenderer>().enabled = !under;
+		tile.transform.GetChild(2).GetComponent<MeshRenderer>().enabled = !under;
+	}
+
+	private void Faded()
+	{
+		float now = Time.timeSinceLevelLoad;
+		int kept = 0;
+		for (int i = 0; i < fading.Count; i++)
+		{
+			if (now - fading[i].Value < fadeTime + 0.1f)
+			{
+				fading[kept++] = fading[i];
+				continue;
+			}
+			// pooled or made whole since, it's had its block taken off already
+			GameObject tile = fading[i].Key;
+			if (tile != null)
+			{
+				for (int k = 0; k < 3; k++)
+				{
+					tile.transform.GetChild(k).GetComponent<MeshRenderer>().SetPropertyBlock(null);
+				}
+			}
+		}
+		fading.RemoveRange(kept, fading.Count - kept);
+	}
+
+	// the far tiles' fog, the same for every far material, set by the layer the girls are on. on the ground they take
+	// all the fog like the whole tiles (they showed as white shapes past it); it thins only as the camera rises over
+	// the deck, a ride's view going out over the city
 	private void FarFog()
 	{
+		if (GameSession.Get<TileStreamer>() != this)
+		{
+			return;
+		}
+		Camera camera = Camera.main;
+		float height = (camera != null) ? Mathf.Abs(camera.transform.position.y + Offset().y - groundY) : 0f;
+		float share = Mathf.Lerp(1f, farFogShare, Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(farFogLow, farFogHigh, height)));
 		Vector3 offset = Offset();
 		Vector3 a = (points.Count > 0) ? points[0] - offset : Vector3.zero;
 		Vector3 b = (points.Count > 1) ? points[1] - offset : a;
 		Shader.SetGlobalVector("_FarHide", new Vector4(a.x, a.z, b.x, b.z));
 		Shader.SetGlobalFloat("_FarNear", BuildRadius);
 		Shader.SetGlobalFloat("_FarEase", farFogEase);
-		Shader.SetGlobalFloat("_FarShare", farFogShare);
-		Shader.SetGlobalColor("_FarFogColor", RenderSettings.fogColor);
+		Shader.SetGlobalFloat("_FarShare", share);
+		Shader.SetGlobalFloat("_FarEnd", FarRadius);
+		// linear like URP's own fog colour and the sky dome's, as a vector so nothing converts it again: fogged out, a far
+		// tile is exactly the haze behind it (it came out whiter, a pale skyline over the horizon)
+		Shader.SetGlobalVector("_FarFogColor", RenderSettings.fogColor.linear);
 		Shader.SetGlobalFloat("_FarDensity", RenderSettings.fog ? RenderSettings.fogDensity : 0f);
 	}
 
@@ -559,16 +659,16 @@ public class TileStreamer : MonoBehaviour
 		float size = (float)Gen2.TileSize;
 		foreach (Vector3 p in points)
 		{
-			int x0 = Mathf.FloorToInt((p.x - FarRadius) / size);
-			int x1 = Mathf.FloorToInt((p.x + FarRadius) / size);
-			int z0 = Mathf.FloorToInt((p.z - FarRadius) / size);
-			int z1 = Mathf.FloorToInt((p.z + FarRadius) / size);
+			int x0 = Mathf.FloorToInt((p.x - farReach) / size);
+			int x1 = Mathf.FloorToInt((p.x + farReach) / size);
+			int z0 = Mathf.FloorToInt((p.z - farReach) / size);
+			int z1 = Mathf.FloorToInt((p.z + farReach) / size);
 			for (int x = x0; x <= x1; x++)
 			{
 				for (int z = z0; z <= z1; z++)
 				{
 					float d = TileDistance(x, z, p);
-					if (d <= FarRadius)
+					if (d <= farReach)
 					{
 						wanted.Add(Key(x, z));
 						if (d <= BuildRadius)
@@ -584,7 +684,7 @@ public class TileStreamer : MonoBehaviour
 		foreach (KeyValuePair<long, GameObject> tile in tiles)
 		{
 			float d = NearestDistance(KeyX(tile.Key), KeyZ(tile.Key));
-			if (!wanted.Contains(tile.Key) && d > FarRadius + keepMargin)
+			if (!wanted.Contains(tile.Key) && d > farReach + keepMargin)
 			{
 				leaving.Add(tile.Key);
 			}
@@ -645,6 +745,7 @@ public class TileStreamer : MonoBehaviour
 	private void BuildMissing(double budget, bool nearOnly = true)
 	{
 		stopwatch.Restart();
+		frameBudget = budget;
 		bool now = budget == double.MaxValue;
 		while (stopwatch.Elapsed.TotalMilliseconds < budget)
 		{
@@ -730,6 +831,11 @@ public class TileStreamer : MonoBehaviour
 
 		public bool Upgrade;
 
+		// lots added to the mesh so far
+		public int LotAt;
+
+		public bool Laned;
+
 		public NativeArray<int> Meshes;
 
 		public JobHandle Bake;
@@ -749,6 +855,76 @@ public class TileStreamer : MonoBehaviour
 	private Job job;
 
 	private const int baking = 7;
+
+	// a far tile's last: its meshes packed small
+	private const int packing = 20;
+
+	// 16 bytes a vertex for far tiles, 32 as built: half positions and uvs (6 cm at 128 m, under a pixel that far), a
+	// byte normal. the far tiles were ~1.1 GB of a layer's gpu memory
+	[System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+	private struct Packed
+	{
+		public ushort X, Y, Z, W;
+
+		public sbyte NX, NY, NZ, NW;
+
+		public ushort U, V;
+	}
+
+	private static readonly UnityEngine.Rendering.VertexAttributeDescriptor[] packedLayout =
+	{
+		new UnityEngine.Rendering.VertexAttributeDescriptor(UnityEngine.Rendering.VertexAttribute.Position, UnityEngine.Rendering.VertexAttributeFormat.Float16, 4),
+		new UnityEngine.Rendering.VertexAttributeDescriptor(UnityEngine.Rendering.VertexAttribute.Normal, UnityEngine.Rendering.VertexAttributeFormat.SNorm8, 4),
+		new UnityEngine.Rendering.VertexAttributeDescriptor(UnityEngine.Rendering.VertexAttribute.TexCoord0, UnityEngine.Rendering.VertexAttributeFormat.Float16, 2)
+	};
+
+	private static readonly List<Vector3> packPositions = new List<Vector3>();
+
+	private static readonly List<Vector3> packNormals = new List<Vector3>();
+
+	private static readonly List<Vector2> packUvs = new List<Vector2>();
+
+	private static void Pack(GameObject tile)
+	{
+		for (int part = 0; part < 3; part++)
+		{
+			Mesh mesh = tile.transform.GetChild(part).GetComponent<MeshFilter>().sharedMesh;
+			if (mesh == null || !mesh.isReadable || mesh.vertexCount == 0)
+			{
+				continue;
+			}
+			int count = mesh.vertexCount;
+			mesh.GetVertices(packPositions);
+			mesh.GetNormals(packNormals);
+			mesh.GetUVs(0, packUvs);
+			bool uvs = packUvs.Count == count;
+			NativeArray<Packed> packed = new NativeArray<Packed>(count, Allocator.Temp, NativeArrayOptions.UninitializedMemory);
+			for (int i = 0; i < count; i++)
+			{
+				Vector3 p = packPositions[i];
+				Vector3 n = packNormals[i];
+				Vector2 uv = uvs ? packUvs[i] : Vector2.zero;
+				packed[i] = new Packed
+				{
+					X = Mathf.FloatToHalf(p.x),
+					Y = Mathf.FloatToHalf(p.y),
+					Z = Mathf.FloatToHalf(p.z),
+					W = Mathf.FloatToHalf(1f),
+					NX = (sbyte)Mathf.RoundToInt(n.x * 127f),
+					NY = (sbyte)Mathf.RoundToInt(n.y * 127f),
+					NZ = (sbyte)Mathf.RoundToInt(n.z * 127f),
+					U = Mathf.FloatToHalf(uv.x),
+					V = Mathf.FloatToHalf(uv.y)
+				};
+			}
+			Bounds bounds = mesh.bounds;
+			const UnityEngine.Rendering.MeshUpdateFlags quiet = UnityEngine.Rendering.MeshUpdateFlags.DontRecalculateBounds | UnityEngine.Rendering.MeshUpdateFlags.DontValidateIndices;
+			mesh.SetVertexBufferParams(count, packedLayout);
+			mesh.SetVertexBufferData(packed, 0, 0, count, 0, quiet);
+			mesh.bounds = bounds;
+			packed.Dispose();
+		}
+	}
 
 	// the colliders are given the same, or they'd cook the mesh again on the main thread
 	private const MeshColliderCookingOptions Cooking = MeshColliderCookingOptions.CookForFasterSimulation | MeshColliderCookingOptions.EnableMeshCleaning | MeshColliderCookingOptions.WeldColocatedVertices | MeshColliderCookingOptions.UseFastMidphase;
@@ -812,13 +988,28 @@ public class TileStreamer : MonoBehaviour
 				}
 				return false;
 			case 3:
-				lotMesh.Begin();
-				Lanes(x, z);
-				lotMesh.AddLots(lots, 0, lots.Count / 2, Plan.Def.Districts, Plan.Def.Ruin, x * Gen2.TileSize, z * Gen2.TileSize);
+			{
+				// the lanes on their own, then a lot at a time while the frame's budget lasts (half a dense tile's lots
+				// took 4-10 ms)
+				if (!job.Laned)
+				{
+					lotMesh.Far = !job.Near;
+					lotMesh.Begin();
+					Lanes(x, z);
+					job.Laned = true;
+					job.Stage = 3;
+					return false;
+				}
+				do
+				{
+					int to = Mathf.Min(job.LotAt + 1, lots.Count);
+					lotMesh.AddLots(lots, job.LotAt, to, Plan.Def.Districts, Plan.Def.Ruin, x * Gen2.TileSize, z * Gen2.TileSize);
+					job.LotAt = to;
+				}
+				while (job.LotAt < lots.Count && stopwatch.Elapsed.TotalMilliseconds < frameBudget);
+				job.Stage = (job.LotAt < lots.Count) ? 3 : 5;
 				return false;
-			case 4:
-				lotMesh.AddLots(lots, lots.Count / 2, lots.Count, Plan.Def.Districts, Plan.Def.Ruin, x * Gen2.TileSize, z * Gen2.TileSize);
-				return false;
+			}
 			case 5:
 				Scatter(x, z);
 				// too fine to see far out, and the underground's under the deck
@@ -842,9 +1033,7 @@ public class TileStreamer : MonoBehaviour
 				job.AnyLots = lotMesh.End(tile.transform.GetChild(2).GetComponent<MeshFilter>().sharedMesh);
 				if (!job.Near)
 				{
-					Far(tile, true);
-					Drop(tile);
-					return true;
+					job.Stage = packing;
 				}
 				return false;
 			case 6:
@@ -871,6 +1060,11 @@ public class TileStreamer : MonoBehaviour
 				JobHandle.ScheduleBatchedJobs();
 				return false;
 			}
+			case packing:
+				Pack(tile);
+				Far(tile, true);
+				Drop(tile);
+				return true;
 			case baking:
 			{
 				job.Bake.Complete();
@@ -922,15 +1116,20 @@ public class TileStreamer : MonoBehaviour
 			collider.enabled = false;
 		}
 		Look(tile, true);
+		if (!fresh)
+		{
+			return;
+		}
 		if (born == null)
 		{
 			born = new MaterialPropertyBlock();
 		}
-		born.SetFloat("_Born", fresh ? Time.timeSinceLevelLoad : -100f);
+		born.SetFloat("_Born", Time.timeSinceLevelLoad);
 		for (int i = 0; i < 3; i++)
 		{
 			tile.transform.GetChild(i).GetComponent<MeshRenderer>().SetPropertyBlock(born);
 		}
+		fading.Add(new KeyValuePair<GameObject, float>(tile, Time.timeSinceLevelLoad));
 	}
 
 	// a far tile's meshes go to the gpu alone and can't be written again: a new one, swapped in the step that fills it,
@@ -949,7 +1148,12 @@ public class TileStreamer : MonoBehaviour
 		{
 			filter.sharedMesh.MarkDynamic();
 		}
-		if (old != null)
+		// a frame stalls on it, so it waits its turn with the others
+		if (old != null && GameSession.Current != null)
+		{
+			GameSession.Current.Later(() => Destroy(old));
+		}
+		else if (old != null)
 		{
 			Destroy(old);
 		}
@@ -992,6 +1196,7 @@ public class TileStreamer : MonoBehaviour
 			}
 			renderer.shadowCastingMode = far ? UnityEngine.Rendering.ShadowCastingMode.Off : UnityEngine.Rendering.ShadowCastingMode.On;
 		}
+		Above(tile);
 	}
 
 	private Material FarOf(Material source)
