@@ -469,8 +469,9 @@ public class LotPlanTests
 	[Test]
 	public void GoldenValues()
 	{
-		Assert.AreEqual(0x4cc05ad33b67f01duL, Fold(Layer0(), -12, -12, 24), "layer 0 lots");
-		Assert.AreEqual(0x39752b320365bbc0uL, Fold(Layer1(), 50, -20, 12), "layer 1 lots");
+		Assert.AreEqual(0x8a0757ec936ff624uL, Fold(Layer0(), -12, -12, 24), "layer 0 lots");
+		// 2026-11-01: lots keep out of the collapsed sections over the first layer (v2 not released yet, no bump)
+		Assert.AreEqual(0x7cdaef1b79561083uL, Fold(Layer1(), 50, -20, 12), "layer 1 lots");
 	}
 
 	private static ulong Fold(LayerPlan plan, int x0, int z0, int size)

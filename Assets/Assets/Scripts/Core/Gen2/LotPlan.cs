@@ -332,8 +332,7 @@ public sealed class LotPlan
 				return;
 			}
 		}
-		XZ pillar = plan.PillarNear(centre.X, centre.Z).Position;
-		if (RectDistance(origin, u, v, cu, cv, hu, hv, pillar) < RoadPlan.PillarClearance || RectDistance(origin, u, v, cu, cv, hu, hv, plan.Origin) < RoadPlan.StartClearance)
+		if ((plan.TowerNear(centre.X, centre.Z, out XZ pillar) && RectDistance(origin, u, v, cu, cv, hu, hv, pillar) < RoadPlan.PillarClearance) || RectDistance(origin, u, v, cu, cv, hu, hv, plan.Origin) < RoadPlan.StartClearance)
 		{
 			return;
 		}
@@ -577,7 +576,7 @@ public sealed class LotPlan
 		for (double s = 0.0; s <= length + 0.01; s += 4.0)
 		{
 			XZ p = At(origin, axis, other, along + Math.Min(s, length), across);
-			if (plan.DistrictAt(p.X, p.Z) != district || plan.Chasms.Blocks(p, StairWidth) || plan.Viaducts.Blocks(p, StairWidth, stairViaducts) || plan.Roads.HighwayNear(p, StairWidth + 4.0) || plan.PillarNear(p.X, p.Z).Position.DistanceTo(p) < RoadPlan.PillarClearance + StairWidth || plan.Origin.DistanceTo(p) < RoadPlan.StartClearance)
+			if (plan.DistrictAt(p.X, p.Z) != district || plan.Chasms.Blocks(p, StairWidth) || plan.Viaducts.Blocks(p, StairWidth, stairViaducts) || plan.Roads.HighwayNear(p, StairWidth + 4.0) || (plan.TowerNear(p.X, p.Z, out XZ tower) && tower.DistanceTo(p) < RoadPlan.PillarClearance + StairWidth) || plan.Origin.DistanceTo(p) < RoadPlan.StartClearance)
 			{
 				return false;
 			}

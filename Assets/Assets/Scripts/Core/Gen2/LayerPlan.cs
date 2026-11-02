@@ -191,6 +191,34 @@ public sealed class LayerPlan
 		return Pillar(Gen2.Cell(x, Gen2.RegionSize), Gen2.Cell(z, Gen2.RegionSize));
 	}
 
+	private readonly System.Collections.Generic.Dictionary<ulong, bool> towers = new System.Collections.Generic.Dictionary<ulong, bool>();
+
+	// a tower stands in this cell on this layer only if its elevator works from here (up, or back down to where it
+	// came from): every tower is somewhere to go (decided 2026-11-02). the rest of the grid is open city
+	public bool HasTower(int cellX, int cellZ)
+	{
+		ulong key = Gen2.Pack(cellX, cellZ);
+		if (!towers.TryGetValue(key, out bool has))
+		{
+			if (towers.Count > 4096)
+			{
+				towers.Clear();
+			}
+			has = IsUp(cellX, cellZ) || (Below != null && Below.IsUp(cellX, cellZ));
+			towers.Add(key, has);
+		}
+		return has;
+	}
+
+	// the tower of p's own cell, if it has one. pillars sit PillarMargin inside their cell, so no other is that close
+	public bool TowerNear(double x, double z, out XZ at)
+	{
+		int cellX = Gen2.Cell(x, Gen2.RegionSize);
+		int cellZ = Gen2.Cell(z, Gen2.RegionSize);
+		at = PillarPosition(WorldSeed, cellX, cellZ);
+		return HasTower(cellX, cellZ);
+	}
+
 	// co-op check: both peers hash the plan around a point and compare.
 	// region cells within radius: pillars and their states, plus districts on a 400 m grid
 	public ulong PlanHash(XZ center, int radius)

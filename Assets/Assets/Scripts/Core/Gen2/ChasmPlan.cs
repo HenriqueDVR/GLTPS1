@@ -33,7 +33,8 @@ public struct Chasm
 // world gen v2: where the deck is broken open (the source's gaps and voids, the chasm of episode 3). per region cell
 // maybe a rift (a long crack, 24-60 m across) and up to two shafts (square holes), a district's share of each
 // (DistrictDef.Rifts / Shafts). edges are ragged. kept clear of the pillars, the start and the expressway junctions;
-// lots keep out, roads cross on bridges. below is the long fall towards the layer under this one.
+// lots keep out, roads cross on bridges. below is the long fall towards the layer under this one. over the first
+// layer there are collapsed sections too (Collapse), open right through to the layer below.
 // a pure function of (layer seed, cell); cells are cached since every ground cell asks
 public sealed class ChasmPlan
 {
@@ -60,6 +61,17 @@ public sealed class ChasmPlan
 	public const double LotGap = 4.0;
 
 	private const int shaftsPerCell = 2;
+
+	// collapsed sections, layers over the first: where the deck has fallen away right through, a few hundred metres
+	// across, open to the layer below. about this share of the deck (the noise's level, measured)
+	public const double CollapseLevel = 0.3;
+
+	// metres per unit of the noise over its level: no more than one a metre anywhere (the octaves' steepest, smoothed),
+	// so Inside never says further from an edge than it is, which the deck's and the lots' margins count on
+	private const double collapseScale = 130.0;
+
+	// and never this near a pillar: its tower stands in deck, a ride lands on it
+	public const double CollapsePillarGap = 320.0;
 
 	private readonly LayerPlan plan;
 
@@ -176,7 +188,7 @@ public sealed class ChasmPlan
 			for (int dz = -1; dz <= 1; dz++)
 			{
 				XZ pillar = LayerPlan.PillarPosition(plan.WorldSeed, chasm.CellX + dx, chasm.CellZ + dz);
-				if (Distance(chasm, pillar) < PillarGap + reach)
+				if (plan.HasTower(chasm.CellX + dx, chasm.CellZ + dz) && Distance(chasm, pillar) < PillarGap + reach)
 				{
 					return false;
 				}
@@ -206,6 +218,97 @@ public sealed class ChasmPlan
 	// how far p is inside a void, ragged edges and all: positive in it, negative on solid deck
 	public double Inside(double x, double z)
 	{
+		return Inside(x, z, Collapse(x, z));
+	}
+
+	// with the collapse there already worked out
+	public double Inside(double x, double z, double collapse)
+	{
+		double best = Math.Max(Rifts(x, z), collapse);
+		if (best == double.MinValue)
+		{
+			return best;
+		}
+		return best + Gen2.Noise(plan.LayerSeed, Gen2.StreamChasm + 1, x, z, 20.0) * Ragged;
+	}
+
+	public bool Void(double x, double z)
+	{
+		return Inside(x, z) > 0.0;
+	}
+
+	// how far p is inside a collapsed section, positive in it. a pure function of (world seed, layer, place), known
+	// before the layer is planned (its districts come from where the ride lands), so the layer under it can draw the
+	// same holes overhead (DistantPillar). the first layer has none, nothing's under it
+	public static double Collapse(ulong worldSeed, int layer, double x, double z)
+	{
+		if (layer < 1)
+		{
+			return double.MinValue;
+		}
+		ulong seed = Gen2.LayerSeed(worldSeed, layer);
+		double n = 0.6 * Gen2.Noise(seed, Gen2.StreamChasm + 3, x, z, 900.0) + 0.3 * Gen2.Noise(seed, Gen2.StreamChasm + 4, x, z, 330.0) + 0.1 * Gen2.Noise(seed, Gen2.StreamChasm + 5, x, z, 110.0);
+		double inside = (n - CollapseLevel) * collapseScale;
+		int cx = Gen2.Cell(x, Gen2.RegionSize);
+		int cz = Gen2.Cell(z, Gen2.RegionSize);
+		XZ p = new XZ(x, z);
+		for (int dx = -1; dx <= 1; dx++)
+		{
+			for (int dz = -1; dz <= 1; dz++)
+			{
+				inside = Math.Min(inside, Pillar(worldSeed, cx + dx, cz + dz).DistanceTo(p) - CollapsePillarGap);
+			}
+		}
+		return inside;
+	}
+
+	// pillar positions as Collapse asks for them, nine a call. main thread only, like the plans
+	private static readonly Dictionary<long, XZ> pillars = new Dictionary<long, XZ>();
+
+	private static ulong pillarsSeed;
+
+	private static XZ Pillar(ulong worldSeed, int cellX, int cellZ)
+	{
+		if (worldSeed != pillarsSeed || pillars.Count > 4096)
+		{
+			pillars.Clear();
+			pillarsSeed = worldSeed;
+		}
+		long key = ((long)cellX << 32) ^ (uint)cellZ;
+		if (!pillars.TryGetValue(key, out XZ at))
+		{
+			at = LayerPlan.PillarPosition(worldSeed, cellX, cellZ);
+			pillars.Add(key, at);
+		}
+		return at;
+	}
+
+	// whether a collapse reaches within margin of the square x0..x0+size, z0..z0+size: a 5 x 5 look, no misses since
+	// Collapse never changes faster than a metre a metre
+	public bool CollapseNear(double x0, double z0, double size, double margin)
+	{
+		if (plan.Layer < 1)
+		{
+			return false;
+		}
+		double step = size / 4.0;
+		double reach = step * 0.7072 + margin;
+		for (int i = 0; i <= 4; i++)
+		{
+			for (int j = 0; j <= 4; j++)
+			{
+				if (Collapse(x0 + i * step, z0 + j * step) > -reach)
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	// Inside without the collapses: the rifts and shafts alone
+	public double Rifts(double x, double z)
+	{
 		int cx = Gen2.Cell(x, Gen2.RegionSize);
 		int cz = Gen2.Cell(z, Gen2.RegionSize);
 		double best = double.MinValue;
@@ -220,16 +323,12 @@ public sealed class ChasmPlan
 				}
 			}
 		}
-		if (best == double.MinValue)
-		{
-			return best;
-		}
-		return best + Gen2.Noise(plan.LayerSeed, Gen2.StreamChasm + 1, x, z, 20.0) * Ragged;
+		return best;
 	}
 
-	public bool Void(double x, double z)
+	public double Collapse(double x, double z)
 	{
-		return Inside(x, z) > 0.0;
+		return Collapse(plan.WorldSeed, plan.Layer, x, z);
 	}
 
 	private static double Inside(Chasm chasm, XZ p)
@@ -248,6 +347,10 @@ public sealed class ChasmPlan
 	// whether something round p with this radius reaches a void (ragged edge included)
 	public bool Blocks(XZ p, double radius)
 	{
+		if (Collapse(p.X, p.Z) > -(radius + Ragged + LotGap))
+		{
+			return true;
+		}
 		int cx = Gen2.Cell(p.X, Gen2.RegionSize);
 		int cz = Gen2.Cell(p.Z, Gen2.RegionSize);
 		for (int dx = -1; dx <= 1; dx++)

@@ -72,6 +72,10 @@ public class ViaductPlanTests
 			{
 				for (int dz = -1; dz <= 1; dz++)
 				{
+					if (!plan.HasTower(viaduct.CellX + dx, viaduct.CellZ + dz))
+					{
+						continue;
+					}
 					XZ pillar = LayerPlan.PillarPosition(seed, viaduct.CellX + dx, viaduct.CellZ + dz);
 					Assert.GreaterOrEqual(RoadPlan.SegmentDistance(pillar, viaduct.A, viaduct.B), ViaductPlan.PillarGap);
 				}
@@ -128,7 +132,7 @@ public class ViaductPlanTests
 		{
 			hash = (hash ^ c) * 1099511628211uL;
 		}
-		Assert.AreEqual(0x8e90dcf141939a6buL, hash, "layer 0 viaducts");
+		Assert.AreEqual(0x64cdedf7166e7d31uL, hash, "layer 0 viaducts");
 	}
 
 	// ramps at both ends land on the deck, no steeper than the ket climbs

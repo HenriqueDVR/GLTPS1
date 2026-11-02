@@ -134,9 +134,22 @@ public class DistantPillar : MonoBehaviour
 
 	private int streamerVersion = -1;
 
-	private static Mesh v2Ceiling;
+	// v2: the layer over this one, -1 for none, and its tiles built so far round the eye, layout coords
+	private int upperLayer = -1;
 
-	private static ulong v2CeilingSeed;
+	private readonly Dictionary<long, Transform> uppers = new Dictionary<long, Transform>();
+
+	private readonly List<long> upperGone = new List<long>();
+
+	private const float upperTile = 2400f;
+
+	// 30 m cells like the old one, and this many tiles out from the eye's
+	private const int upperCells = 80;
+
+	private const int upperReach = 2;
+
+	// where each tier stands: on the hole's edge for the deck, a little back for the slab under it
+	private static readonly float[] upperLevels = { 12f, 0f };
 
 	// copies of towers that went out of range, for the next ones
 	private readonly Stack<Distant> spare = new Stack<Distant>();
@@ -311,22 +324,18 @@ public class DistantPillar : MonoBehaviour
 		// same holes every time for a seed
 		System.Random random = new System.Random((int)(world.Seed & 0x7fffffff));
 		ceilingMaterial = new Material(Resources.Load<Shader>("DistantCeiling"));
-		// v2's knows no towers, so it's the same on every layer: made once, not again at every ride's end
-		Mesh ceilingMesh = (pillar == null && v2Ceiling != null && v2CeilingSeed == world.Seed) ? v2Ceiling : Ceiling(towers, random);
+		// v2's is the layer above's real holes, built in tiles where the camera is (Uppers); the last layer has none
 		if (pillar == null)
 		{
-			v2Ceiling = ceilingMesh;
-			v2CeilingSeed = world.Seed;
+			upperLayer = streamer.Plan.Def.IsLast ? -1 : streamer.Plan.Layer + 1;
 		}
-		for (int i = 0; i < 9; i++)
+		else
 		{
-			GameObject tile = new GameObject("DistantCeiling", typeof(MeshFilter), typeof(MeshRenderer));
-			tile.GetComponent<MeshFilter>().sharedMesh = ceilingMesh;
-			MeshRenderer tileRenderer = tile.GetComponent<MeshRenderer>();
-			tileRenderer.sharedMaterial = ceilingMaterial;
-			tileRenderer.shadowCastingMode = ShadowCastingMode.Off;
-			tileRenderer.receiveShadows = false;
-			ceilings.Add(tile.transform);
+			Mesh ceilingMesh = Ceiling(towers, random);
+			for (int i = 0; i < 9; i++)
+			{
+				ceilings.Add(CeilingTile(ceilingMesh).transform);
+			}
 		}
 		GameObject dome = GameObject.CreatePrimitive(PrimitiveType.Sphere);
 		Destroy(dome.GetComponent<Collider>());
@@ -519,6 +528,11 @@ public class DistantPillar : MonoBehaviour
 				Destroy(tile.gameObject);
 			}
 		}
+		foreach (Transform tile in uppers.Values)
+		{
+			DropUpper(tile);
+		}
+		uppers.Clear();
 		foreach (Transform layer in clouds)
 		{
 			if (layer != null)
@@ -555,6 +569,10 @@ public class DistantPillar : MonoBehaviour
 			distant.Copy.gameObject.SetActive(!hide && distant.Copy.gameObject.activeSelf);
 		}
 		foreach (Transform tile in instance.ceilings)
+		{
+			tile.gameObject.SetActive(!hide);
+		}
+		foreach (Transform tile in instance.uppers.Values)
 		{
 			tile.gameObject.SetActive(!hide);
 		}
@@ -676,10 +694,52 @@ public class DistantPillar : MonoBehaviour
 		return highest;
 	}
 
-	// under an inactive parent so its scripts never wake, then strip to meshes
+	// the piece stripped to its tower's meshes, once a scene: stripping a copy for every tower (81 as a ride arrives)
+	// held the game at 60-200 ms frames for seconds
+	private static GameObject template;
+
+	private static GameObject templateOf;
+
+	private static float templateFoot, templateSlab, templateGirth, templateHeight;
+
 	private GameObject Copy(GameObject prefab, Material material)
 	{
-		GameObject holder = new GameObject("DistantPillar");
+		if (template == null || templateOf != prefab)
+		{
+			if (template != null)
+			{
+				Destroy(template);
+			}
+			template = Strip(prefab);
+			templateOf = prefab;
+			templateFoot = foot;
+			templateSlab = slab;
+			templateGirth = girth;
+			templateHeight = height;
+		}
+		foot = templateFoot;
+		slab = templateSlab;
+		girth = templateGirth;
+		height = templateHeight;
+		GameObject holder = Instantiate(template);
+		holder.name = "DistantPillar";
+		foreach (MeshRenderer meshRenderer in holder.GetComponentsInChildren<MeshRenderer>(includeInactive: true))
+		{
+			Material[] materials = new Material[meshRenderer.sharedMaterials.Length];
+			for (int i = 0; i < materials.Length; i++)
+			{
+				materials[i] = material;
+			}
+			meshRenderer.sharedMaterials = materials;
+		}
+		holder.SetActive(true);
+		return holder;
+	}
+
+	// under an inactive parent so its scripts never wake, then strip to meshes. left switched off
+	private GameObject Strip(GameObject prefab)
+	{
+		GameObject holder = new GameObject("DistantPillar template");
 		holder.SetActive(false);
 		GameObject copy = Instantiate(prefab, holder.transform);
 		copy.transform.localPosition = Vector3.zero;
@@ -707,6 +767,11 @@ public class DistantPillar : MonoBehaviour
 		float lowest = float.NaN;
 		foreach (MeshRenderer meshRenderer in copy.GetComponentsInChildren<MeshRenderer>(includeInactive: true))
 		{
+			// under a part already gone
+			if (meshRenderer == null)
+			{
+				continue;
+			}
 			// just the tower, not the walls or the next level's slabs. the ceiling lines up with the bottom slab
 			if (System.Array.IndexOf(towerParts, meshRenderer.name) < 0)
 			{
@@ -723,15 +788,10 @@ public class DistantPillar : MonoBehaviour
 						lowest = part.min.y;
 					}
 				}
-				Destroy(meshRenderer.gameObject);
+				// now, it's copied from in the same frame
+				DestroyImmediate(meshRenderer.gameObject);
 				continue;
 			}
-			Material[] materials = new Material[meshRenderer.sharedMaterials.Length];
-			for (int i = 0; i < materials.Length; i++)
-			{
-				materials[i] = material;
-			}
-			meshRenderer.sharedMaterials = materials;
 			meshRenderer.shadowCastingMode = ShadowCastingMode.Off;
 			meshRenderer.receiveShadows = false;
 			MeshFilter filter = meshRenderer.GetComponent<MeshFilter>();
@@ -754,7 +814,6 @@ public class DistantPillar : MonoBehaviour
 		slab = lowest - foot;
 		girth = Mathf.Max(Mathf.Max(-bounds.min.x, bounds.max.x), Mathf.Max(-bounds.min.z, bounds.max.z));
 		height = Mathf.Max(1f, bounds.size.y);
-		holder.SetActive(true);
 		return holder;
 	}
 
@@ -840,6 +899,129 @@ public class DistantPillar : MonoBehaviour
 		mesh.SetTriangles(slabs.Triangles, 0);
 		mesh.RecalculateBounds();
 		return mesh;
+	}
+
+	private GameObject CeilingTile(Mesh mesh)
+	{
+		GameObject tile = new GameObject("DistantCeiling", typeof(MeshFilter), typeof(MeshRenderer));
+		tile.GetComponent<MeshFilter>().sharedMesh = mesh;
+		MeshRenderer tileRenderer = tile.GetComponent<MeshRenderer>();
+		tileRenderer.sharedMaterial = ceilingMaterial;
+		tileRenderer.shadowCastingMode = ShadowCastingMode.Off;
+		tileRenderer.receiveShadows = false;
+		return tile;
+	}
+
+	// v2: the layer above, as the layer below sees it: its collapsed sections (ChasmPlan.Collapse), the same holes it
+	// has when a ride gets there. tiles round the eye in layout coords, one made a frame; toLayout is layout minus world
+	private void Uppers(Vector3 eye, Vector3 toLayout, float height)
+	{
+		if (upperLayer < 0)
+		{
+			return;
+		}
+		Vector3 at = eye + toLayout;
+		int cx = Mathf.FloorToInt(at.x / upperTile);
+		int cz = Mathf.FloorToInt(at.z / upperTile);
+		if (upperField == null)
+		{
+			bool found = false;
+			for (int r = 0; r <= upperReach && !found; r++)
+			{
+				for (int dx = -r; dx <= r && !found; dx++)
+				{
+					for (int dz = -r; dz <= r && !found; dz++)
+					{
+						if (!uppers.ContainsKey(((long)(cx + dx) << 32) ^ (uint)(cz + dz)))
+						{
+							upperX = cx + dx;
+							upperZ = cz + dz;
+							upperRow = 0;
+							upperField = new float[upperCells + 1, upperCells + 1];
+							found = true;
+						}
+					}
+				}
+			}
+		}
+		if (upperField != null && Sample())
+		{
+			uppers[((long)upperX << 32) ^ (uint)upperZ] = CeilingTile(UpperMesh()).transform;
+			upperField = null;
+		}
+		upperGone.Clear();
+		foreach (KeyValuePair<long, Transform> tile in uppers)
+		{
+			int tx = (int)(tile.Key >> 32);
+			int tz = (int)(uint)tile.Key;
+			if (Mathf.Abs(tx - cx) > upperReach + 1 || Mathf.Abs(tz - cz) > upperReach + 1)
+			{
+				upperGone.Add(tile.Key);
+				continue;
+			}
+			tile.Value.position = new Vector3(tx * upperTile - toLayout.x, height, tz * upperTile - toLayout.z);
+		}
+		foreach (long key in upperGone)
+		{
+			DropUpper(uppers[key]);
+			uppers.Remove(key);
+		}
+	}
+
+	// the tile being sampled, a few rows a frame (a whole one took 10-20 ms, 25 of them as a ride arrives)
+	private float[,] upperField;
+
+	private int upperX;
+
+	private int upperZ;
+
+	private int upperRow;
+
+	private const double upperBudgetMs = 1.5;
+
+	private readonly System.Diagnostics.Stopwatch upperWatch = new System.Diagnostics.Stopwatch();
+
+	// true once every row's in
+	private bool Sample()
+	{
+		float cell = upperTile / upperCells;
+		ulong seed = streamer.Plan.WorldSeed;
+		upperWatch.Restart();
+		while (upperRow <= upperCells && upperWatch.Elapsed.TotalMilliseconds < upperBudgetMs)
+		{
+			for (int z = 0; z <= upperCells; z++)
+			{
+				upperField[upperRow, z] = (float)-ChasmPlan.Collapse(seed, upperLayer, upperX * upperTile + upperRow * cell, upperZ * upperTile + z * cell);
+			}
+			upperRow++;
+		}
+		return upperRow > upperCells;
+	}
+
+	private Mesh UpperMesh()
+	{
+		float cell = upperTile / upperCells;
+		Slabs slabs = new Slabs(upperField, upperCells, cell, 0f, 0, false);
+		for (int i = 0; i < storeys.Length; i++)
+		{
+			slabs.Storey(i, upperLevels[i], false);
+		}
+		Mesh mesh = new Mesh { name = "DistantCeiling", indexFormat = IndexFormat.UInt32 };
+		mesh.SetVertices(slabs.Vertices);
+		mesh.SetColors(slabs.Colours);
+		mesh.SetTriangles(slabs.Triangles, 0);
+		mesh.RecalculateBounds();
+		return mesh;
+	}
+
+	private static void DropUpper(Transform tile)
+	{
+		if (tile == null)
+		{
+			return;
+		}
+		Destroy(tile.GetComponent<MeshFilter>().sharedMesh);
+		Destroy(tile.gameObject);
 	}
 
 	// flat distance the short way round the tiling
@@ -1093,13 +1275,17 @@ public class DistantPillar : MonoBehaviour
 
 		private int slot;
 
-		public Slabs(float[,] field, int count, float cell, float half, int seed)
+		// the edges slid along a little so they look torn; v2's tiles leave them where the field says, so neighbours meet
+		private readonly bool torn;
+
+		public Slabs(float[,] field, int count, float cell, float half, int seed, bool torn = true)
 		{
 			this.field = field;
 			this.count = count;
 			this.cell = cell;
 			this.half = half;
 			this.seed = seed;
+			this.torn = torn;
 		}
 
 		// every tier has its own underside, the ones above reach out past the ones below
@@ -1293,7 +1479,7 @@ public class DistantPillar : MonoBehaviour
 			float t = (iso - field[ax, ay]) / (field[bx, by] - field[ax, ay]);
 			// same slide on both sides of the tile's seam
 			long wrapped = (ay == by ? n : n * 2) + CornerKey(ax % count, ay % count);
-			t = Mathf.Clamp(t + (Hash(wrapped * 7 + Mathf.RoundToInt(iso * 1000f)) - 0.5f) * 0.7f, 0.08f, 0.92f);
+			t = torn ? Mathf.Clamp(t + (Hash(wrapped * 7 + Mathf.RoundToInt(iso * 1000f)) - 0.5f) * 0.7f, 0.08f, 0.92f) : Mathf.Clamp01(t);
 			return new Point { Key = key, Position = Vector3.Lerp(Grid(ax, ay), Grid(bx, by), t), Crossing = true, Exit = exit, Inside = inside };
 		}
 
@@ -1384,6 +1570,10 @@ public class DistantPillar : MonoBehaviour
 		float density = RenderSettings.fog ? RenderSettings.fogDensity : 0f;
 		Color fog = RenderSettings.fogColor;
 		Vector3 centre = goal + Vector3.up * (foot + Level());
+		if (pillar == null)
+		{
+			Uppers(eye, anchor - goal, centre.y);
+		}
 		// the tile under the eye and the ring round it
 		float tileX = Mathf.Round((eye.x - centre.x) / ceilingSize);
 		float tileZ = Mathf.Round((eye.z - centre.z) / ceilingSize);

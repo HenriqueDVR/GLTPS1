@@ -35,6 +35,10 @@ public class PillarStreamer : MonoBehaviour
 
 		// its tower rode off to another layer, none here till this layer's gone
 		public bool Gone;
+
+		// the lined hole a car comes up through, the layer's not the tower's: it stays when the tower rides off and is
+		// there before one rides in
+		public GameObject Head;
 	}
 
 	public readonly List<Spot> Spots = new List<Spot>();
@@ -216,6 +220,14 @@ public class PillarStreamer : MonoBehaviour
 			{
 				Destroy(spot.Instance);
 			}
+			if (spot.Head != null)
+			{
+				Destroy(spot.Head);
+			}
+		}
+		if (headMesh != null)
+		{
+			Destroy(headMesh);
 		}
 	}
 
@@ -249,6 +261,10 @@ public class PillarStreamer : MonoBehaviour
 			{
 				Destroy(spot.Instance);
 			}
+			if (spot.Head != null)
+			{
+				Destroy(spot.Head);
+			}
 			byCell.Remove(key);
 			Spots.Remove(spot);
 			changed = true;
@@ -257,7 +273,8 @@ public class PillarStreamer : MonoBehaviour
 		{
 			for (int z = cz - farCells; z <= cz + farCells; z++)
 			{
-				if (!byCell.ContainsKey(Key(x, z)))
+				// only towers that go somewhere stand (LayerPlan.HasTower)
+				if (!byCell.ContainsKey(Key(x, z)) && plan.HasTower(x, z))
 				{
 					Spot spot = Make(x, z);
 					byCell.Add(Key(x, z), spot);
@@ -269,6 +286,12 @@ public class PillarStreamer : MonoBehaviour
 		// real towers round both girls
 		foreach (Spot spot in Spots)
 		{
+			float near = float.MaxValue;
+			foreach (Vector3 p in tiles.Points)
+			{
+				near = Mathf.Min(near, new Vector2(p.x - spot.Pose.position.x, p.z - spot.Pose.position.z).magnitude);
+			}
+			Head(spot, near < realRadius);
 			if (spot.Gone)
 			{
 				continue;
@@ -281,14 +304,8 @@ public class PillarStreamer : MonoBehaviour
 					continue;
 				}
 				spot.Instance = arrived.Instance;
-				Dress(spot.Instance, spot.State);
 				arrived = null;
 				changed = true;
-			}
-			float near = float.MaxValue;
-			foreach (Vector3 p in tiles.Points)
-			{
-				near = Mathf.Min(near, new Vector2(p.x - spot.Pose.position.x, p.z - spot.Pose.position.z).magnitude);
 			}
 			if (spot.Instance == null && near < realRadius)
 			{
@@ -370,7 +387,6 @@ public class PillarStreamer : MonoBehaviour
 		}
 		tower.GetComponent<Node>().MarkPlaced();
 		Reach(tower);
-		Dress(tower, spot.State);
 		DistantPillar.HideBrokenParts(tower);
 		GraphicsTuning.Adopt(tower);
 		return tower;
@@ -387,23 +403,38 @@ public class PillarStreamer : MonoBehaviour
 
 	private static Material[] headMaterials;
 
-	// where the car comes up from the layer below: the hole lined with concrete down through the deck to its underside,
-	// a kerb and railings along its sides, a steel frame over the side the car opens on (+x, out from the column).
-	// none where it doesn't come up, a ride moves the tower to a layer where it may not
-	private void Dress(GameObject tower, PillarState state)
+	// one for every head of the layer, in the tower's space
+	private Mesh headMesh;
+
+	// where the car comes up from the layer below, near the girls, whether its tower's here or not
+	private void Head(Spot spot, bool near)
 	{
-		Transform old = tower.transform.Find(headName);
-		bool wanted = (state & PillarState.Down) != 0 && carMax.x > carMin.x;
-		if (old != null && !wanted)
+		bool wanted = near && (spot.State & PillarState.Down) != 0 && carMax.x > carMin.x;
+		if (spot.Head != null && !wanted)
 		{
-			old.gameObject.SetActive(false);
-			Destroy(old.GetComponent<MeshFilter>().sharedMesh);
-			Destroy(old.gameObject);
+			Destroy(spot.Head);
+			spot.Head = null;
 		}
-		if (old != null || !wanted)
+		if (spot.Head != null || !wanted)
 		{
 			return;
 		}
+		if (headMesh == null)
+		{
+			headMesh = HeadMesh();
+		}
+		GameObject head = new GameObject(headName + " " + spot.CellX + "," + spot.CellZ, typeof(MeshFilter), typeof(MeshRenderer), typeof(MeshCollider));
+		head.transform.SetPositionAndRotation(spot.Pose.position - Offset(), spot.Pose.rotation);
+		head.GetComponent<MeshFilter>().sharedMesh = headMesh;
+		head.GetComponent<MeshRenderer>().sharedMaterials = headMaterials;
+		head.GetComponent<MeshCollider>().sharedMesh = headMesh;
+		spot.Head = head;
+	}
+
+	// the hole lined with concrete down through the deck to its underside, a kerb and railings along its sides, a steel
+	// frame over the side the car opens on (+x, out from the column)
+	private Mesh HeadMesh()
+	{
 		if (headMaterials == null)
 		{
 			Material concrete = Resources.Load<Material>("Roads/Concrete");
@@ -434,6 +465,9 @@ public class PillarStreamer : MonoBehaviour
 			HeadBox(vertices, triangles[1], new Vector3(x0, kerb + rail - 0.06f, z - 0.05f), new Vector3(x1, kerb + rail, z + 0.05f));
 			HeadBox(vertices, triangles[1], new Vector3(x0, kerb + rail * 0.5f - 0.03f, z - 0.03f), new Vector3(x1, kerb + rail * 0.5f + 0.03f, z + 0.03f));
 		}
+		// a sill over the gap between the car's floor and the deck on the door side, just outside the car so it still
+		// goes down through: the ket's wheels dropped in the 20 cm slot and it stuck there
+		HeadBox(vertices, triangles[1], new Vector3(carMax.x + 0.01f, -0.06f, carMin.y), new Vector3(x1 + 0.05f, 0f, carMax.y));
 		// the frame over the way out
 		HeadBox(vertices, triangles[1], new Vector3(x1 + 0.3f, 0f, z0 - 0.7f), new Vector3(x1 + 0.6f, frame, z0 - 0.4f));
 		HeadBox(vertices, triangles[1], new Vector3(x1 + 0.3f, 0f, z1 + 0.4f), new Vector3(x1 + 0.6f, frame, z1 + 0.7f));
@@ -445,11 +479,7 @@ public class PillarStreamer : MonoBehaviour
 		mesh.SetTriangles(triangles[1], 1);
 		mesh.RecalculateNormals();
 		mesh.RecalculateBounds();
-		GameObject head = new GameObject(headName, typeof(MeshFilter), typeof(MeshRenderer), typeof(MeshCollider));
-		head.transform.SetParent(tower.transform, false);
-		head.GetComponent<MeshFilter>().sharedMesh = mesh;
-		head.GetComponent<MeshRenderer>().sharedMaterials = headMaterials;
-		head.GetComponent<MeshCollider>().sharedMesh = mesh;
+		return mesh;
 	}
 
 	// a wall from a to b going down, both faces

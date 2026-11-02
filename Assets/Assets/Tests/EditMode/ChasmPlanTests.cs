@@ -61,6 +61,11 @@ public class ChasmPlanTests
 		{
 			for (int z = -4; z <= 4; z++)
 			{
+				// only real towers keep voids off
+				if (!plan.HasTower(x, z))
+				{
+					continue;
+				}
 				XZ pillar = LayerPlan.PillarPosition(seed, x, z);
 				for (double a = 0.0; a < 6.28; a += 0.3)
 				{
@@ -150,7 +155,62 @@ public class ChasmPlanTests
 		{
 			hash = (hash ^ c) * 1099511628211uL;
 		}
-		Assert.AreEqual(0xf93c353eab551c6auL, hash, "layer 0 voids");
+		Assert.AreEqual(0x9c63db94a7ecbc58uL, hash, "layer 0 voids");
+	}
+
+	// collapsed sections: none on the first layer, a fair share of the next (prints it), clear of every pillar, the
+	// same from the bare function as from the layer's plan (wherever the ride landed)
+	[Test]
+	public void CollapsesOverTheFirstLayer()
+	{
+		int open = 0;
+		int samples = 0;
+		int holes = 0;
+		bool last = false;
+		for (double x = -20000.0; x < 20000.0; x += 50.0)
+		{
+			for (double z = -20000.0; z < 20000.0; z += 200.0)
+			{
+				samples++;
+				Assert.AreEqual(double.MinValue, ChasmPlan.Collapse(seed, 0, x, z));
+				bool inside = ChasmPlan.Collapse(seed, 1, x, z) > 0.0;
+				if (inside)
+				{
+					open++;
+				}
+			}
+		}
+		for (double x = -20000.0; x < 20000.0; x += 20.0)
+		{
+			bool inside = ChasmPlan.Collapse(seed, 1, x, 777.0) > 0.0;
+			if (inside && !last)
+			{
+				holes++;
+			}
+			last = inside;
+		}
+		double share = (double)open / samples;
+		TestContext.WriteLine("collapse share " + share.ToString("F3", CultureInfo.InvariantCulture) + ", holes along 40 km " + holes);
+		Assert.Greater(share, 0.06);
+		Assert.Less(share, 0.3);
+		for (int x = -6; x <= 6; x++)
+		{
+			for (int z = -6; z <= 6; z++)
+			{
+				XZ pillar = LayerPlan.PillarPosition(seed, x, z);
+				for (double a = 0.0; a < 6.28; a += 0.3)
+				{
+					Assert.LessOrEqual(ChasmPlan.Collapse(seed, 1, pillar.X + System.Math.Cos(a) * 250.0, pillar.Z + System.Math.Sin(a) * 250.0), 0.0);
+				}
+			}
+		}
+		LayerPlan landed = new LayerPlan(seed, 1, LayerPlan.PillarPosition(seed, 3, -2), Layer0());
+		for (int i = 0; i < 200; i++)
+		{
+			double px = i * 173.0 - 17000.0;
+			double pz = i * 97.0 - 9000.0;
+			Assert.AreEqual(ChasmPlan.Collapse(seed, 1, px, pz), landed.Chasms.Collapse(px, pz));
+		}
 	}
 
 	private static string F(double v)

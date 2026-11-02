@@ -71,8 +71,10 @@ public class UndergroundPlanTests
 			Assert.GreaterOrEqual(inner.Z0, hall.CellZ * UndergroundPlan.Cell + UndergroundPlan.CellMargin);
 			Assert.LessOrEqual(inner.Z1, (hall.CellZ + 1) * UndergroundPlan.Cell - UndergroundPlan.CellMargin);
 			Assert.GreaterOrEqual(inner.Distance(plan.Origin.X, plan.Origin.Z), RoadPlan.StartClearance);
-			XZ pillar = plan.PillarNear(hall.Center.X, hall.Center.Z).Position;
-			Assert.GreaterOrEqual(inner.Distance(pillar.X, pillar.Z), UndergroundPlan.PillarGap);
+			if (plan.TowerNear(hall.Center.X, hall.Center.Z, out XZ pillar))
+			{
+				Assert.GreaterOrEqual(inner.Distance(pillar.X, pillar.Z), UndergroundPlan.PillarGap);
+			}
 			for (double x = inner.X0; x <= inner.X1; x += 4.0)
 			{
 				for (double z = inner.Z0; z <= inner.Z1; z += 4.0)
@@ -367,7 +369,7 @@ public class UndergroundPlanTests
 		{
 			hash = (hash ^ c) * 1099511628211uL;
 		}
-		Assert.AreEqual(0xef184758685a5ed7uL, hash, "layer 0 underground");
+		Assert.AreEqual(0x9614ba2fa515e795uL, hash, "layer 0 underground");
 	}
 
 	private static string F(double v)

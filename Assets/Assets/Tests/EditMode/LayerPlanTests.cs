@@ -97,6 +97,33 @@ public class LayerPlanTests
 		Assert.AreEqual(stack[0].Def.UpChance, (double)up / eligible, 0.06);
 	}
 
+	// a tower stands only where its elevator goes somewhere: up from the layer, or back down where it arrived
+	[Test]
+	public void TowersOnlyWhereElevatorsWork()
+	{
+		LayerPlan[] stack = Stack(seed);
+		int towers = 0;
+		int empty = 0;
+		foreach (LayerPlan plan in stack)
+		{
+			for (int x = -10; x <= 10; x++)
+			{
+				for (int z = -10; z <= 10; z++)
+				{
+					bool has = plan.HasTower(x, z);
+					Assert.AreEqual(plan.Pillar(x, z).State != PillarState.Solid, has, "layer " + plan.Layer + " cell " + x + "," + z);
+					Assert.AreEqual(has, plan.HasTower(x, z), "cached the same");
+					towers += has ? 1 : 0;
+					empty += has ? 0 : 1;
+				}
+			}
+		}
+		Assert.Greater(towers, 0);
+		Assert.Greater(empty, towers);
+		// the start's cell has none: the first goal is out in the world
+		Assert.IsFalse(stack[0].TowerNear(0.0, 0.0, out _));
+	}
+
 	[Test]
 	public void WarpStaysInBounds()
 	{

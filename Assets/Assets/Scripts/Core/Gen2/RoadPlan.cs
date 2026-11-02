@@ -337,8 +337,7 @@ public sealed class RoadPlan
 		ulong key = Gen2.Pack(cellX, cellZ);
 		double span = HighwayCell - 2.0 * HighwayMargin;
 		XZ p = new XZ(cellX * HighwayCell + HighwayMargin + Gen2.Unit(WorldRandom.Derive(seed, Gen2.StreamHighway + 6, key)) * span, cellZ * HighwayCell + HighwayMargin + Gen2.Unit(WorldRandom.Derive(seed, Gen2.StreamHighway + 7, key)) * span);
-		XZ pillar = PillarOf(p);
-		double d = pillar.DistanceTo(p);
+		double d = plan.TowerNear(p.X, p.Z, out XZ pillar) ? pillar.DistanceTo(p) : double.MaxValue;
 		if (d >= PillarGap)
 		{
 			return p;
@@ -1201,15 +1200,10 @@ public sealed class RoadPlan
 		return p.DistanceTo(new XZ(a.X + dx * t, a.Z + dz * t));
 	}
 
-	// the pillar of p's own region cell: pillars sit PillarMargin inside their cell, so it's the only one that close
-	private XZ PillarOf(XZ p)
-	{
-		return LayerPlan.PillarPosition(plan.WorldSeed, Gen2.Cell(p.X, Gen2.RegionSize), Gen2.Cell(p.Z, Gen2.RegionSize));
-	}
-
+	// only cells with a tower (LayerPlan.HasTower) keep anything clear
 	private bool NearPillar(XZ p, double distance)
 	{
-		return PillarOf(p).DistanceTo(p) < distance;
+		return plan.TowerNear(p.X, p.Z, out XZ pillar) && pillar.DistanceTo(p) < distance;
 	}
 
 	private bool InClearance(XZ p)
@@ -1294,6 +1288,10 @@ public sealed class RoadPlan
 		{
 			for (int cz = cz0; cz <= cz1; cz++)
 			{
+				if (!plan.HasTower(cx, cz))
+				{
+					continue;
+				}
 				XZ pillar = LayerPlan.PillarPosition(plan.WorldSeed, cx, cz);
 				int closest = 0;
 				double best = double.MaxValue;

@@ -125,7 +125,7 @@ public sealed class ViaductPlan
 			for (int dz = -1; dz <= 1; dz++)
 			{
 				XZ pillar = LayerPlan.PillarPosition(plan.WorldSeed, cellX + dx, cellZ + dz);
-				if (RoadPlan.SegmentDistance(pillar, viaduct.A, viaduct.B) < PillarGap)
+				if (plan.HasTower(cellX + dx, cellZ + dz) && RoadPlan.SegmentDistance(pillar, viaduct.A, viaduct.B) < PillarGap)
 				{
 					return false;
 				}

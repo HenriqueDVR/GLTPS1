@@ -719,6 +719,8 @@ public class TileStreamer : MonoBehaviour
 
 		public int Stage;
 
+		public bool AnyDeck;
+
 		public bool AnyRoads;
 
 		public bool AnyLots;
@@ -848,7 +850,14 @@ public class TileStreamer : MonoBehaviour
 			case 6:
 			{
 				// cooked off the main thread; the colliders pick the cooked data up when they get the mesh
-				List<int> ids = new List<int> { tile.transform.GetChild(0).GetComponent<MeshFilter>().sharedMesh.GetInstanceID() };
+				// a tile all in a collapsed section has no deck at all
+				Mesh deck = tile.transform.GetChild(0).GetComponent<MeshFilter>().sharedMesh;
+				job.AnyDeck = deck.vertexCount > 0;
+				List<int> ids = new List<int>();
+				if (job.AnyDeck)
+				{
+					ids.Add(deck.GetInstanceID());
+				}
 				if (job.AnyRoads)
 				{
 					ids.Add(tile.transform.GetChild(1).GetComponent<MeshFilter>().sharedMesh.GetInstanceID());
@@ -869,7 +878,7 @@ public class TileStreamer : MonoBehaviour
 				// active before the colliders get their meshes: a collider in an inactive pooled tile drops it
 				tile.SetActive(true);
 				Look(tile, false);
-				Collide(tile.transform.GetChild(0).gameObject, true);
+				Collide(tile.transform.GetChild(0).gameObject, job.AnyDeck);
 				Collide(tile.transform.GetChild(1).gameObject, job.AnyRoads);
 				Collide(tile.transform.GetChild(2).gameObject, job.AnyLots);
 				return false;

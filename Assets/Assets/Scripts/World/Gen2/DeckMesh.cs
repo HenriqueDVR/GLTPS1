@@ -25,6 +25,14 @@ public class DeckMesh
 	// at the cell corners, positive on the deck
 	private readonly float[,] solid = new float[cells + 1, cells + 1];
 
+	// at the cell corners, in a collapsed section (ChasmPlan.Collapse): no floor down there and no underside, it's open
+	// right through to the layer below. a cell with a corner on deck keeps both, a lip at the hole's foot
+	private readonly bool[,] open = new bool[cells + 1, cells + 1];
+
+	private readonly double[,] collapsed = new double[cells + 1, cells + 1];
+
+	private bool anyOpen;
+
 	// the deck's underside, the ceiling seen from the layer below: a flat slab this far down, whole but for the elevator
 	// shafts. under the underground's deepest pits (UndergroundPlan), and a few metres under where DistantPillar draws the
 	// ceiling, so riding up the real layer above wins over it
@@ -63,8 +71,20 @@ public class DeckMesh
 		double size = Gen2.TileSize;
 		double x0 = tileX * size;
 		double z0 = tileZ * size;
-		// nothing near: one quad
-		Broken = chasms.Inside(x0 + size * 0.5, z0 + size * 0.5) > -(size * 0.75 + Cell + ChasmPlan.Ragged + 2.0);
+		// nothing near: one quad. a collapse's value runs shallow far from it, so it's looked for over the tile
+		bool collapse = chasms.CollapseNear(x0, z0, size, Cell + ChasmPlan.Ragged + 2.0);
+		double rift = chasms.Rifts(x0 + size * 0.5, z0 + size * 0.5);
+		Broken = collapse || (rift != double.MinValue && rift + ChasmPlan.Ragged > -(size * 0.75 + Cell + ChasmPlan.Ragged + 2.0));
+		anyOpen = false;
+		for (int i = 0; i <= cells && collapse; i++)
+		{
+			for (int j = 0; j <= cells; j++)
+			{
+				collapsed[i, j] = chasms.Collapse(x0 + i * Cell, z0 + j * Cell);
+				open[i, j] = collapsed[i, j] > 0.0;
+				anyOpen |= open[i, j];
+			}
+		}
 		if (!Broken && (holes == null || holes.Count == 0))
 		{
 			Top(Vector3.zero, new Vector3((float)size, 0f, (float)size));
@@ -85,7 +105,7 @@ public class DeckMesh
 			{
 				for (int j = 0; j <= cells; j++)
 				{
-					solid[i, j] = (float)-chasms.Inside(x0 + i * Cell, z0 + j * Cell);
+					solid[i, j] = (float)-chasms.Inside(x0 + i * Cell, z0 + j * Cell, collapse ? collapsed[i, j] : double.MinValue);
 				}
 			}
 			for (int j = 0; j < cells; j++)
@@ -109,7 +129,14 @@ public class DeckMesh
 				}
 			}
 		}
-		Underside(x0, z0, shafts);
+		if (anyOpen)
+		{
+			OpenUnderside();
+		}
+		else
+		{
+			Underside(x0, z0, shafts);
+		}
 		mesh.Clear();
 		mesh.indexFormat = (vertices.Count > 65000) ? IndexFormat.UInt32 : IndexFormat.UInt16;
 		mesh.SetVertices(vertices);
@@ -172,6 +199,41 @@ public class DeckMesh
 		}
 	}
 
+	// the underside but under the collapse, a run of cells at a time. collapses keep far from the pillars, so no
+	// elevator shaft shares a tile with one
+	private void OpenUnderside()
+	{
+		for (int j = 0; j < cells; j++)
+		{
+			int i = 0;
+			while (i < cells)
+			{
+				if (Gone(i, j))
+				{
+					i++;
+					continue;
+				}
+				int start = i;
+				while (i < cells && !Gone(i, j))
+				{
+					i++;
+				}
+				int first = vertices.Count;
+				Add(new Vector3(start * Cell, -UndersideDepth, j * Cell), Vector2.zero);
+				Add(new Vector3(start * Cell, -UndersideDepth, (j + 1) * Cell), Vector2.zero);
+				Add(new Vector3(i * Cell, -UndersideDepth, (j + 1) * Cell), Vector2.zero);
+				Add(new Vector3(i * Cell, -UndersideDepth, j * Cell), Vector2.zero);
+				Face(dark, first, Vector3.down);
+			}
+		}
+	}
+
+	// the cell's all in a collapse
+	private bool Gone(int i, int j)
+	{
+		return anyOpen && open[i, j] && open[i + 1, j] && open[i, j + 1] && open[i + 1, j + 1];
+	}
+
 	private bool Full(int i, int j)
 	{
 		return solid[i, j] > 0f && solid[i + 1, j] > 0f && solid[i, j + 1] > 0f && solid[i + 1, j + 1] > 0f;
@@ -201,14 +263,17 @@ public class DeckMesh
 				crossing.Add(true);
 			}
 		}
-		// the floor far down under the whole cell, it's under deck where the cell's solid anyway
-		Vector3 c0 = new Vector3(i * Cell, -Abyss, j * Cell);
-		int floor = vertices.Count;
-		Add(c0, Vector2.zero);
-		Add(c0 + new Vector3(Cell, 0f, 0f), Vector2.zero);
-		Add(c0 + new Vector3(Cell, 0f, Cell), Vector2.zero);
-		Add(c0 + new Vector3(0f, 0f, Cell), Vector2.zero);
-		Face(dark, floor, Vector3.up);
+		// the floor far down under the whole cell, it's under deck where the cell's solid anyway. none in a collapse
+		if (!Gone(i, j))
+		{
+			Vector3 c0 = new Vector3(i * Cell, -Abyss, j * Cell);
+			int floor = vertices.Count;
+			Add(c0, Vector2.zero);
+			Add(c0 + new Vector3(Cell, 0f, 0f), Vector2.zero);
+			Add(c0 + new Vector3(Cell, 0f, Cell), Vector2.zero);
+			Add(c0 + new Vector3(0f, 0f, Cell), Vector2.zero);
+			Face(dark, floor, Vector3.up);
+		}
 		if (polygon.Count < 3)
 		{
 			return;

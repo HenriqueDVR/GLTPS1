@@ -492,8 +492,7 @@ public sealed class UndergroundPlan
 	private bool Clear(Area area, double margin)
 	{
 		XZ middle = new XZ((area.X0 + area.X1) * 0.5, (area.Z0 + area.Z1) * 0.5);
-		XZ pillar = plan.PillarNear(middle.X, middle.Z).Position;
-		if (area.Distance(pillar.X, pillar.Z) < PillarGap + margin || area.Distance(plan.Origin.X, plan.Origin.Z) < RoadPlan.StartClearance + margin)
+		if ((plan.TowerNear(middle.X, middle.Z, out XZ pillar) && area.Distance(pillar.X, pillar.Z) < PillarGap + margin) || area.Distance(plan.Origin.X, plan.Origin.Z) < RoadPlan.StartClearance + margin)
 		{
 			return false;
 		}
@@ -684,9 +683,8 @@ public sealed class UndergroundPlan
 		{
 			return false;
 		}
-		XZ pillar = plan.PillarNear(middle.X, middle.Z).Position;
 		double reach = (house.X1 - house.X0 + house.Z1 - house.Z0) * 0.5 + MaxApron;
-		if (house.Distance(pillar.X, pillar.Z) < PillarGap || plan.Roads.HighwayNear(middle, reach))
+		if ((plan.TowerNear(middle.X, middle.Z, out XZ pillar) && house.Distance(pillar.X, pillar.Z) < PillarGap) || plan.Roads.HighwayNear(middle, reach))
 		{
 			return false;
 		}

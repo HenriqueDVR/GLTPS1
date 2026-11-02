@@ -269,7 +269,8 @@ public class RoadPlanTests
 		{
 			XZ mid = Mid(p);
 			Assert.GreaterOrEqual(plan.Origin.DistanceTo(mid), RoadPlan.StartClearance);
-			double pillar = plan.PillarNear(mid.X, mid.Z).Position.DistanceTo(mid);
+			// only real towers (LayerPlan.HasTower) keep roads off
+			double pillar = plan.TowerNear(mid.X, mid.Z, out XZ tower) ? tower.DistanceTo(mid) : double.MaxValue;
 			Assert.GreaterOrEqual(pillar, RoadPlan.PillarClearance, p.Kind + " at " + mid);
 			near += pillar < RoadPlan.PillarClearance + 40.0 ? 1 : 0;
 		}
@@ -281,7 +282,10 @@ public class RoadPlanTests
 			{
 				junctions++;
 				Assert.Less(NearestJunction(plan, p.Center), 1e-6);
-				Assert.GreaterOrEqual(plan.PillarNear(p.Center.X, p.Center.Z).Position.DistanceTo(p.Center), RoadPlan.PillarGap - 1e-6);
+				if (plan.TowerNear(p.Center.X, p.Center.Z, out XZ tower))
+				{
+					Assert.GreaterOrEqual(tower.DistanceTo(p.Center), RoadPlan.PillarGap - 1e-6);
+				}
 			}
 		}
 		Assert.Greater(junctions, 0);
@@ -301,8 +305,8 @@ public class RoadPlanTests
 	[Test]
 	public void GoldenValues()
 	{
-		Assert.AreEqual(0x37dd66f1c43abf3duL, Fold(Layer0(), -12, -12, 24), "layer 0 roads");
-		Assert.AreEqual(0x3caa433b1191b874uL, Fold(Layer1(), 50, -20, 12), "layer 1 roads");
+		Assert.AreEqual(0x8f20c395a9047026uL, Fold(Layer0(), -12, -12, 24), "layer 0 roads");
+		Assert.AreEqual(0x47e4a721732e529buL, Fold(Layer1(), 50, -20, 12), "layer 1 roads");
 		Assert.AreEqual(0x843116a825c27decuL, Layer0().Roads.Hash(new XZ(6000.0, 2500.0), 2));
 	}
 
