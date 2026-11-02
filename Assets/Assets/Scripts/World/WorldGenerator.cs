@@ -11,11 +11,11 @@ public class WorldGenerator : MonoBehaviour
 	// 0 = random. -seed on the command line
 	public static ulong RequestedSeed;
 
-	// 1 = this legacy graph, 2 = open world tiles (TileStreamer). -gen2 on the command line.
-	// stays 1 by default until v2 has content, and isn't saved or sent yet (WP-WORLD-4/5)
+	// 1 = this legacy graph, 2 = open world tiles (TileStreamer). new games are 2, -gen1 for the old one.
+	// saves don't store it yet (WP-WORLD-5), so loading a save asks for 1
 	public static int GenVersion { get; private set; } = 1;
 
-	// a co-op friend: the host's generator, the origins of its layers past 0 and the layer it's on (Start)
+	// a co-op friend (Start) or a loaded save: the generator, the origins of the layers past 0 and the layer they're on
 	public static int RequestedGenVersion;
 
 	public static XZ[] RequestedOrigins;
@@ -113,7 +113,7 @@ public class WorldGenerator : MonoBehaviour
 					Layers.Add(origin);
 				}
 				Plan = Layers.Get(Mathf.Clamp(RequestedLayer, 0, Layers.Count - 1));
-				Debug.Log("WorldGenerator: on the host's layer " + Plan.Layer + " of " + Layers.Count);
+				Debug.Log("WorldGenerator: on layer " + Plan.Layer + " of " + Layers.Count + " (the host's or the save's)");
 			}
 			LayoutHash = Fold(PlanHash(Plan));
 #if DUMP_WORLDGEN
@@ -623,7 +623,7 @@ public class WorldGenerator : MonoBehaviour
 		{
 			return RequestedGenVersion;
 		}
-		return (Array.IndexOf(Environment.GetCommandLineArgs(), "-gen2") >= 0) ? 2 : 1;
+		return (Array.IndexOf(Environment.GetCommandLineArgs(), "-gen1") >= 0) ? 1 : 2;
 	}
 
 	public static Node FindStartNode()

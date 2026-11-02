@@ -26,6 +26,9 @@ public static class GameSave
 
 		public string difficulty;
 
+		// 1 = the legacy graph, 2 = the open world (01). version 3 on, older files are all 1
+		public int genVersion;
+
 		public List<SavedSection> sections = new List<SavedSection>();
 	}
 
@@ -73,12 +76,14 @@ public static class GameSave
 		public List<float> pipeLevels = new List<float>();
 	}
 
-	public const int CurrentVersion = 2;
+	public const int CurrentVersion = 3;
 
 	// sections that live for the whole run. the world's own register with the scene (SaveScene)
 	[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
 	private static void RegisterSections()
 	{
+		// read as soon as a save loads, the world's built from it
+		StateRegistry.Register(new LayersSection(), StateUse.Save);
 		StateRegistry.Register(new CoopItem.State(), StateUse.Both);
 		StateRegistry.Register(new CoopPipes.State(), StateUse.Both);
 		StateRegistry.Register(new CoopGirlState.RejoinSection(), StateUse.Join);
@@ -136,8 +141,13 @@ public static class GameSave
 		if (data.version < 2)
 		{
 			data.sections = ImportV1(JsonUtility.FromJson<SaveDataV1>(json));
-			data.version = CurrentVersion;
 		}
+		// v2 had no generator, every save then was the legacy world
+		if (data.version < 3)
+		{
+			data.genVersion = 1;
+		}
+		data.version = CurrentVersion;
 		return data;
 	}
 
@@ -220,7 +230,7 @@ public static class GameSave
 		playSecondsBefore = 0f;
 		if (!CoopSession.Active || CoopSession.Instance.IsHost)
 		{
-			WorldGenerator.RequestedSeed = 0uL;
+			WorldGenerator.ClearRequested();
 		}
 		CoopGirlState.HostKept = null;
 	}
@@ -236,7 +246,9 @@ public static class GameSave
 		CurrentSlot = slot;
 		playSecondsBefore = data.playSeconds;
 		PlayerPrefs.SetString(difficultyKey, data.difficulty);
+		WorldGenerator.ClearRequested();
 		WorldGenerator.RequestedSeed = ulong.Parse(data.seed);
+		WorldGenerator.RequestedGenVersion = data.genVersion;
 		RestoreTaken = new HashSet<ulong>();
 		CoopPipes.SetRestore(null);
 		List<StateSection> sections = ToStateSections(data.sections);
@@ -248,7 +260,7 @@ public static class GameSave
 			GirlsSection.ReadData(new StateReader(girls.Data), out SavedGirl _, out SavedGirl yuuri);
 			CoopGirlState.HostKept = yuuri.ToState();
 		}
-		// items and pipes are read now, the rest once the world is up
+		// layers, items and pipes are read now, the rest once the world is up
 		StateRegistry.ClearPending();
 		StateRegistry.SetPending(sections);
 		Debug.Log("Save: loading slot " + (slot + 1));
@@ -262,10 +274,10 @@ public static class GameSave
 		{
 			return "Nothing to save.";
 		}
-		// saves don't store the generator yet, it would load as the old world (WP-WORLD-5)
-		if (WorldGenerator.GenVersion == 2)
+		// mid-ride the world is half one layer, half the other
+		if (LayerTransition.Busy)
 		{
-			return "Saving isn't ready in the new world yet.";
+			return "Can't save in the elevator.";
 		}
 		if (CoopSession.Active && !CoopSession.Instance.IsHost)
 		{
@@ -286,7 +298,9 @@ public static class GameSave
 		foreach (GameObject elevator in GameObject.FindGameObjectsWithTag("Elevator"))
 		{
 			Animator animator = elevator.GetComponent<Animator>();
-			if (animator != null && animator.GetBool("CloseGate"))
+			// or standing in it: the car takes whoever's in it as a child, loaded in there they'd go wherever the
+			// tower went
+			if (animator != null && (animator.GetBool("CloseGate") || CoopElevator.Aboard(animator, chito) || CoopElevator.Aboard(animator, yuuri)))
 			{
 				return "Can't save in the elevator.";
 			}
@@ -343,7 +357,8 @@ public static class GameSave
 			playSeconds = playSecondsBefore + Time.timeSinceLevelLoad,
 			coop = CoopSession.InGame,
 			seed = GameSession.Get<WorldGenerator>().Seed.ToString(),
-			difficulty = PlayerPrefs.GetString(difficultyKey, "")
+			difficulty = PlayerPrefs.GetString(difficultyKey, ""),
+			genVersion = WorldGenerator.GenVersion
 		};
 		foreach (StateSection section in StateRegistry.Capture(StateUse.Save))
 		{

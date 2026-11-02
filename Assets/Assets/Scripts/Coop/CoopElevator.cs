@@ -33,7 +33,8 @@ public static class CoopElevator
 		return true;
 	}
 
-	private static bool Aboard(Animator elevator, Transform girl)
+	// inside the car's trigger, whatever its enter/exit last said (a ride's swap moves the car out from under them)
+	public static bool Aboard(Animator elevator, Transform girl)
 	{
 		Vector3 point = girl.position + Vector3.up * 0.5f;
 		Collider[] componentsInChildren = elevator.GetComponentsInChildren<Collider>();

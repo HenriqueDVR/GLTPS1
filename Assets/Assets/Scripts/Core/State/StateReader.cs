@@ -37,6 +37,11 @@ public class StateReader
 		return reader.ReadSingle();
 	}
 
+	public double GetDouble()
+	{
+		return reader.ReadDouble();
+	}
+
 	public ulong GetULong()
 	{
 		return reader.ReadUInt64();

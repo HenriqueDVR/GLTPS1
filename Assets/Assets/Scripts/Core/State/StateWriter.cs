@@ -34,6 +34,11 @@ public class StateWriter
 		writer.Write(value);
 	}
 
+	public void Put(double value)
+	{
+		writer.Write(value);
+	}
+
 	public void Put(ulong value)
 	{
 		writer.Write(value);

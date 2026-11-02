@@ -275,6 +275,58 @@ public class KetSection : IStateful
 	}
 }
 
+// v2: the layer they're on and the origins of the layers past 0 reached, the rest of a layer comes from the seed.
+// read before the world's built (WorldGenerator takes them like a co-op friend's from Start). taken items are in
+// "items", their ids carry the layer
+public class LayersSection : IStateful
+{
+	public const string SectionKey = "layers";
+
+	public string Key => SectionKey;
+
+	public int Version => 1;
+
+	public static void WriteData(StateWriter writer, int layer, XZ[] origins)
+	{
+		writer.Put(layer);
+		writer.Put(origins.Length);
+		foreach (XZ origin in origins)
+		{
+			writer.Put(origin.X);
+			writer.Put(origin.Z);
+		}
+	}
+
+	public static void ReadData(StateReader reader, out int layer, out XZ[] origins)
+	{
+		layer = reader.GetInt();
+		origins = new XZ[reader.GetInt()];
+		for (int i = 0; i < origins.Length; i++)
+		{
+			origins[i] = new XZ(reader.GetDouble(), reader.GetDouble());
+		}
+	}
+
+	public void Write(StateWriter writer)
+	{
+		WorldGenerator world = GameSession.Get<WorldGenerator>();
+		LayerStack layers = (world != null) ? world.Layers : null;
+		XZ[] origins = new XZ[(layers != null) ? layers.Count - 1 : 0];
+		for (int i = 0; i < origins.Length; i++)
+		{
+			origins[i] = layers.Get(i + 1).Origin;
+		}
+		WriteData(writer, (layers != null) ? world.Layer : 0, origins);
+	}
+
+	public void Read(StateReader reader, int version)
+	{
+		ReadData(reader, out int layer, out XZ[] origins);
+		WorldGenerator.RequestedLayer = layer;
+		WorldGenerator.RequestedOrigins = (origins.Length > 0) ? origins : null;
+	}
+}
+
 // scene helpers for the sections above
 public static class SaveScene
 {

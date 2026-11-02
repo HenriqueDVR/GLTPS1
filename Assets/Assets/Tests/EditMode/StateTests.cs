@@ -212,6 +212,7 @@ public class StateTests
 	{
 		GameSave.SaveData data = GameSave.Parse(v1Save);
 		Assert.AreEqual(GameSave.CurrentVersion, data.version);
+		Assert.AreEqual(1, data.genVersion);
 		Assert.AreEqual("12345", data.seed);
 		Assert.AreEqual("easy", data.difficulty);
 		Assert.IsTrue(data.coop);
@@ -287,6 +288,56 @@ public class StateTests
 		GameSave.SaveData back = GameSave.Parse(JsonUtility.ToJson(data));
 		Assert.AreEqual(1, back.sections.Count);
 		CollectionAssert.AreEqual(new byte[] { 9, 8 }, GameSave.ToStateSections(back.sections)[0].Data);
+	}
+
+	// v2 files had no generator: all of them are the legacy world
+	[Test]
+	public void Version2SaveIsLegacyWorld()
+	{
+		GameSave.SaveData data = GameSave.Parse("{\"version\":2,\"seed\":\"7\",\"sections\":[]}");
+		Assert.AreEqual(GameSave.CurrentVersion, data.version);
+		Assert.AreEqual(1, data.genVersion);
+	}
+
+	[Test]
+	public void Version3KeepsGenerator()
+	{
+		GameSave.SaveData data = new GameSave.SaveData { version = GameSave.CurrentVersion, seed = "5", genVersion = 2 };
+		Assert.AreEqual(2, GameSave.Parse(JsonUtility.ToJson(data)).genVersion);
+	}
+
+	[Test]
+	public void LayersRoundTrip()
+	{
+		XZ[] origins = { new XZ(1234.5, -987.25), new XZ(-0.125, 4096.0) };
+		StateWriter writer = new StateWriter();
+		LayersSection.WriteData(writer, 2, origins);
+		LayersSection.ReadData(new StateReader(writer.ToArray()), out int layer, out XZ[] back);
+		Assert.AreEqual(2, layer);
+		CollectionAssert.AreEqual(origins, back);
+	}
+
+	// a loaded save's layers are what the world gets built from, like a co-op friend's Start
+	[Test]
+	public void LayersReadRequestsTheWorld()
+	{
+		try
+		{
+			StateWriter writer = new StateWriter();
+			LayersSection.WriteData(writer, 1, new[] { new XZ(10.0, 20.0) });
+			new LayersSection().Read(new StateReader(writer.ToArray()), 1);
+			Assert.AreEqual(1, WorldGenerator.RequestedLayer);
+			CollectionAssert.AreEqual(new[] { new XZ(10.0, 20.0) }, WorldGenerator.RequestedOrigins);
+			writer = new StateWriter();
+			LayersSection.WriteData(writer, 0, new XZ[0]);
+			new LayersSection().Read(new StateReader(writer.ToArray()), 1);
+			Assert.AreEqual(0, WorldGenerator.RequestedLayer);
+			Assert.IsNull(WorldGenerator.RequestedOrigins);
+		}
+		finally
+		{
+			WorldGenerator.ClearRequested();
+		}
 	}
 
 	[Test]
