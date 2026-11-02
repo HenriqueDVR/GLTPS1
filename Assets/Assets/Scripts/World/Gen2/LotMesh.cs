@@ -8,7 +8,7 @@ using UnityEngine.Rendering;
 // tile-local like RoadMesh
 public class LotMesh
 {
-	public const int SubmeshCount = 4;
+	public const int SubmeshCount = 5;
 
 	private const int office = 0;
 
@@ -17,6 +17,9 @@ public class LotMesh
 	private const int dark = 2;
 
 	private const int metal = 3;
+
+	// the deck's own, for what lies on it (drifts)
+	private const int snow = 4;
 
 	public const float FloorHeight = 3.5f;
 
@@ -31,7 +34,7 @@ public class LotMesh
 
 	private readonly List<Vector2> uvs = new List<Vector2>();
 
-	private readonly List<int>[] triangles = { new List<int>(), new List<int>(), new List<int>(), new List<int>() };
+	private readonly List<int>[] triangles = { new List<int>(), new List<int>(), new List<int>(), new List<int>(), new List<int>() };
 
 	private WorldRandom random;
 
@@ -796,6 +799,60 @@ public class LotMesh
 				Box(face + along * x + normal * (d * 0.5f), along, w * 0.5f, d * 0.5f, y, top, concrete, concrete, true);
 			}
 		}
+	}
+
+	// a low drift of snow on the deck, its rim under the deck's top and its slope easing to nothing there: the ket's
+	// thin wheels stop dead at a 2 cm step, so there's none to meet. uvs like the deck's, the snow runs on over it
+	public void AddDrift(Vector3 at, float a, float b, float height, float turn, ulong seed)
+	{
+		const int rings = 5;
+		const int sectors = 14;
+		const float under = 0.06f;
+		random = new WorldRandom(seed);
+		float p1 = Range(0f, 6.28f);
+		float p2 = Range(0f, 6.28f);
+		float cos = Mathf.Cos(turn);
+		float sin = Mathf.Sin(turn);
+		int first = vertices.Count;
+		float size = (float)Gen2.TileSize;
+		vertices.Add(at + Vector3.up * (height - under));
+		uvs.Add(new Vector2(at.x, at.z) / size);
+		for (int ring = 1; ring <= rings; ring++)
+		{
+			float r = (float)ring / rings;
+			float y = height * (1f - r * r) * (1f - r * r) - under;
+			for (int s = 0; s < sectors; s++)
+			{
+				float angle = s * 6.2831855f / sectors;
+				float wobble = r * (1f + 0.16f * Mathf.Sin(2f * angle + p1) + 0.08f * Mathf.Sin(3f * angle + p2));
+				float dx = Mathf.Cos(angle) * a * wobble;
+				float dz = Mathf.Sin(angle) * b * wobble;
+				Vector3 p = at + new Vector3(dx * cos - dz * sin, y, dx * sin + dz * cos);
+				vertices.Add(p);
+				uvs.Add(new Vector2(p.x, p.z) / size);
+			}
+		}
+		List<int> list = triangles[snow];
+		for (int s = 0; s < sectors; s++)
+		{
+			int next = (s + 1) % sectors;
+			Upward(list, first, first + 1 + s, first + 1 + next);
+			for (int ring = 0; ring < rings - 1; ring++)
+			{
+				int inner = first + 1 + ring * sectors;
+				int outer = inner + sectors;
+				Upward(list, inner + s, outer + s, outer + next);
+				Upward(list, inner + s, outer + next, inner + next);
+			}
+		}
+	}
+
+	private void Upward(List<int> list, int a, int b, int c)
+	{
+		bool up = Vector3.Cross(vertices[b] - vertices[a], vertices[c] - vertices[a]).y > 0f;
+		list.Add(a);
+		list.Add(up ? b : c);
+		list.Add(up ? c : b);
 	}
 
 	// a dark strip from (x, y) running dx along the face and dy up, clipped to the face

@@ -286,7 +286,7 @@ public class TileStreamer : MonoBehaviour
 			wall.SetColor("_BaseColor", new Color(0.6f, 0.6f, 0.62f));
 			wall.SetFloat("_Smoothness", 0.1f);
 		}
-		lotMaterials = new[] { (wall != null) ? wall : floor, roadMaterials[2], LotMaterial("Dark", new Color(0.11f, 0.11f, 0.12f), lit, floor), LotMaterial("Metal", new Color(0.5f, 0.45f, 0.4f), lit, floor) };
+		lotMaterials = new[] { (wall != null) ? wall : floor, roadMaterials[2], LotMaterial("Dark", new Color(0.11f, 0.11f, 0.12f), lit, floor), LotMaterial("Metal", new Color(0.5f, 0.45f, 0.4f), lit, floor), material };
 		MeasureLandmarks();
 #if DUMP_WORLDGEN
 		string[] args = System.Environment.GetCommandLineArgs();
@@ -1016,6 +1016,7 @@ public class TileStreamer : MonoBehaviour
 				if (job.Near)
 				{
 					PlaceCables(x, z);
+					Drifts(x, z);
 				}
 				PlaceViaducts(x, z);
 				PlaceRaised(x, z);
@@ -1417,6 +1418,37 @@ public class TileStreamer : MonoBehaviour
 				kind = (pick < 0.25) ? LotMesh.Debris.Slab : (pick < 0.5) ? LotMesh.Debris.Pile : (pick < 0.75) ? LotMesh.Debris.Tree : (pick < 0.93) ? LotMesh.Debris.Frame : LotMesh.Debris.Pole;
 			}
 			lotMesh.AddDebris(kind, new Vector3((float)(at.X - x * size), 0f, (float)(at.Z - z * size)), seed);
+		}
+	}
+
+	// gentle snow drifts on open ground, whole inside their tile, clear of what Blocked keeps things off and of towers.
+	// their own stream, the rest of the tile's the same with or without them. near only: snow on snow, nothing far out
+	private void Drifts(int x, int z)
+	{
+		double size = Gen2.TileSize;
+		if (Plan.Def.Districts[Plan.DistrictAt((x + 0.5) * size, (z + 0.5) * size)].Roads != DistrictRoads.Open)
+		{
+			return;
+		}
+		WorldRandom random = new WorldRandom(WorldRandom.Derive(Gen2.TileSeed(Plan.LayerSeed, x, z), Gen2.StreamLot + 8, 0uL));
+		int count = 2 + random.Next(4);
+		for (int i = 0; i < count; i++)
+		{
+			double a = 8.0 + Gen2.Unit(random.NextULong()) * 16.0;
+			double b = a * (0.45 + Gen2.Unit(random.NextULong()) * 0.4);
+			double height = 0.2 + Gen2.Unit(random.NextULong()) * 0.45;
+			double turn = Gen2.Unit(random.NextULong()) * System.Math.PI;
+			// its most with the wobble (LotMesh.AddDrift)
+			double reach = a * 1.25;
+			XZ at = new XZ((x + Gen2.Unit(random.NextULong())) * size, (z + Gen2.Unit(random.NextULong())) * size);
+			ulong seed = random.NextULong();
+			double u = at.X - x * size;
+			double v = at.Z - z * size;
+			if (u < reach || v < reach || u > size - reach || v > size - reach || Blocked(at, reach + 2.0) || (Plan.TowerNear(at.X, at.Z, out XZ tower) && tower.DistanceTo(at) < RoadPlan.PillarClearance + reach))
+			{
+				continue;
+			}
+			lotMesh.AddDrift(new Vector3((float)u, 0f, (float)v), (float)a, (float)b, (float)height, (float)turn, seed);
 		}
 	}
 
