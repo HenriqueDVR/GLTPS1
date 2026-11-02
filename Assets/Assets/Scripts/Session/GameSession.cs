@@ -161,10 +161,11 @@ public class GameSession : MonoBehaviour
 		}
 	}
 
-	// work that can wait and shouldn't all land in one frame (a layer's tiles going), a few a frame
+	// work that can wait and shouldn't all land in one frame (a layer's tiles going), one a frame: destroying a gpu-only
+	// mesh stalls the frame, 40 tiles a frame held arrivals at 100-280 ms frames for seconds
 	private readonly Queue<Action> later = new Queue<Action>();
 
-	private const int laterPerFrame = 40;
+	private const int laterPerFrame = 1;
 
 	public void Later(Action work)
 	{

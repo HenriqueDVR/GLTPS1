@@ -78,7 +78,7 @@ public class PillarNodeAnimationEvents : MonoBehaviour
         // and pulls back over the city, thinner fog on the way to another layer
         if (LayerTransition.Begin(this))
         {
-            EndingCinematic.Begin(transform, EndingCinematic.RideFogShare);
+            EndingCinematic.Begin(transform, (LayerTransition.RideWay < 0) ? EndingCinematic.DownRideFogShare : EndingCinematic.RideFogShare);
             return;
         }
         EndingCinematic.Begin(transform);

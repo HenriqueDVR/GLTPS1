@@ -32,6 +32,9 @@ public class EndingCinematic : MonoBehaviour
 	// a ride between layers wants to see the layer it goes to, far out
 	public const float RideFogShare = 0.08f;
 
+	// going down the layer under fills in as the car drops, thicker fog keeps its edge in the haze
+	public const float DownRideFogShare = 0.3f;
+
 	private float fogTo = fogShare;
 
 	private const float fogTime = 10f;
@@ -95,6 +98,36 @@ public class EndingCinematic : MonoBehaviour
 	private CinemachineBrain brain;
 
 	private CinemachineBlendDefinition oldBlend;
+
+	// a ride between layers goes through a deck, and following it the camera saw inside the slab and what's under it.
+	// it stays its side, watching the car go in, then cuts to the other side to watch it come out
+	private bool cut;
+
+	// off the deck's top by this much (the shaft head's frame is 5.5 m), and further under its underside so it sees the
+	// hole from off to the side, not straight up into the dark
+	private const float deckClearance = 7f;
+
+	private const float undersideClearance = 30f;
+
+	// floor to roof, the cut waits till it's all gone in, and holds on the hole this long
+	private const float carHeight = 5f;
+
+	private const float cutHold = 2f;
+
+	private float hiddenSince = -1f;
+
+	// steepest it looks up or down at the car, backing out up to this far to keep it
+	private const float maxPitch = 32f;
+
+	private const float maxBackOut = 65f;
+
+	private bool smoothing;
+
+	private Vector3 smoothed;
+
+	private Vector3 smoothVelocity;
+
+	private const float smoothTime = 0.45f;
 
 	public static void Begin(Transform elevator, float fog = fogShare)
 	{
@@ -263,12 +296,18 @@ public class EndingCinematic : MonoBehaviour
 		}
 		float t = Mathf.SmoothStep(0f, 1f, (Time.time - started) / pullTime);
 		angle += drift * Time.deltaTime;
-		// round the girls from where the player had it, then out and up
+		// round the girls from where the player had it, then out and up. past a ride's cut it's a new shot, out from
+		// the tower (riding down the cut comes early, the player's side was often the tower's)
+		bool jumped = Cut();
+		float round = cut ? Mathf.Max(t, 0.85f) : t;
 		Vector3 goal = Quaternion.AngleAxis(angle, Vector3.up) * outward;
 		Vector3 from = startFlat.sqrMagnitude > 0.01f ? startFlat.normalized : goal;
-		Vector3 flat = Vector3.Slerp(from, goal, t) * Mathf.Lerp(startFlat.magnitude, pullBack, t);
+		Vector3 flat = Vector3.Slerp(from, goal, round) * Mathf.Lerp(startFlat.magnitude, pullBack, round);
 		Vector3 anchor = Anchor();
 		Vector3 position = anchor + flat + Vector3.up * Mathf.Lerp(startUp, rise, t);
+		position.y = OffDeck(position.y);
+		Vector3 aim = Aim(anchor);
+		position = Pitched(aim, position, goal);
 		// never inside the tower, the player's camera could have been in its wall when the ride started
 		Vector3 column = anchor + columnFromCar;
 		Vector3 off = new Vector3(position.x - column.x, 0f, position.z - column.z);
@@ -281,8 +320,10 @@ public class EndingCinematic : MonoBehaviour
 		shot.m_Lens.FieldOfView = fov;
 		// out of the player's camera gently, not a jump to the shot's first frame
 		float into = Mathf.SmoothStep(0f, 1f, (Time.time - started) / easeIn);
-		Quaternion framed = Framed(anchor - position, fov, t);
-		shot.transform.SetPositionAndRotation(Vector3.Lerp(anchor + startFromCar, position, into), Quaternion.Slerp(startRotation, framed, into));
+		Vector3 placed = Smoothed(Vector3.Lerp(anchor + startFromCar, position, into), jumped);
+		placed.y = OffDeck(placed.y);
+		Quaternion framed = Framed(aim - placed, fov, t);
+		shot.transform.SetPositionAndRotation(placed, Quaternion.Slerp(startRotation, framed, into));
 		// weather keeps writing its own fog while it changes, go off whatever it last set
 		if (!Mathf.Approximately(RenderSettings.fogDensity, writtenFog))
 		{
@@ -300,15 +341,95 @@ public class EndingCinematic : MonoBehaviour
 		}
 	}
 
-	// girls on the spiral's eye, from dead centre at the start
+	// the car's been all inside the deck a moment: true the frame it cuts to the other side
+	private bool Cut()
+	{
+		if (cut || !LayerTransition.Crossing(out float top, out float bottom, out int way))
+		{
+			return false;
+		}
+		float floor = elevator.position.y;
+		bool inside = (way > 0) ? floor > bottom + 1f : floor + carHeight < top - 1f;
+		if (!inside)
+		{
+			return false;
+		}
+		if (hiddenSince < 0f)
+		{
+			hiddenSince = Time.time;
+		}
+		cut = Time.time - hiddenSince >= cutHold;
+		return cut;
+	}
+
+	// the side of the deck the camera's on: where the car comes from till the cut, then where it's going
+	private float OffDeck(float y)
+	{
+		if (!LayerTransition.Crossing(out float top, out float bottom, out int way))
+		{
+			return y;
+		}
+		bool above = (way > 0) == cut;
+		return above ? Mathf.Max(y, top + deckClearance) : Mathf.Min(y, bottom - undersideClearance);
+	}
+
+	// what it looks at: the car, or while it's inside the deck the mouth of its hole on the camera's side
+	private Vector3 Aim(Vector3 anchor)
+	{
+		if (!LayerTransition.Crossing(out float top, out float bottom, out int way))
+		{
+			return anchor;
+		}
+		bool above = (way > 0) == cut;
+		return new Vector3(anchor.x, above ? Mathf.Max(anchor.y, top) : Mathf.Min(anchor.y, bottom), anchor.z);
+	}
+
+	// held off a deck while the car goes on, it backs out rather than look straight up or down at it (under the deck
+	// that was all its dark underside), swinging out from the tower as it goes
+	private static Vector3 Pitched(Vector3 aim, Vector3 position, Vector3 outward)
+	{
+		Vector3 flat = new Vector3(position.x - aim.x, 0f, position.z - aim.z);
+		float wanted = Mathf.Min(Mathf.Abs(aim.y - position.y) / Mathf.Tan(maxPitch * Mathf.Deg2Rad), maxBackOut);
+		if (flat.magnitude >= wanted)
+		{
+			return position;
+		}
+		float swing = 1f - flat.magnitude / Mathf.Max(wanted, 0.01f);
+		Vector3 way = Vector3.Slerp(flat.sqrMagnitude > 0.01f ? flat.normalized : outward, outward, swing);
+		flat = way * wanted;
+		return new Vector3(aim.x + flat.x, position.y, aim.z + flat.z);
+	}
+
+	// eased after where it should be, in layout coords so a floating origin shift isn't a move. the cut is a cut
+	private Vector3 Smoothed(Vector3 wanted, bool jump)
+	{
+		FloatingOrigin origin = GameSession.Get<FloatingOrigin>();
+		Vector3 offset = (origin != null) ? origin.TotalOffset : Vector3.zero;
+		Vector3 layout = wanted + offset;
+		if (jump || !smoothing)
+		{
+			smoothing = true;
+			smoothed = layout;
+			smoothVelocity = Vector3.zero;
+		}
+		else
+		{
+			smoothed = Vector3.SmoothDamp(smoothed, layout, ref smoothVelocity, smoothTime);
+		}
+		return smoothed - offset;
+	}
+
+	// girls on the spiral's eye, from dead centre at the start. from under them it's the top third instead, so the view
+	// goes out over the city below, not up at the deck
 	private static Quaternion Framed(Vector3 toGirls, float fov, float t)
 	{
 		Camera camera = Camera.main;
 		float aspect = camera != null ? camera.aspect : 16f / 9f;
 		float up = Mathf.Tan(fov * 0.5f * Mathf.Deg2Rad);
+		float under = Mathf.Lerp(1f, -1f, Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.1f, 0.4f, toGirls.normalized.y)));
 		// where they should be in the view, as a direction from the camera
 		float across = (spiralEye - 0.5f) * 2f * up * aspect * t;
-		float down = (spiralEye - 0.5f) * 2f * up * t;
+		float down = (spiralEye - 0.5f) * 2f * up * Mathf.Max(t, (1f - under) * 0.5f) * under;
 		Vector3 seen = new Vector3(across, down, 1f);
 		return Quaternion.LookRotation(toGirls, Vector3.up) * Quaternion.Inverse(Quaternion.LookRotation(seen, Vector3.up));
 	}

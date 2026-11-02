@@ -33,6 +33,22 @@ public class LayerTransition : MonoBehaviour
 		}
 	}
 
+	// the ride on now: 1 up, -1 down, 0 none
+	public static int RideWay
+	{
+		get
+		{
+			LayerTransition current = Current;
+			return (current != null && current.elevator != null) ? current.way : 0;
+		}
+	}
+
+	// how far the layer a ride goes to builds before it arrives (TileStreamer.FarReach): going up the deck over the
+	// car hides all but the tower's surroundings, going down the fog's thicker (EndingCinematic.DownRideFogShare)
+	private const float upReach = 1000f;
+
+	private const float downReach = 1600f;
+
 	private Animator elevator;
 
 	private PillarNodeAnimationEvents events;
@@ -65,8 +81,10 @@ public class LayerTransition : MonoBehaviour
 
 	private bool ketGravity;
 
-	// how high it stood over the ground, so it's put down the same (a parked ket is frozen and doesn't settle)
-	private float ketHeight = 0.5f;
+	// its pivot over the bottom of its wheels, it's put down just over the ground: a parked ket is frozen and doesn't
+	// settle, and it's only grounded with that box under it touching (a raycast's 0.8 m left it hanging, frozen, and
+	// with no getting off)
+	private float ketHeight;
 
 	private Rigidbody barrelBody;
 
@@ -90,7 +108,26 @@ public class LayerTransition : MonoBehaviour
 
 	private bool arriveDue;
 
+	// layout y of the deck the car goes through: the one above riding up, this one riding down
+	private float crossing;
+
 	private static bool Friend => CoopSession.Together && !CoopSession.Instance.IsHost;
+
+	// the ride's camera keeps its side of that deck (EndingCinematic): world y of its top and its underside
+	public static bool Crossing(out float top, out float bottom, out int way)
+	{
+		LayerTransition current = Current;
+		top = bottom = 0f;
+		way = 0;
+		if (current == null || current.elevator == null)
+		{
+			return false;
+		}
+		top = current.crossing - Offset().y;
+		bottom = top - DeckMesh.UndersideDepth;
+		way = current.way;
+		return true;
+	}
 
 	// PauseGameState: a ride to another layer starts. false for the ending
 	public static bool Begin(PillarNodeAnimationEvents events)
@@ -349,7 +386,8 @@ public class LayerTransition : MonoBehaviour
 		{
 			if (girl.Input != null && girl.Input.Contexts != null)
 			{
-				held.Add(girl.Input.Contexts.Push(InputContext.Cinematic, "layer ride"));
+				// they can walk about the car like in the ending, just not use anything
+				held.Add(girl.Input.Contexts.Push(InputContext.ElevatorClosing, "layer ride"));
 			}
 			// the agent would pull her back onto the navmesh, it's 600 m off
 			if (girl.Agent != null)
@@ -358,15 +396,18 @@ public class LayerTransition : MonoBehaviour
 				girl.Agent.enabled = false;
 			}
 		}
+		CarryKet();
 		if (way < 0)
 		{
 			below = streamer.Bare(new Pose(spot.Pose.position - Vector3.up * (float)Gen2.LayerHeight, spot.Pose.rotation));
 		}
 		// the layer it goes to, from now: below it's in view all the way down, above it's a ceiling over the tower
 		TileStreamer tiles = GameSession.Get<TileStreamer>();
+		crossing = tiles.GroundY + Mathf.Max(way, 0) * (float)Gen2.LayerHeight;
 		from = GameSession.Current.Layer;
 		arriving = new PillarStreamer.Spot { CellX = spot.CellX, CellZ = spot.CellZ };
 		next = GameSession.Current.BeginLayer(to, tiles.GroundY + way * (float)Gen2.LayerHeight, tiles.GroundLayer, arriving);
+		next.GetComponent<TileStreamer>().FarReach = (way > 0) ? upReach : downReach;
 		Debug.Log("LayerTransition: riding " + (way > 0 ? "up" : "down") + " from layer " + world.Layer + " to " + to.Layer + " at pillar " + spot.CellX + "," + spot.CellZ);
 		return true;
 	}
@@ -404,14 +445,15 @@ public class LayerTransition : MonoBehaviour
 			}
 		}
 		VehicleMovement ket = FindObjectOfType<VehicleMovement>();
-		ketBody = (ket != null && !CoopKettenkrad.FollowsRemote) ? ket.GetComponent<Rigidbody>() : null;
-		if (ketBody != null)
+		// one carried in the car is held already, with what it had kept
+		ketBody = ketCarried ? ketBody : (ket != null && !CoopKettenkrad.FollowsRemote) ? ket.GetComponent<Rigidbody>() : null;
+		if (ketBody != null && !ketCarried)
 		{
 			ketConstraints = ketBody.constraints;
 			ketGravity = ketBody.useGravity;
 			ketBody.constraints = RigidbodyConstraints.FreezeAll;
 			ketBody.useGravity = false;
-			ketHeight = GroundUnder(ketBody.transform, out float height) ? height : 0.5f;
+			ketHeight = KetLift(ketBody);
 		}
 		GameObject barrel = GameObject.FindWithTag("Barrel");
 		ParentConstraint carried = (barrel != null) ? barrel.GetComponent<ParentConstraint>() : null;
@@ -472,11 +514,16 @@ public class LayerTransition : MonoBehaviour
 		if (ketBody != null)
 		{
 			Vector3 at = Ground(door);
-			ketBody.position = at + Vector3.up * ketHeight;
+			ketBody.position = at + Vector3.up * (ketHeight + 0.03f);
 			ketBody.rotation = outward;
 			ketBody.transform.SetPositionAndRotation(ketBody.position, ketBody.rotation);
 			ketBody.constraints = ketConstraints;
 			ketBody.useGravity = ketGravity;
+			if (ketCarried)
+			{
+				ketBody.interpolation = ketInterpolation;
+				ketCarried = false;
+			}
 			if (!ketBody.isKinematic)
 			{
 				ketBody.velocity = Vector3.zero;
@@ -494,6 +541,8 @@ public class LayerTransition : MonoBehaviour
 		// nothing of the layer they left shows now: under the deck, or the ceiling stands in for it
 		GameSession.Current.EndLayer(from);
 		GameSession.Current.Backdrop(next);
+		// the rest of it out to 3 km at the usual pace, the fog's coming back in
+		next.GetComponent<TileStreamer>().FarReach = TileStreamer.FarRadius;
 		from = null;
 		next = null;
 		arriving = null;
@@ -532,7 +581,28 @@ public class LayerTransition : MonoBehaviour
 		{
 			CoopSession.Instance.OnLayerArrived();
 		}
+		// checkpoint once they're out of the car, a new layer's worth keeping. only the host saves
+		checkpointUntil = (!CoopSession.InGame || CoopSession.Instance.IsHost) ? Time.time + checkpointWait : 0f;
 		return true;
+	}
+
+	private const float checkpointWait = 300f;
+
+	private float checkpointUntil;
+
+	private float nextCheckpointTry;
+
+	private void Update()
+	{
+		if (elevator != null || Time.time >= checkpointUntil || Time.time < nextCheckpointTry)
+		{
+			return;
+		}
+		nextCheckpointTry = Time.time + 1f;
+		if (GameSave.SaveIfPossible())
+		{
+			checkpointUntil = 0f;
+		}
 	}
 
 	// the clip writes the car's height first, this puts it where the layers are
@@ -541,7 +611,59 @@ public class LayerTransition : MonoBehaviour
 		if (elevator != null)
 		{
 			Ride();
+			HoldKet();
 		}
+	}
+
+	// the ket parked in the car rides with it, held in the car's frame: left to physics on a floor moved every frame it
+	// shook and slid about all the way up
+	private bool ketCarried;
+
+	private Vector3 ketInCar;
+
+	private Quaternion ketTurnInCar;
+
+	private RigidbodyInterpolation ketInterpolation;
+
+	private void CarryKet()
+	{
+		ketCarried = false;
+		VehicleMovement ket = FindObjectOfType<VehicleMovement>();
+		if (ket == null || CoopKettenkrad.FollowsRemote || !CoopElevator.Aboard(elevator, ket.transform))
+		{
+			return;
+		}
+		ketBody = ket.GetComponent<Rigidbody>();
+		ketConstraints = ketBody.constraints;
+		ketGravity = ketBody.useGravity;
+		ketInterpolation = ketBody.interpolation;
+		ketHeight = KetLift(ketBody);
+		if (!ketBody.isKinematic)
+		{
+			ketBody.velocity = Vector3.zero;
+			ketBody.angularVelocity = Vector3.zero;
+		}
+		ketBody.constraints = RigidbodyConstraints.FreezeAll;
+		ketBody.useGravity = false;
+		ketBody.interpolation = RigidbodyInterpolation.None;
+		Transform car = events.transform;
+		ketInCar = car.InverseTransformPoint(ketBody.position);
+		ketTurnInCar = Quaternion.Inverse(car.rotation) * ketBody.rotation;
+		ketCarried = true;
+	}
+
+	private void HoldKet()
+	{
+		if (!ketCarried || ketBody == null || events == null)
+		{
+			return;
+		}
+		Transform car = events.transform;
+		Vector3 at = car.TransformPoint(ketInCar);
+		Quaternion turn = car.rotation * ketTurnInCar;
+		ketBody.position = at;
+		ketBody.rotation = turn;
+		ketBody.transform.SetPositionAndRotation(at, turn);
 	}
 
 	private void Ride()
@@ -565,19 +687,17 @@ public class LayerTransition : MonoBehaviour
 	}
 
 	// how high it stands over whatever's under it, not counting itself
-	private static bool GroundUnder(Transform body, out float height)
+	private static float KetLift(Rigidbody body)
 	{
-		height = 0f;
-		float best = float.MaxValue;
-		foreach (RaycastHit hit in Physics.RaycastAll(body.position + Vector3.up * 2f, Vector3.down, 10f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+		float bottom = float.MaxValue;
+		foreach (Collider part in body.GetComponentsInChildren<Collider>())
 		{
-			if (!hit.collider.transform.IsChildOf(body.root) && hit.distance < best)
+			if (part.enabled && !part.isTrigger && part.attachedRigidbody == body)
 			{
-				best = hit.distance;
-				height = body.position.y - hit.point.y;
+				bottom = Mathf.Min(bottom, part.bounds.min.y);
 			}
 		}
-		return best < float.MaxValue;
+		return (bottom < float.MaxValue) ? body.position.y - bottom : 0f;
 	}
 
 	private static Vector3 Ground(Vector3 at)

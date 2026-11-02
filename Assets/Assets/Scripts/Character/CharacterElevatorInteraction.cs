@@ -10,7 +10,6 @@ public class CharacterElevatorInteraction : MonoBehaviour, IInteractionSource
     [SerializeField] private PlayerInputInitialize selfPlayerInputScript;
     [SerializeField] private PlayerInputInitialize otherPlayerInputScript;
 
-    [SerializeField] private bool inElevatorInteractArea;
     [SerializeField] private Animator elevatorAnim;
     private bool flag;
 
@@ -43,10 +42,39 @@ public class CharacterElevatorInteraction : MonoBehaviour, IInteractionSource
     }
     public void Collect(List<Interaction> into)
     {
-        if (inElevatorInteractArea && elevatorAnim != null && elevatorAnim.GetBool("isGateOpen") && CoopElevator.ReadyToLeave(elevatorAnim))
+        Animator car = CarAboard();
+        if (car != null && car.GetBool("isGateOpen") && CoopElevator.ReadyToLeave(car))
         {
-            into.Add(new Interaction { Verb = Verb.Use, Press = Press.Tap, Target = elevatorAnim.transform, Priority = 1, Run = CloseGate, Source = "elevator gate" });
+            elevatorAnim = car;
+            into.Add(new Interaction { Verb = Verb.Use, Press = Press.Tap, Target = car.transform, Priority = 1, Run = CloseGate, Source = "elevator gate" });
         }
+    }
+
+    private Animator carNear;
+    private float nextCarSearch;
+
+    // the car she stands in, from where she is: the triggers miss it when she drives in on the ket (they only count
+    // on foot) or a ride moves the car out from under her (exit, no enter), and then F did nothing
+    private Animator CarAboard()
+    {
+        if (elevatorAnim != null && CoopElevator.Aboard(elevatorAnim, transform))
+        {
+            return elevatorAnim;
+        }
+        if (Time.time >= nextCarSearch)
+        {
+            nextCarSearch = Time.time + 0.5f;
+            carNear = null;
+            foreach (GameObject elevator in GameObject.FindGameObjectsWithTag("Elevator"))
+            {
+                Animator animator = elevator.GetComponent<Animator>();
+                if (animator != null && CoopElevator.Aboard(animator, transform))
+                {
+                    carNear = animator;
+                }
+            }
+        }
+        return (carNear != null && CoopElevator.Aboard(carNear, transform)) ? carNear : null;
     }
 
     private void CloseGate()
@@ -76,7 +104,6 @@ public class CharacterElevatorInteraction : MonoBehaviour, IInteractionSource
     // -cooptravel
     public void DebugInteract()
     {
-        inElevatorInteractArea = true;
         if (elevatorAnim == null)
         {
             foreach (GameObject elevator in GameObject.FindGameObjectsWithTag("Elevator"))
@@ -102,10 +129,6 @@ public class CharacterElevatorInteraction : MonoBehaviour, IInteractionSource
     {
         if (selfPlayerInputScript.actions.Player.enabled)
         {
-            if (other.gameObject.CompareTag("ElevatorTrigger"))
-            {
-                inElevatorInteractArea = true;
-            }
             if (other.gameObject.CompareTag("Elevator"))
             {
                 transform.SetParent(other.gameObject.transform);
@@ -119,10 +142,6 @@ public class CharacterElevatorInteraction : MonoBehaviour, IInteractionSource
 
     void OnTriggerExit(Collider other)
     {
-        if (other.gameObject.CompareTag("ElevatorTrigger"))
-        {
-            inElevatorInteractArea = false;
-        }
         if (other.gameObject.CompareTag("Elevator"))
         {
             elevatorAnim = null;
