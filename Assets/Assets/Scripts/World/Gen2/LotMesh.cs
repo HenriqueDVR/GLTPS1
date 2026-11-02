@@ -487,6 +487,17 @@ public class LotMesh
 			{
 				continue;
 			}
+			// about half are open: a steel walkway with railings, a girder under it
+			if (Gen2.Unit(roll >> 23) < 0.5)
+			{
+				float walk = 0.9f;
+				Vector3 side = Left(along) * (walk - 0.06f);
+				Box(mid, along, near * 0.5f, walk, y - 0.15f, y, metal, metal, true);
+				Box(mid, along, near * 0.5f, 0.2f, y - 0.8f, y - 0.15f, metal, metal, true);
+				Railing(mid - along * (near * 0.5f) + side, mid + along * (near * 0.5f) + side, y);
+				Railing(mid - along * (near * 0.5f) - side, mid + along * (near * 0.5f) - side, y);
+				continue;
+			}
 			Box(mid, along, near * 0.5f, width, y, y + 3.4f, concrete, concrete, true);
 			Box(mid, along, near * 0.5f - 0.2f, width + 0.05f, y + 1.3f, y + 2.3f, dark, dark, false);
 		}
