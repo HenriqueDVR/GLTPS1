@@ -456,8 +456,27 @@ public sealed class UndergroundPlan
 		return found;
 	}
 
+	private readonly Dictionary<long, (bool, Hall)> rooms = new Dictionary<long, (bool, Hall)>();
+
 	// the room alone, no galleries or way in yet
 	private bool Room(int cellX, int cellZ, out Hall hall)
+	{
+		long key = Key(cellX, cellZ);
+		if (rooms.TryGetValue(key, out (bool, Hall) known))
+		{
+			hall = known.Item2;
+			return known.Item1;
+		}
+		if (rooms.Count > 4096)
+		{
+			rooms.Clear();
+		}
+		bool found = FindRoom(cellX, cellZ, out hall);
+		rooms[key] = (found, hall);
+		return found;
+	}
+
+	private bool FindRoom(int cellX, int cellZ, out Hall hall)
 	{
 		if (Start(out StartWay start) && start.Hall.CellX == cellX && start.Hall.CellZ == cellZ)
 		{

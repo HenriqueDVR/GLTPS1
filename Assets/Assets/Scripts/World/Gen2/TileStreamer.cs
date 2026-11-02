@@ -29,6 +29,7 @@ public class TileStreamer : MonoBehaviour
 			{
 				farReach = value;
 				nextRefresh = 0f;
+				rescan = true;
 			}
 		}
 	}
@@ -360,18 +361,25 @@ public class TileStreamer : MonoBehaviour
 		ClearProps(tile);
 		foreach (MeshFilter filter in tile.GetComponentsInChildren<MeshFilter>(true))
 		{
-			// ~1.7 ms each (the gpu's side), one a frame
+			// ~1.7 ms each (the gpu's side). now, or the time budget in Later doesn't see it
 			Mesh mesh = filter.sharedMesh;
 			if (mesh != null && GameSession.Current != null)
 			{
-				GameSession.Current.Later(() => Destroy(mesh));
+				GameSession.Current.Later(() => DestroyImmediate(mesh));
 			}
 			else if (mesh != null)
 			{
 				Destroy(mesh);
 			}
 		}
-		Destroy(tile);
+		if (GameSession.Current != null)
+		{
+			DestroyImmediate(tile);
+		}
+		else
+		{
+			Destroy(tile);
+		}
 	}
 
 	// Resources/Buildings/<name>, a flat colour if it's missing
@@ -544,7 +552,10 @@ public class TileStreamer : MonoBehaviour
 		if (Time.time >= nextRefresh)
 		{
 			nextRefresh = Time.time + refreshInterval;
-			Refresh();
+			if (Moved())
+			{
+				Refresh();
+			}
 		}
 		BuildMissing(LayerTransition.Busy ? rideBudgetMs : budgetMs, false);
 		Faded();
@@ -642,8 +653,33 @@ public class TileStreamer : MonoBehaviour
 		return (int)(uint)key;
 	}
 
+	// what's wanted only changes with the girls, a scan is thousands of cells
+	private bool rescan;
+
+	private bool Moved()
+	{
+		if (rescan)
+		{
+			return true;
+		}
+		Vector3 offset = Offset();
+		int at = 0;
+		return Moved(chito, offset, ref at) || Moved(yuuri, offset, ref at) || at != points.Count;
+	}
+
+	private bool Moved(Transform girl, Vector3 offset, ref int at)
+	{
+		if (girl == null || !girl.gameObject.activeInHierarchy)
+		{
+			return false;
+		}
+		at++;
+		return at > points.Count || (girl.position + offset - points[at - 1]).sqrMagnitude >= 1f;
+	}
+
 	private void Refresh()
 	{
+		rescan = false;
 		points.Clear();
 		Vector3 offset = Offset();
 		if (chito != null && chito.gameObject.activeInHierarchy)
@@ -1152,7 +1188,7 @@ public class TileStreamer : MonoBehaviour
 		// a frame stalls on it, so it waits its turn with the others
 		if (old != null && GameSession.Current != null)
 		{
-			GameSession.Current.Later(() => Destroy(old));
+			GameSession.Current.Later(() => DestroyImmediate(old));
 		}
 		else if (old != null)
 		{

@@ -12,15 +12,20 @@ public sealed class WorldRandom
 
 	public static ulong Derive(ulong seed, ulong stream, ulong index = 0)
 	{
-		WorldRandom worldRandom = new WorldRandom(seed ^ (stream * 0x9E3779B97F4A7C15uL));
-		worldRandom.state ^= index * 0xD1B54A32D192ED03uL;
-		return worldRandom.NextULong();
+		// no object: a cold tile comes here thousands of times
+		return Mix(seed ^ (stream * 0x9E3779B97F4A7C15uL) ^ (index * 0xD1B54A32D192ED03uL));
 	}
 
 	public ulong NextULong()
 	{
+		ulong num = Mix(state);
 		state += 0x9E3779B97F4A7C15uL;
-		ulong num = state;
+		return num;
+	}
+
+	private static ulong Mix(ulong state)
+	{
+		ulong num = state + 0x9E3779B97F4A7C15uL;
 		num = (num ^ (num >> 30)) * 0xBF58476D1CE4E5B9uL;
 		num = (num ^ (num >> 27)) * 0x94D049BB133111EBuL;
 		return num ^ (num >> 31);

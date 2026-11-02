@@ -167,11 +167,13 @@ public class GameSession : MonoBehaviour
 		}
 	}
 
-	// work that can wait and shouldn't all land in one frame (a layer's tiles going), one a frame: destroying a gpu-only
-	// mesh stalls the frame, 40 tiles a frame held arrivals at 100-280 ms frames for seconds
+	// work that can wait and shouldn't all land in one frame (a layer's tiles going), a bit each frame: destroying a
+	// gpu-only mesh stalls the frame, 40 tiles a frame held arrivals at 100-280 ms frames for seconds
 	private readonly Queue<Action> later = new Queue<Action>();
 
-	private const int laterPerFrame = 1;
+	private readonly System.Diagnostics.Stopwatch laterWatch = new System.Diagnostics.Stopwatch();
+
+	private const double laterBudgetMs = 1.0;
 
 	public void Later(Action work)
 	{
@@ -180,7 +182,8 @@ public class GameSession : MonoBehaviour
 
 	private void Update()
 	{
-		for (int i = 0; i < laterPerFrame && later.Count > 0; i++)
+		laterWatch.Restart();
+		while (later.Count > 0 && laterWatch.Elapsed.TotalMilliseconds < laterBudgetMs)
 		{
 			later.Dequeue()();
 		}

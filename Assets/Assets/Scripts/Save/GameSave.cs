@@ -246,6 +246,7 @@ public static class GameSave
 		CurrentSlot = slot;
 		playSecondsBefore = data.playSeconds;
 		PlayerPrefs.SetString(difficultyKey, data.difficulty);
+		Save.DifficultyChanged();
 		WorldGenerator.ClearRequested();
 		WorldGenerator.RequestedSeed = ulong.Parse(data.seed);
 		WorldGenerator.RequestedGenVersion = data.genVersion;

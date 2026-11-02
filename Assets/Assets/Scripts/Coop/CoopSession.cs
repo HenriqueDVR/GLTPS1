@@ -1248,6 +1248,7 @@ public class CoopSession : MonoBehaviour
 				if (!string.IsNullOrEmpty(@string))
 				{
 					PlayerPrefs.SetString(difficultyKey, @string);
+					Save.DifficultyChanged();
 				}
 				WorldGenerator.RequestedSeed = @ulong;
 				WorldGenerator.RequestedGenVersion = genVersion;

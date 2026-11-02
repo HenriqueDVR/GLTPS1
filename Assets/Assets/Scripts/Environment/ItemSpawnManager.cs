@@ -6,7 +6,6 @@ public class ItemSpawnManager : MonoBehaviour
 {
     [SerializeField] private GameObject[] item;
     public int[] spawnChance;
-    private Save save = new Save();
 
     // set by WorldGenerator so seeds give the same items
     [System.NonSerialized] public WorldRandom random;
@@ -17,7 +16,7 @@ public class ItemSpawnManager : MonoBehaviour
 
     void Start()
     {
-        save = save.LoadData("difficultySetting");
+        Save save = Save.Difficulty();
         if (save != null)
         {
             for (int i = 0; i < spawnChance.Length; i++)
