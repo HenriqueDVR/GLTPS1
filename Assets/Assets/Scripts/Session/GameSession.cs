@@ -67,6 +67,7 @@ public class GameSession : MonoBehaviour
 			TileStreamer tiles = layer.GetComponent<TileStreamer>();
 			Add<SafeGround>().Init(world.Plan, tiles, floatingOrigin);
 			Add<UndergroundAtmosphere>().Init(world.Plan, tiles, floatingOrigin);
+			Add<ZoneAtmosphere>().Init(world.Plan, floatingOrigin);
 			UseLayer(layer);
 			Backdrop(layer);
 			Add<LayerTransition>();
@@ -140,6 +141,11 @@ public class GameSession : MonoBehaviour
 		if (under != null)
 		{
 			under.Init(tiles.Plan, tiles, floatingOrigin);
+		}
+		ZoneAtmosphere zone = Get<ZoneAtmosphere>();
+		if (zone != null)
+		{
+			zone.Init(tiles.Plan, floatingOrigin);
 		}
 	}
 

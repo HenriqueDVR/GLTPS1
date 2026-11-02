@@ -78,6 +78,13 @@ public sealed class DistrictDef
 	// share of street pieces with a lamp on the sidewalk
 	public double Lamps;
 
+	// the weather's fog times this here (ZoneAtmosphere): thick where the journey starts, easing off further on
+	public double Fog = 1.0;
+
+	// the haze's hue here, 0xRRGGBB (ZoneAtmosphere): the fog's colour is pulled toward it, its brightness kept, so
+	// it only shifts a little. white is no tint
+	public uint Tint = 0xFFFFFF;
+
 	public BuildingStyle Style;
 
 	// share of street and buried-road stretches with utility poles and wires
