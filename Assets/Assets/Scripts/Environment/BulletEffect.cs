@@ -15,9 +15,16 @@ public class BulletEffect : MonoBehaviour
     private float waterLossRate = 1f;
     public AudioSource _audioSource;
     [SerializeField] private AudioClip[] _audioClip;
-    void Start()
+    // the hole stays on whatever was shot. only the hit itself makes a sound: on the ket its trigger would drive
+    // through walls and the road, ringing every time
+    IEnumerator Start()
     {
         emission = waterStream.emission;
+        for (int i = 0; i < 3; i++)
+        {
+            yield return new WaitForFixedUpdate();
+        }
+        GetComponent<Collider>().enabled = false;
     }
     void Update()
     {
