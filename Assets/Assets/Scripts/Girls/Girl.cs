@@ -49,8 +49,6 @@ public class Girl : MonoBehaviour
 
 	private NavMeshAgentFollowPlayer follow;
 
-	private NavMeshAgentCommand command;
-
 	private CharacterStatusScreenEffect screenEffect;
 
 	private NPCInteraction npc;
@@ -77,6 +75,8 @@ public class Girl : MonoBehaviour
 
 	public NavMeshAgentFollowPlayer Follow => follow;
 
+	public AIController Ai { get; private set; }
+
 	public NPCInteraction Npc => npc;
 
 	public void Init(GirlId id, GirlControl control)
@@ -95,7 +95,11 @@ public class Girl : MonoBehaviour
 		agent = GetComponentInChildren<NavMeshAgent>();
 		agentVehicle = GetComponentInChildren<NavMeshAgentVehicleInteraction>();
 		follow = GetComponentInChildren<NavMeshAgentFollowPlayer>();
-		command = GetComponentInChildren<NavMeshAgentCommand>();
+		if (follow != null && agent != null)
+		{
+			Ai = follow.gameObject.AddComponent<AIController>();
+			Ai.Init(this, agent, follow, agentVehicle);
+		}
 		screenEffect = GetComponentInChildren<CharacterStatusScreenEffect>();
 		npc = GetComponentInChildren<NPCInteraction>();
 		elevator = GetComponentInChildren<CharacterElevatorInteraction>();
@@ -162,7 +166,6 @@ public class Girl : MonoBehaviour
 			Set(follow, false);
 			Set(screenEffect, true);
 			Set(npc, true);
-			Set(command, true);
 			Set(elevator, true);
 			Set(elevatorConstraint, false);
 			break;
@@ -179,7 +182,6 @@ public class Girl : MonoBehaviour
 			Set(follow, true);
 			Set(screenEffect, false);
 			Set(npc, false);
-			Set(command, false);
 			Set(elevator, false);
 			// she rides the elevator by constraint, the player walks on
 			Set(elevatorConstraint, true);
@@ -195,14 +197,12 @@ public class Girl : MonoBehaviour
 			Set(obstacle, false);
 			Set(screenEffect, false);
 			Set(npc, false);
-			Set(command, false);
 			Set(elevator, false);
 			break;
 		case GirlControl.Remote:
 			// CoopPlayers moves her from snapshots
 			Set(follow, false);
 			Set(agentVehicle, false);
-			Set(command, false);
 			Set(elevatorConstraint, false);
 			Set(agent, false);
 			Set(obstacle, false);

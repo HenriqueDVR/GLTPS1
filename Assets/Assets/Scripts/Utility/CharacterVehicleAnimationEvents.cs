@@ -108,7 +108,7 @@ public class CharacterVehicleAnimationEvents : MonoBehaviour
         {
             return;
         }
-        navMeshAgentVehicleInteractionScript.enter = true;
+        navMeshAgentVehicleInteractionScript.Ai.Board();
     }
     public void AgentExitBack()
     {
@@ -116,8 +116,7 @@ public class CharacterVehicleAnimationEvents : MonoBehaviour
         {
             return;
         }
-        navMeshAgentVehicleInteractionScript.exit = true;
-        navMeshAgentVehicleInteractionScript.agentAnim.SetTrigger("ket exit");
+        navMeshAgentVehicleInteractionScript.Ai.GetOff();
     }
     public void AgentExitVehicle()
     {
@@ -125,6 +124,6 @@ public class CharacterVehicleAnimationEvents : MonoBehaviour
         {
             return;
         }
-        navMeshAgentSelfVehicleInteractionScript.preOrientExit = true;
+        navMeshAgentSelfVehicleInteractionScript.Ai.ClimbingOff();
     }
 }
