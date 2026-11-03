@@ -33,8 +33,15 @@ public static class EndingCity
 			}
 		}
 		Color albedo = buildings != null ? DistantPillar.Albedo(buildings) : new Color(0.6f, 0.61f, 0.63f);
-		Filler(parent, column, albedo, new Material(Resources.Load<Shader>("DistantFiller")));
+		// one per ride otherwise
+		if (fillerMaterial == null)
+		{
+			fillerMaterial = new Material(Resources.Load<Shader>("DistantFiller"));
+		}
+		Filler(parent, column, albedo, fillerMaterial);
 	}
+
+	private static Material fillerMaterial;
 
 	private sealed class Piece
 	{

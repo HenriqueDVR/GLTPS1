@@ -21,6 +21,12 @@ public class CharacterStatus : MonoBehaviour
     [SerializeField] private float maxThirstValue = 100f;
     [SerializeField] private float maxWaterLevel = 400f;
     public float waterSlowRefillRate = 0.1f;
+    // a fire burns 20 s: two drinks' worth for its 20 fuel
+    private const float snowMeltRate = 2f;
+    // the AI looks after herself below this, a bit apart so she doesn't do it all at once
+    private const float aiNeedsLevel = 30f;
+    private const float aiNeedsInterval = 6f;
+    private float nextAiNeeds;
 
     public int[] temperatureLossRate;
 
@@ -83,21 +89,15 @@ public class CharacterStatus : MonoBehaviour
         UpdateImageFillAmount(yuuriTemperatureBar, yuuriTemperatureBarInitialFillAmount, yuuriItems.temperatureLevel, maxTemperatureValue);
 
 
-        float scaledHungerRate;
-        float scaledThirstRate;
-
-        // set the scaled hunger and thirst rate
-        if (Girls.Chito.Input.actions.Vehicle.enabled || Girls.Yuuri.Input.actions.Vehicle.enabled)
-        {
-            scaledHungerRate = hungerRate * slowDepletionRate / referenceFrameRate;
-            scaledThirstRate = thirstRate * slowDepletionRate / referenceFrameRate;
-        }
-        else
-        {
-            scaledHungerRate = hungerRate / referenceFrameRate;
-            scaledThirstRate = thirstRate / referenceFrameRate;
-        }
+        chitoItems.UpdateCeiling();
+        yuuriItems.UpdateCeiling();
         waterLevel = Mathf.Clamp(waterLevel, 0, maxWaterLevel);
+
+        // snow melts at a lit fire: the open world's water, there's no pipe to count on. friend gets water from the host
+        if (WorldGenerator.GenVersion == 2 && (chitoItems.AtLitFire || yuuriItems.AtLitFire) && (!CoopSession.InGame || CoopSession.Instance.IsHost))
+        {
+            waterLevel += snowMeltRate * Time.deltaTime;
+        }
 
         // set the water refill rate when exposed to rain
         // friend gets water from the host
@@ -108,7 +108,22 @@ public class CharacterStatus : MonoBehaviour
 
         foreach (Girl girl in Girls.All)
         {
-            Drain(girl.Items, scaledHungerRate, scaledThirstRate);
+            // on the ket, either seat, whichever machine this is: both peers work out the same rate for her
+            float rate = girl.Animator.GetCurrentAnimatorStateInfo(1).IsTag("Ket") ? slowDepletionRate : 1f;
+            // in the pause menu her needs wait: time goes on in coop, the player can't do anything about them
+            if (girl.Items != null && !(CoopPause.Paused && CoopPlayers.Instance != null && CoopPlayers.Instance.Local == girl.transform))
+            {
+                Drain(girl.Items, hungerRate * rate / referenceFrameRate, thirstRate * rate / referenceFrameRate);
+            }
+            if (girl.Control == GirlControl.AI)
+            {
+                girl.Items.FeelForFire();
+            }
+            if (girl.Control == GirlControl.AI && Time.time >= nextAiNeeds)
+            {
+                nextAiNeeds = Time.time + aiNeedsInterval;
+                girl.Items.LookAfterSelf(aiNeedsLevel);
+            }
         }
     }
 

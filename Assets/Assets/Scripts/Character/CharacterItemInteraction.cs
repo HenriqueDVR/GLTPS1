@@ -246,16 +246,52 @@ public class CharacterItemInteraction : MonoBehaviour, IInteractionSource
     }
 #endif
 
-    void Update()
+    // from CharacterStatus: an AI or remote girl has this script off and still needs it, for the cold and the rain
+    public void UpdateCeiling()
     {
-        //check if character is under ceiling
-        if (Physics.Raycast(transform.position + new Vector3(0, 2f, 0), Vector2.up, isUnderCeilingHeight))
+        isUnderCeiling = Physics.Raycast(transform.position + new Vector3(0, 2f, 0), Vector3.up, isUnderCeilingHeight, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+    }
+
+    private CampfireFuelLevel warmth;
+
+    public bool AtLitFire => warmth != null && warmth.currentFuelLevel > 0f;
+
+    private readonly Collider[] feltNear = new Collider[16];
+
+    // the AI girl has no controller to bring her a fire's trigger: she looks for it. per physics step's worth, as the trigger
+    public void FeelForFire()
+    {
+        int count = Physics.OverlapSphereNonAlloc(transform.position + Vector3.up * 0.5f, 0.3f, feltNear, Physics.AllLayers, QueryTriggerInteraction.Collide);
+        warmth = null;
+        for (int i = 0; i < count; i++)
         {
-            isUnderCeiling = true;
+            if (feltNear[i].CompareTag("CampfireWarmthArea"))
+            {
+                warmth = feltNear[i].GetComponent<CampfireFuelLevel>();
+                break;
+            }
         }
-        else
+        isInCampfireArea = warmth != null;
+        if (AtLitFire)
         {
-            isUnderCeiling = false;
+            temperatureLevel += temperatureRefillValue * Time.deltaTime / Time.fixedDeltaTime;
+        }
+    }
+
+    // the AI girl, nobody presses anything for her
+    public void LookAfterSelf(float below)
+    {
+        if (hungerLevel < below && characterStatusScript.index > 0)
+        {
+            hungerLevel += eatValue;
+            RemoveFood(1);
+            anim.SetTrigger("eat");
+        }
+        else if (thirstLevel < below && characterStatusScript.waterLevel >= drinkValue)
+        {
+            thirstLevel += drinkValue;
+            characterStatusScript.waterLevel -= drinkValue;
+            anim.SetTrigger("drink");
         }
     }
 
@@ -294,9 +330,17 @@ public class CharacterItemInteraction : MonoBehaviour, IInteractionSource
         }
     }
 
+    // its fuel comes out of the ket, so the ket's by the fire: not from miles off, not off its moving back seat
+    private const float campfireKetReach = 25f;
+
+    private bool KetAtHand()
+    {
+        return !anim.GetCurrentAnimatorStateInfo(1).IsTag("Ket") && Vector3.Distance(transform.position, vehicleFuelManagerScript.transform.position) < campfireKetReach;
+    }
+
     private void TryPlaceCampfire()
     {
-        if (vehicleFuelManagerScript.currentFuel > 0)
+        if (vehicleFuelManagerScript.currentFuel > 0 && KetAtHand())
         {
             // check if previous campfire is extinguised before allowing for placing new one
             if (characterStatusScript.newCampfire != null)
@@ -385,6 +429,7 @@ public class CharacterItemInteraction : MonoBehaviour, IInteractionSource
         else if (other.gameObject.CompareTag("CampfireWarmthArea"))
         {
             isInCampfireArea = true;
+            warmth = other.gameObject.GetComponent<CampfireFuelLevel>();
             if (other.gameObject.GetComponent<CampfireFuelLevel>().currentFuelLevel > 0)
             {
                 temperatureLevel += temperatureRefillValue;
@@ -405,6 +450,7 @@ public class CharacterItemInteraction : MonoBehaviour, IInteractionSource
         if (other.gameObject.CompareTag("CampfireWarmthArea"))
         {
             isInCampfireArea = false;
+            warmth = null;
         }
         if (other.gameObject.CompareTag("CampfireInteractArea"))
         {
@@ -416,7 +462,8 @@ public class CharacterItemInteraction : MonoBehaviour, IInteractionSource
     {
         if (other.gameObject.CompareTag("Water") && !IsCoopPuppet)
         {
-            characterStatusScript.waterLevel += waterRefillRate * Time.fixedDeltaTime;
+            // one call a frame: was a fixed amount a call, so a fast machine filled faster. 0.02 s a call at 60 fps
+            characterStatusScript.waterLevel += waterRefillRate * 1.2f * Time.deltaTime;
         }
     }
 

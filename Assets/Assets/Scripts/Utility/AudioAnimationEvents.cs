@@ -9,6 +9,9 @@ public class AudioAnimationEvents : MonoBehaviour
     [SerializeField] private AudioClip[] _audioClip;
     public bool isGroundedConcrete;
     public bool isGroundedMetal;
+    // a tile alone is three colliders: leaving one isn't leaving the ground
+    private int concreteUnder;
+    private int metalUnder;
 
     public void PlayAudioClipOneShot(AudioClip _audioClip)
     {
@@ -50,11 +53,13 @@ public class AudioAnimationEvents : MonoBehaviour
          other.gameObject.CompareTag("Vehicle") ||
          other.gameObject.CompareTag("Elevator"))
         {
+            metalUnder++;
             isGroundedMetal = true;
             _audioSource.PlayOneShot(_audioClip[3]);
         }
         else if (other.gameObject.CompareTag("Untagged"))
         {
+            concreteUnder++;
             isGroundedConcrete = true;
             _audioSource.PlayOneShot(_audioClip[0]);
         }
@@ -67,11 +72,13 @@ public class AudioAnimationEvents : MonoBehaviour
                  other.gameObject.CompareTag("Vehicle") ||
                  other.gameObject.CompareTag("Elevator"))
         {
-            isGroundedMetal = false;
+            metalUnder = Mathf.Max(0, metalUnder - 1);
+            isGroundedMetal = metalUnder > 0;
         }
         else if (other.gameObject.CompareTag("Untagged"))
         {
-            isGroundedConcrete = false;
+            concreteUnder = Mathf.Max(0, concreteUnder - 1);
+            isGroundedConcrete = concreteUnder > 0;
         }
     }
 }

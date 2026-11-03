@@ -45,9 +45,10 @@ public class CharacterDeath : MonoBehaviour
     bool IsDead(Girl girl, bool isDead)
     {
         CharacterItemInteraction items = girl.Items;
+        // not on the ket, she can't be got off it: goes down once she's off (coop the same, CoopDowned)
         if ((items.thirstLevel <= 0 ||
-            items.hungerLevel <= 0) ||
-            items.temperatureLevel <= 0 &&
+            items.hungerLevel <= 0 ||
+            items.temperatureLevel <= 0) &&
             !girl.Animator.GetCurrentAnimatorStateInfo(1).IsTag("Ket"))
         {
             //check if navmesg agent is enable and that the navmesh agent has exited the vehicle

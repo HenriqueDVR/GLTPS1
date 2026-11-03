@@ -315,7 +315,7 @@ public class DistantPillar : MonoBehaviour
 			// the grid never repeats, so the tiled ceiling knows no towers. each copy brings its own deck instead
 			anchor = new Vector3((float)streamer.Plan.Origin.X, streamer.GroundY, (float)streamer.Plan.Origin.Z);
 			// measures the piece (foot, height, slab) before the levels are worked out
-			Distant measure = new Distant { Material = new Material(silhouette) };
+			Distant measure = new Distant { Material = Own(new Material(silhouette)) };
 			measure.Copy = Copy(prefab, measure.Material).transform;
 			measure.Copy.gameObject.SetActive(false);
 			spare.Push(measure);
@@ -323,7 +323,7 @@ public class DistantPillar : MonoBehaviour
 		stretch = Level() / BaseLevel();
 		// same holes every time for a seed
 		System.Random random = new System.Random((int)(world.Seed & 0x7fffffff));
-		ceilingMaterial = new Material(Resources.Load<Shader>("DistantCeiling"));
+		ceilingMaterial = Own(new Material(Resources.Load<Shader>("DistantCeiling")));
 		// v2's is the layer above's real holes, built in tiles where the camera is (Uppers); the last layer has none
 		if (pillar == null)
 		{
@@ -341,7 +341,7 @@ public class DistantPillar : MonoBehaviour
 		Destroy(dome.GetComponent<Collider>());
 		dome.name = "DistantSky";
 		dome.transform.localScale = Vector3.one * 400f;
-		skyMaterial = new Material(Resources.Load<Shader>("DistantSky"));
+		skyMaterial = Own(new Material(Resources.Load<Shader>("DistantSky")));
 		MeshRenderer domeRenderer = dome.GetComponent<MeshRenderer>();
 		domeRenderer.sharedMaterial = skyMaterial;
 		domeRenderer.shadowCastingMode = ShadowCastingMode.Off;
@@ -360,7 +360,7 @@ public class DistantPillar : MonoBehaviour
 			Destroy(layer.GetComponent<Collider>());
 			layer.name = "DistantCloud";
 			layer.transform.localScale = Vector3.one * drawDistance * 2.2f;
-			Material material = new Material(cloudShader);
+			Material material = Own(new Material(cloudShader));
 			material.SetFloat("_Cover", cloudLayers[i].y);
 			material.SetFloat("_Scale", 380f + i * 220f);
 			material.SetVector("_Drift", new Vector4(3f + i * 2f, 0f, 1.5f - i, 0f));
@@ -377,7 +377,7 @@ public class DistantPillar : MonoBehaviour
 	{
 		Distant distant = new Distant
 		{
-			Material = new Material(shader),
+			Material = Own(new Material(shader)),
 			Node = node
 		};
 		distant.Copy = Copy(prefab, distant.Material).transform;
@@ -418,7 +418,7 @@ public class DistantPillar : MonoBehaviour
 			{
 				continue;
 			}
-			Distant distant = (spare.Count > 0) ? spare.Pop() : new Distant { Material = new Material(silhouette) };
+			Distant distant = (spare.Count > 0) ? spare.Pop() : new Distant { Material = Own(new Material(silhouette)) };
 			if (distant.Copy == null)
 			{
 				distant.Copy = Copy(prefab, distant.Material).transform;
@@ -505,8 +505,21 @@ public class DistantPillar : MonoBehaviour
 		return sum / (width * height);
 	}
 
+	// made here, a set per layer's worth of rides otherwise
+	private readonly List<Material> own = new List<Material>();
+
+	private Material Own(Material material)
+	{
+		own.Add(material);
+		return material;
+	}
+
 	private void OnDestroy()
 	{
+		foreach (Material material in own)
+		{
+			Destroy(material);
+		}
 		foreach (Distant distant in pillars)
 		{
 			if (distant.Copy != null)

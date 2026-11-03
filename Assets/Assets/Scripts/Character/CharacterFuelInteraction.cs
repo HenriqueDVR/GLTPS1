@@ -26,7 +26,8 @@ public class CharacterFuelInteraction : MonoBehaviour, IInteractionSource
     private void Toggle()
     {
         {
-            if (isFueling)
+            // this station's pump, as it is: one bool for all of them, one left on took two presses at the next
+            if (!other.gameObject.GetComponentInChildren<ParticleSystem>().isEmitting)
             {
                 other.gameObject.GetComponentInChildren<ParticleSystem>().Play();
                 isFueling = false;

@@ -63,7 +63,8 @@ public class VehicleBarrel : MonoBehaviour
     {
         if (other.gameObject.CompareTag("Fuel"))
         {
-            vehicleFuelManagerScript.currentFuel += vehicleFuelManagerScript.refuelingRate * Time.fixedDeltaTime;
+            // one call a frame: was a fixed amount a call, so a fast machine filled faster. 0.02 s a call at 60 fps
+            vehicleFuelManagerScript.currentFuel += vehicleFuelManagerScript.refuelingRate * 1.2f * Time.deltaTime;
             isFueling = true;
             elapsed = 0f;
         }

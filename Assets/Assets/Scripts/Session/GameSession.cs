@@ -98,6 +98,14 @@ public class GameSession : MonoBehaviour
 			CoopItem.ResetLevel();
 		}
 		CoopItem.TrackScenePickups();
+		// no Kanazawa out there to give it yet: a plain sketch from the start (12)
+		if (WorldGenerator.GenVersion == 2)
+		{
+			foreach (PlayerMapController map in FindObjectsOfType<PlayerMapController>(true))
+			{
+				map.enabled = true;
+			}
+		}
 		StartCoroutine(SaveScene.Register());
 	}
 

@@ -94,10 +94,11 @@ public class PlayerGunController : MonoBehaviour
             // Get raycast hit from hitmarker ui object
             RaycastHit cameraRayCastHit;
             //Physics.Raycast(ray, out cameraRayCastHit, 100f, layerMask);
-            Physics.Raycast(ray, out cameraRayCastHit, Mathf.Infinity, layerMask, QueryTriggerInteraction.Ignore);
+            bool hitSomething = Physics.Raycast(ray, out cameraRayCastHit, Mathf.Infinity, layerMask, QueryTriggerInteraction.Ignore);
 
             // Determine the direction of the bullet
-            Vector3 bulletDirection = (cameraRayCastHit.point - muzzle.position).normalized;
+            // nothing there (the sky): along the sight, an empty hit's point is the world's origin
+            Vector3 bulletDirection = hitSomething ? (cameraRayCastHit.point - muzzle.position).normalized : ray.direction;
             Shoot(muzzle.position, bulletDirection, false);
             CoopShots.Fired(muzzle.position, bulletDirection);
 
