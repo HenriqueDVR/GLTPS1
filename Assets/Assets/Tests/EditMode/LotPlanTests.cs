@@ -266,6 +266,62 @@ public class LotPlanTests
 		Assert.Less((1000000uL + 100000uL) << 16 | 0xFFFFuL, Gen2.TileItemTag);
 	}
 
+	// an item's id comes from where its lot is, so it fits its bits and no two lots of a tile share one
+	[Test]
+	public void ItemIndexesFromPositionAreUnique()
+	{
+		List<Lot> lots = new List<Lot>();
+		int checkedLots = 0;
+		foreach (LayerPlan plan in new[] { Layer0(), Layer1() })
+		{
+			int x0 = (int)(plan.Origin.X / Gen2.TileSize);
+			int z0 = (int)(plan.Origin.Z / Gen2.TileSize);
+			for (int x = x0 - 40; x < x0 + 40; x += 2)
+			{
+				for (int z = z0 - 40; z < z0 + 40; z += 2)
+				{
+					plan.Lots.Collect(x, z, lots);
+					HashSet<int> seen = new HashSet<int>();
+					foreach (Lot lot in lots)
+					{
+						double u = lot.Center.X - x * Gen2.TileSize;
+						double v = lot.Center.Z - z * Gen2.TileSize;
+						Assert.IsTrue(u >= -64.0 && u < 192.0 && v >= -64.0 && v < 192.0, "lot " + lot.Center + " too far out of tile " + x + "," + z);
+						Assert.IsTrue(seen.Add(Gen2.ItemIndex(lot.Center, x, z, 0)), "two lots on one id in tile " + x + "," + z + " at " + lot.Center);
+						checkedLots++;
+					}
+				}
+			}
+		}
+		Assert.Greater(checkedLots, 1000);
+	}
+
+	// the whole lot, not only its centre, keeps out of the start's clearance, on any seed
+	[Test]
+	public void LotsClearOfTheStart()
+	{
+		List<Lot> lots = new List<Lot>();
+		for (ulong s = 1uL; s <= 60uL; s++)
+		{
+			LayerPlan plan = new LayerPlan(s, 0, new XZ(0.0, 0.0), null);
+			for (int x = -4; x < 4; x++)
+			{
+				for (int z = -4; z < 4; z++)
+				{
+					plan.Lots.Collect(x, z, lots);
+					foreach (Lot lot in lots)
+					{
+						double alongU = System.Math.Abs(-lot.Center.X * lot.Axis.X - lot.Center.Z * lot.Axis.Z);
+						double alongV = System.Math.Abs(lot.Center.X * lot.Axis.Z - lot.Center.Z * lot.Axis.X);
+						double du = System.Math.Max(0.0, alongU - lot.HalfU);
+						double dv = System.Math.Max(0.0, alongV - lot.HalfV);
+						Assert.GreaterOrEqual(System.Math.Sqrt(du * du + dv * dv), RoadPlan.StartClearance - 0.01, "seed " + s + " lot at " + lot.Center);
+					}
+				}
+			}
+		}
+	}
+
 	// doors from raised streets: each on a building lot by a flat stretch of high deck, and the street's parapet
 	// left open right in front of it
 	[Test]

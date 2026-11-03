@@ -105,7 +105,7 @@ public sealed class ViaductPlan
 		double half = (MinLength + Gen2.Unit(random.NextULong()) * (MaxLength - MinLength)) * 0.5;
 		// whole bays, so every peer cuts the same piers
 		half = Math.Floor(half / Bay) * Bay;
-		XZ dir = new XZ(Math.Cos(angle), Math.Sin(angle));
+		XZ dir = new XZ(Gen2.Cos(angle), Gen2.Sin(angle));
 		viaduct.A = new XZ(centre.X - dir.X * half, centre.Z - dir.Z * half);
 		viaduct.B = new XZ(centre.X + dir.X * half, centre.Z + dir.Z * half);
 		viaduct.Height = MinHeight + Gen2.Unit(random.NextULong()) * (MaxHeight - MinHeight);

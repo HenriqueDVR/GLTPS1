@@ -11,7 +11,7 @@ using UnityEngine;
 // a tile is its deck with the voids cut out (DeckMesh), its roads (RoadMesh), its lots' buildings and rubble (LotMesh)
 // and its props from the WorldKit: small landmarks, street lamps, item spawners.
 // everything is in layout coords (world + TotalOffset)
-public class TileStreamer : MonoBehaviour
+public partial class TileStreamer : MonoBehaviour
 {
 	public const float BuildRadius = 700f;
 
@@ -108,16 +108,6 @@ public class TileStreamer : MonoBehaviour
 	private readonly List<int> placed = new List<int>();
 
 	private readonly List<int> pieceOf = new List<int>();
-
-	// share of lots with an item spawner, about one per city tile like the legacy nodes (tuned with SURV-4)
-	private const float itemOnLandmark = 0.5f;
-
-	private const float itemOnOpen = 0.1f;
-
-	private const float itemOnBuilding = 0.03f;
-
-	// in the entry of a building entered from a raised street
-	private const float itemInEntry = 0.3f;
 
 	// lamps on raised streets: decks at least this high (not up their ramps), standing on the parapet's top
 	// (RoadMesh: the street's lift and the parapet's height) in the middle of its width
@@ -297,6 +287,7 @@ public class TileStreamer : MonoBehaviour
 		{
 			runSpeed = speed;
 		}
+		DebugArgs(args);
 #endif
 		// everything in reach before the first frame, like the legacy BuildAround. not mid-ride
 		Refresh();
@@ -342,6 +333,14 @@ public class TileStreamer : MonoBehaviour
 			return;
 		}
 		tile.SetActive(false);
+		// its items aren't under it, they're loose bodies: gone now or they fall on the layer below for half a minute
+		foreach (ItemSpawnManager spawner in tile.transform.GetChild(3).GetComponentsInChildren<ItemSpawnManager>(true))
+		{
+			if (spawner.spawned != null)
+			{
+				Destroy(spawner.spawned);
+			}
+		}
 		if (GameSession.Current != null)
 		{
 			GameSession.Current.Later(() => DestroyTile(tile));
@@ -359,10 +358,12 @@ public class TileStreamer : MonoBehaviour
 			return;
 		}
 		ClearProps(tile);
-		foreach (MeshFilter filter in tile.GetComponentsInChildren<MeshFilter>(true))
+		// deck, roads, lots: its own. the props (still there, ClearProps is deferred) share the kit's meshes, which would
+		// be gone for the rest of the game
+		for (int i = 0; i < 3; i++)
 		{
 			// ~1.7 ms each (the gpu's side). now, or the time budget in Later doesn't see it
-			Mesh mesh = filter.sharedMesh;
+			Mesh mesh = tile.transform.GetChild(i).GetComponent<MeshFilter>().sharedMesh;
 			if (mesh != null && GameSession.Current != null)
 			{
 				GameSession.Current.Later(() => DestroyImmediate(mesh));
@@ -469,6 +470,7 @@ public class TileStreamer : MonoBehaviour
 		}
 		UnityEngine.Debug.Log("ShiftProbe: shift by " + offset + " frame " + Time.frameCount + ", the 30 frames before: avg " + (frameTimes.Count > 0 ? frameTimes.Average() : 0f).ToString("F1") + "ms max " + (frameTimes.Count > 0 ? frameTimes.Max() : 0f).ToString("F1") + "ms");
 		probeFrames = 6;
+		DebugShifted();
 	}
 
 	private readonly Queue<float> frameTimes = new Queue<float>();
@@ -486,6 +488,7 @@ public class TileStreamer : MonoBehaviour
 			{
 				continue;
 			}
+			DebugProbe();
 			frameTimes.Enqueue(Time.unscaledDeltaTime * 1000f);
 			if (frameTimes.Count > 30)
 			{
@@ -514,11 +517,33 @@ public class TileStreamer : MonoBehaviour
 		}
 	}
 
+	// the local test harness, when it's there (TileStreamer.Debug.cs)
+	partial void DebugArgs(string[] args);
+
+	partial void DebugShifted();
+
+	partial void DebugProbe();
+
+	partial void DebugTick();
+
+	partial void DebugTileBuilt(int x, int z, GameObject tile);
+
+	private int spawnersPlaced;
+
+	private int spawnersMoved;
+
+	private int spawnersDropped;
+
+	private int refreshRuns;
+
+	private double refreshMs;
+
 	private float runSpeed = 20f;
 
 	// -gen2run [speed]: both girls slide along at speed m/s (20 default) on a slow curve, for streaming and floating origin tests
 	private void DebugRun()
 	{
+		DebugTick();
 		if (run && chito != null)
 		{
 			float heading = Time.time * 15f * Mathf.Deg2Rad;
@@ -538,7 +563,9 @@ public class TileStreamer : MonoBehaviour
 		{
 			nextLog = Time.unscaledTime + 5f;
 			Vector3 p = (chito != null) ? chito.position + Offset() : Vector3.zero;
-			UnityEngine.Debug.Log("TileStreamer: tiles=" + tiles.Count + " pooled=" + pool.Count + " queued=" + missing.Count + " chito=" + p + " offset=" + Offset() + " district=" + Plan.Def.Districts[Plan.DistrictAt(p.x, p.z)].Id + " built=" + builtTiles + " road tris=" + roadTriangles + " lot tris=" + lotTriangles + " slowest tile=" + slowestBuild.ToString("F2") + "ms");
+			UnityEngine.Debug.Log("TileStreamer: tiles=" + tiles.Count + " pooled=" + pool.Count + " queued=" + missing.Count + " chito=" + p + " offset=" + Offset() + " district=" + Plan.Def.Districts[Plan.DistrictAt(p.x, p.z)].Id + " built=" + builtTiles + " road tris=" + roadTriangles + " lot tris=" + lotTriangles + " slowest tile=" + slowestBuild.ToString("F2") + "ms items=" + FindObjectsOfType<CoopItem>().Length + " spawners=" + FindObjectsOfType<ItemSpawnManager>().Length + " lights=" + FindObjectsOfType<Light>().Length + " spawners placed " + spawnersPlaced + " moved " + spawnersMoved + " dropped " + spawnersDropped + " refreshes=" + refreshRuns + " avg " + (refreshRuns > 0 ? refreshMs / refreshRuns : 0.0).ToString("F2") + "ms");
+			refreshRuns = 0;
+			refreshMs = 0.0;
 			slowestBuild = 0.0;
 		}
 	}
@@ -720,6 +747,11 @@ public class TileStreamer : MonoBehaviour
 		foreach (KeyValuePair<long, GameObject> tile in tiles)
 		{
 			float d = NearestDistance(KeyX(tile.Key), KeyZ(tile.Key));
+			// being made whole right now: it'd be pooled and then added back, one object under two keys
+			if (job != null && job.Upgrade && job.Key == tile.Key)
+			{
+				continue;
+			}
 			if (!wanted.Contains(tile.Key) && d > farReach + keepMargin)
 			{
 				leaving.Add(tile.Key);
@@ -1121,10 +1153,9 @@ public class TileStreamer : MonoBehaviour
 				{
 					PlaceLandmark(lots[placed[i]], pieceOf[i], props);
 				}
-				int items = 0;
 				foreach (Lot lot in lots)
 				{
-					PlaceItems(lot, x, z, ref items, props);
+					PlaceItems(lot, x, z, props);
 				}
 				PlaceLamps(props);
 				PlaceUnderLamps(x, z, props);
@@ -1132,6 +1163,7 @@ public class TileStreamer : MonoBehaviour
 				builtTiles++;
 				roadTriangles += roadMesh.Triangles;
 				lotTriangles += job.AnyLots ? lotMesh.Triangles : 0;
+				DebugTileBuilt(x, z, tile);
 #endif
 				return true;
 			}
@@ -1438,7 +1470,7 @@ public class TileStreamer : MonoBehaviour
 		double size = Gen2.TileSize;
 		WorldRandom random = new WorldRandom(WorldRandom.Derive(Gen2.TileSeed(Plan.LayerSeed, x, z), Gen2.StreamLot + 5, 0uL));
 		bool open = Plan.Def.Districts[Plan.DistrictAt((x + 0.5) * size, (z + 0.5) * size)].Roads == DistrictRoads.Open;
-		int count = open ? 2 + random.Next(6) : random.Next(3);
+		int count = open ? TileOdds.FewestOpen + random.Next(TileOdds.MoreOpen) : random.Next(TileOdds.MoreTown);
 		for (int i = 0; i < count; i++)
 		{
 			XZ at = new XZ((x + Gen2.Unit(random.NextULong())) * size, (z + Gen2.Unit(random.NextULong())) * size);
@@ -1451,7 +1483,7 @@ public class TileStreamer : MonoBehaviour
 			LotMesh.Debris kind = LotMesh.Debris.Pile;
 			if (Plan.Def.Districts[Plan.DistrictAt(at.X, at.Z)].Roads == DistrictRoads.Open)
 			{
-				kind = (pick < 0.25) ? LotMesh.Debris.Slab : (pick < 0.5) ? LotMesh.Debris.Pile : (pick < 0.75) ? LotMesh.Debris.Tree : (pick < 0.93) ? LotMesh.Debris.Frame : LotMesh.Debris.Pole;
+				kind = (pick < TileOdds.DebrisSlab) ? LotMesh.Debris.Slab : (pick < TileOdds.DebrisPile) ? LotMesh.Debris.Pile : (pick < TileOdds.DebrisTree) ? LotMesh.Debris.Tree : (pick < TileOdds.DebrisFrame) ? LotMesh.Debris.Frame : LotMesh.Debris.Pole;
 			}
 			lotMesh.AddDebris(kind, new Vector3((float)(at.X - x * size), 0f, (float)(at.Z - z * size)), seed);
 		}
@@ -1900,14 +1932,28 @@ public class TileStreamer : MonoBehaviour
 		{
 			return false;
 		}
-		foreach (RoadPiece piece in PiecesOf(Gen2.Cell(p.X, Gen2.TileSize), Gen2.Cell(p.Z, Gen2.TileSize)))
+		return !OnRoad(p, ViaductPlan.PierWidth);
+	}
+
+	// the tile's roads and its neighbours': a piece belongs to the tile its middle's in, and reaches over the seam
+	private bool OnRoad(XZ p, double clear)
+	{
+		int cx = Gen2.Cell(p.X, Gen2.TileSize);
+		int cz = Gen2.Cell(p.Z, Gen2.TileSize);
+		for (int x = cx - 1; x <= cx + 1; x++)
 		{
-			if (RoadPlan.SegmentDistance(p, piece.A, piece.B) < piece.Width * 0.5 + ViaductPlan.PierWidth)
+			for (int z = cz - 1; z <= cz + 1; z++)
 			{
-				return false;
+				foreach (RoadPiece piece in PiecesOf(x, z))
+				{
+					if (RoadPlan.SegmentDistance(p, piece.A, piece.B) < piece.Width * 0.5 + clear)
+					{
+						return true;
+					}
+				}
 			}
 		}
-		return true;
+		return false;
 	}
 
 	private RoadPiece[] PiecesOf(int x, int z)
@@ -1953,12 +1999,9 @@ public class TileStreamer : MonoBehaviour
 		{
 			return true;
 		}
-		foreach (RoadPiece piece in pieces)
+		if (OnRoad(p, clear))
 		{
-			if (RoadPlan.SegmentDistance(p, piece.A, piece.B) < piece.Width * 0.5 + clear)
-			{
-				return true;
-			}
+			return true;
 		}
 		foreach (Stair stair in stairs)
 		{
@@ -2000,12 +2043,10 @@ public class TileStreamer : MonoBehaviour
 		return props;
 	}
 
-	// a spawner by one of the lot's long edges, clear of its building or rubble; ids from the tile and a running index
-	private void PlaceItems(Lot lot, int x, int z, ref int index, Transform props)
+	// a spawner by one of the lot's long edges, clear of its building or rubble; ids from the tile and where the lot is
+	private void PlaceItems(Lot lot, int x, int z, Transform props)
 	{
-		float chance = (lot.Door != 0) ? itemInEntry : (lot.Kind == LotKind.Landmark) ? itemOnLandmark : (lot.Kind == LotKind.Open) ? itemOnOpen : itemOnBuilding;
-		ulong roll = WorldRandom.Derive(lot.Seed, Gen2.StreamLot, 10uL);
-		if (kit == null || kit.ItemSpawner == null || Gen2.Unit(roll) >= chance)
+		if (kit == null || kit.ItemSpawner == null || !LotPlan.HasItem(lot, out ulong roll))
 		{
 			return;
 		}
@@ -2019,14 +2060,38 @@ public class TileStreamer : MonoBehaviour
 			// in the dark of the entry, the building itself stands on its plinth
 			at = new Vector3((float)lot.Center.X, groundY + (float)lot.Deck + 0.16f, (float)lot.Center.Z) + v * (lot.Door * ((float)lot.HalfV - (float)LotPlan.PorchDepth * 0.6f)) + u * (float)lot.DoorAt;
 		}
+		else if (!Clear(at, props))
+		{
+			// the other long edge, else there's no room on this lot
+			Vector3 other = at - v * (side * 2f * ((float)lot.HalfV - 0.5f));
+			if (!Clear(other, props))
+			{
+				return;
+			}
+			at = other;
+		}
 		GameObject spawner = Instantiate(kit.ItemSpawner, at - Offset(), Quaternion.identity, props);
 		ulong tileSeed = Gen2.TileSeed(Plan.LayerSeed, x, z);
+		int child = 0;
 		foreach (ItemSpawnManager manager in spawner.GetComponentsInChildren<ItemSpawnManager>(true))
 		{
+			int index = Gen2.ItemIndex(lot.Center, x, z, child++);
 			manager.random = new WorldRandom(WorldRandom.Derive(tileSeed, Gen2.StreamLot + 3, (ulong)index));
 			manager.itemId = Gen2.ItemId(Plan.Layer, x, z, index);
-			index++;
 		}
+	}
+
+	// not inside what the lot's built: down onto this tile's own lot mesh, which is the same on every peer (a neighbour's
+	// might not be built yet). its margins can be under the half metre a spawner is set in
+	private bool Clear(Vector3 at, Transform props)
+	{
+		MeshCollider lots = props.parent.GetChild(2).GetComponent<MeshCollider>();
+		if (lots == null || !lots.enabled || lots.sharedMesh == null)
+		{
+			return true;
+		}
+		Ray down = new Ray(at - Offset() + Vector3.up * 200f, Vector3.down);
+		return !lots.Raycast(down, out RaycastHit hit, 400f) || hit.point.y < at.y - Offset().y + 0.4f;
 	}
 
 	// on the sidewalk by every other street piece, sides taking turns, a district's share of them. on a raised

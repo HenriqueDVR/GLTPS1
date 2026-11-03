@@ -136,8 +136,6 @@ public sealed class LotPlan
 
 	private readonly LayerPlan plan;
 
-	private readonly HashSet<int> districts = new HashSet<int>();
-
 	// expressway segments around the tile being collected
 	private readonly List<XZ> highway = new List<XZ>();
 
@@ -200,7 +198,8 @@ public sealed class LotPlan
 
 	private void CollectBlocks(Rect tile, List<Lot> lots, List<Stair> stairsOut)
 	{
-		districts.Clear();
+		// a mask, not a set: lots come out district by district in ascending order on every machine
+		ulong districts = 0uL;
 		int count = plan.Def.Districts.Length;
 		for (int i = 0; i <= 2; i++)
 		{
@@ -209,13 +208,13 @@ public sealed class LotPlan
 				int d = plan.DistrictAt(tile.X0 + (tile.X1 - tile.X0) * i * 0.5, tile.Z0 + (tile.Z1 - tile.Z0) * j * 0.5);
 				for (int n = Math.Max(0, d - 1); n <= Math.Min(count - 1, d + 1); n++)
 				{
-					districts.Add(n);
+					districts |= 1uL << n;
 				}
 			}
 		}
-		foreach (int district in districts)
+		for (int district = 0; district < count; district++)
 		{
-			if (plan.Def.Districts[district].Roads != DistrictRoads.Streets)
+			if (((districts >> district) & 1uL) == 0uL || plan.Def.Districts[district].Roads != DistrictRoads.Streets)
 			{
 				continue;
 			}
@@ -687,6 +686,14 @@ public sealed class LotPlan
 		return def.FloorsMin + (int)(Gen2.Unit(WorldRandom.Derive(seed, Gen2.StreamLot, 6uL)) * range);
 	}
 
+	// whether a lot has an item spawner. Kind as the tile has it: a landmark lot with no landmark that fits is open
+	public static bool HasItem(Lot lot, out ulong roll)
+	{
+		double chance = (lot.Door != 0) ? TileOdds.ItemInEntry : (lot.Kind == LotKind.Landmark) ? TileOdds.ItemOnLandmark : (lot.Kind == LotKind.Open) ? TileOdds.ItemOnOpen : TileOdds.ItemOnBuilding;
+		roll = WorldRandom.Derive(lot.Seed, Gen2.StreamLot, 10uL);
+		return Gen2.Unit(roll) < chance;
+	}
+
 	// ---- open districts
 
 	private void CollectSites(Rect tile, List<Lot> lots)
@@ -709,6 +716,13 @@ public sealed class LotPlan
 				double pick = Gen2.Unit(WorldRandom.Derive(seed, Gen2.StreamLot, 4uL));
 				// the rest of the sites stay empty snow
 				if (pick >= def.LotLandmark + def.LotOpen || HighwayNear(site, SiteLot * 1.42 + HighwayGap, highway) || plan.Viaducts.Blocks(site, SiteLot * 1.42, viaducts) || plan.Chasms.Blocks(site, SiteLot * 1.42))
+				{
+					continue;
+				}
+				// Site only looks at the centre, the lot reaches further
+				double toStartX = site.X - plan.Origin.X;
+				double toStartZ = site.Z - plan.Origin.Z;
+				if (Math.Sqrt(toStartX * toStartX + toStartZ * toStartZ) < RoadPlan.StartClearance + SiteLot * 1.42)
 				{
 					continue;
 				}

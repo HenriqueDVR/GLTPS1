@@ -109,7 +109,7 @@ public sealed class ChasmPlan
 		double half = MinHalf + Unit(random) * (MaxHalf - MinHalf);
 		if (roll < Def(centre).Rifts)
 		{
-			XZ dir = new XZ(Math.Cos(angle), Math.Sin(angle));
+			XZ dir = new XZ(Gen2.Cos(angle), Gen2.Sin(angle));
 			XZ side = new XZ(-dir.Z, dir.X);
 			Chasm rift = new Chasm
 			{
@@ -149,7 +149,7 @@ public sealed class ChasmPlan
 				B = at,
 				Half = Math.Sqrt(hu * hu + hv * hv),
 				Center = at,
-				Axis = new XZ(Math.Cos(turn), Math.Sin(turn)),
+				Axis = new XZ(Gen2.Cos(turn), Gen2.Sin(turn)),
 				HalfU = hu,
 				HalfV = hv,
 				CellX = cellX,

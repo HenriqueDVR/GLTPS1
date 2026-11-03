@@ -121,9 +121,45 @@ public static class Gen2
 	// the underground (UndergroundPlan). +1 and +2 the galleries east and north
 	public const ulong StreamUnder = 0x554E4452uL;
 
+	// Math.Sin and Cos can differ in the last bits between runtimes. plain doubles, adding and multiplying, can't
+	public static double Sin(double x)
+	{
+		x -= 2.0 * Math.PI * Math.Floor(x / (2.0 * Math.PI) + 0.5);
+		if (x > Math.PI * 0.5)
+		{
+			x = Math.PI - x;
+		}
+		else if (x < -Math.PI * 0.5)
+		{
+			x = -Math.PI - x;
+		}
+		double y = x * x;
+		double sum = 0.0;
+		for (int n = 19; n >= 3; n -= 2)
+		{
+			sum = (1.0 - sum) * y / (n * (n - 1));
+		}
+		return x * (1.0 - sum);
+	}
+
+	public static double Cos(double x)
+	{
+		return Sin(x + Math.PI * 0.5);
+	}
+
 	// world items spawned by v2 tiles: bit 61, then (layer:8)(tileX:20)(tileZ:20)(index:12) as in 01-world-layers.
-	// legacy spawner ids are small, scene pickups use bit 62, items made at runtime will use bit 62 with a peer (03)
+	// legacy spawner ids are small, scene pickups use bit 62, items made at runtime will use bit 62 with a peer (03).
+	// index is where the lot is, not a count, so taking a lot away (a place, a set piece) moves no other lot's item
 	public const ulong TileItemTag = 0x2000000000000000uL;
+
+	// (u:5)(v:5)(child:2): the lot's centre on an 8 m grid from 64 m before the tile's corner. lots are 14 m+ apart and
+	// reach about half a block (56 m) out of the tile that owns them
+	public static int ItemIndex(XZ lot, int tileX, int tileZ, int child)
+	{
+		int u = (int)Math.Floor((lot.X - tileX * TileSize + 64.0) / 8.0);
+		int v = (int)Math.Floor((lot.Z - tileZ * TileSize + 64.0) / 8.0);
+		return ((u & 31) << 7) | ((v & 31) << 2) | (child & 3);
+	}
 
 	public static ulong ItemId(int layer, int tileX, int tileZ, int index)
 	{

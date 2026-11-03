@@ -223,7 +223,6 @@ public sealed class RoadPlan
 	// sampled roads by (kind: 0 expressway 1 buried road, cell x, cell z, direction)
 	private readonly Dictionary<(int, int, int, int), Curve> curves = new Dictionary<(int, int, int, int), Curve>();
 
-	private readonly HashSet<int> districts = new HashSet<int>();
 
 	// ---- raised streets (01, the raised city): in a dense district some runs of a U street climb onto arches,
 	// RaisedRamp blocks of ramp at each end and flat in between, cross streets passing under. cached, pure
@@ -869,7 +868,7 @@ public sealed class RoadPlan
 	private void CollectStreets(Rect tile, List<RoadPiece> pieces, List<RoadPatch> patches)
 	{
 		// a district that owns a midpoint in the tile is one sampled here or next to one
-		districts.Clear();
+		ulong districts = 0uL;
 		int count = plan.Def.Districts.Length;
 		for (int i = 0; i <= 2; i++)
 		{
@@ -878,13 +877,13 @@ public sealed class RoadPlan
 				int d = plan.DistrictAt(tile.X0 + (tile.X1 - tile.X0) * i * 0.5, tile.Z0 + (tile.Z1 - tile.Z0) * j * 0.5);
 				for (int n = Math.Max(0, d - 1); n <= Math.Min(count - 1, d + 1); n++)
 				{
-					districts.Add(n);
+					districts |= 1uL << n;
 				}
 			}
 		}
-		foreach (int district in districts)
+		for (int district = 0; district < count; district++)
 		{
-			if (plan.Def.Districts[district].Roads != DistrictRoads.Streets)
+			if (((districts >> district) & 1uL) == 0uL || plan.Def.Districts[district].Roads != DistrictRoads.Streets)
 			{
 				continue;
 			}

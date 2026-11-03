@@ -155,7 +155,7 @@ public class ChasmPlanTests
 		{
 			hash = (hash ^ c) * 1099511628211uL;
 		}
-		Assert.AreEqual(0x9c63db94a7ecbc58uL, hash, "layer 0 voids");
+		Assert.AreEqual(0x46232769392d5bd9uL, hash, "layer 0 voids");
 	}
 
 	// collapsed sections: none on the first layer, a fair share of the next (prints it), clear of every pillar, the

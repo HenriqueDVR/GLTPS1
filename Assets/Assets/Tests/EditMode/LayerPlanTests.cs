@@ -206,6 +206,33 @@ public class LayerPlanTests
 
 	// frozen genVersion 2 output, cross-checked against a separate python port.
 	// a failure here means v2 saves or mixed-version co-op would break: bump genVersion instead
+	// our own sin and cos: the same bits on every runtime, and close to the real thing
+	[Test]
+	public void SinAndCos()
+	{
+		for (double x = -7.0; x < 7.0; x += 0.0173)
+		{
+			Assert.AreEqual(System.Math.Sin(x), Gen2.Sin(x), 1e-13, "sin " + x);
+			Assert.AreEqual(System.Math.Cos(x), Gen2.Cos(x), 1e-13, "cos " + x);
+		}
+	}
+
+	// whole tiles in the co-op hash: the same whatever was built first, different on another seed
+	[Test]
+	public void TilesHashAnyOrder()
+	{
+		Assert.AreEqual(0xc9e52196a3652c17uL, new LayerPlan(12345uL, 0, new XZ(0.0, 0.0), null).TilesHash(), "golden");
+		LayerPlan a = new LayerPlan(12345uL, 0, new XZ(0.0, 0.0), null);
+		LayerPlan b = new LayerPlan(12345uL, 0, new XZ(0.0, 0.0), null);
+		for (int x = 20; x > 10; x--)
+		{
+			b.TileHash(x, -x);
+		}
+		Assert.AreEqual(a.TilesHash(), b.TilesHash());
+		LayerPlan other = new LayerPlan(12346uL, 0, new XZ(0.0, 0.0), null);
+		Assert.AreNotEqual(a.TilesHash(), other.TilesHash());
+	}
+
 	[Test]
 	public void GoldenValues()
 	{

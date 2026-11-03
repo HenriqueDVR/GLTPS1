@@ -132,7 +132,7 @@ public class ViaductPlanTests
 		{
 			hash = (hash ^ c) * 1099511628211uL;
 		}
-		Assert.AreEqual(0x64cdedf7166e7d31uL, hash, "layer 0 viaducts");
+		Assert.AreEqual(0x7c2ba2a39ad84091uL, hash, "layer 0 viaducts");
 	}
 
 	// ramps at both ends land on the deck, no steeper than the ket climbs

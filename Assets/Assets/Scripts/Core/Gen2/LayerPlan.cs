@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 [Flags]
 public enum PillarState
@@ -254,13 +255,119 @@ public sealed class LayerPlan
 		return hash;
 	}
 
-	internal static long Centimetres(double v)
+	private const int hashReach = 2;
+
+	private const int hashStep = 16;
+
+	private readonly ulong[] hashTiles = new ulong[(hashReach * 2 + 1) * (hashReach * 2 + 1)];
+
+	private int hashTilesDone;
+
+	// the next of TilesHash's tiles, false when they're all done: a ride does them ahead, a few a second
+	public bool TilesHashStep()
+	{
+		if (hashTilesDone == hashTiles.Length)
+		{
+			return false;
+		}
+		int side = hashReach * 2 + 1;
+		int x = hashTilesDone / side - hashReach;
+		int z = hashTilesDone % side - hashReach;
+		hashTiles[hashTilesDone++] = TileHash(Gen2.Cell(Origin.X, Gen2.TileSize) + x * hashStep, Gen2.Cell(Origin.Z, Gen2.TileSize) + z * hashStep);
+		return true;
+	}
+
+	// streets, lots and their items on a few tiles spread round the origin, so the far districts count too. the tiles
+	// are the same as a build would see, which costs: read it when a peer needs it
+	public ulong TilesHash()
+	{
+		while (TilesHashStep())
+		{
+		}
+		ulong hash = TileOdds.Hash();
+		foreach (ulong tile in hashTiles)
+		{
+			hash = Mix(hash, (long)tile);
+		}
+		return hash;
+	}
+
+	private readonly List<RoadPiece> hashPieces = new List<RoadPiece>();
+
+	private readonly List<RoadPatch> hashPatches = new List<RoadPatch>();
+
+	private readonly List<Lot> hashLots = new List<Lot>();
+
+	private readonly List<Stair> hashStairs = new List<Stair>();
+
+	// what the plan says about one tile: its road pieces, its lots, their stairs, and the items they hold
+	public ulong TileHash(int x, int z)
+	{
+		ulong hash = 14695981039346656037uL;
+		Roads.Collect(x, z, hashPieces, hashPatches);
+		foreach (RoadPiece piece in hashPieces)
+		{
+			hash = Mix(hash, (long)piece.Kind);
+			hash = Mix(hash, Centimetres(piece.A.X));
+			hash = Mix(hash, Centimetres(piece.A.Z));
+			hash = Mix(hash, Centimetres(piece.B.X));
+			hash = Mix(hash, Centimetres(piece.B.Z));
+			hash = Mix(hash, Centimetres(piece.HeightA));
+			hash = Mix(hash, Centimetres(piece.HeightB));
+			hash = Mix(hash, Centimetres(piece.Width));
+			hash = Mix(hash, piece.Index);
+		}
+		foreach (RoadPatch patch in hashPatches)
+		{
+			hash = Mix(hash, (long)patch.Kind);
+			hash = Mix(hash, Centimetres(patch.Center.X));
+			hash = Mix(hash, Centimetres(patch.Center.Z));
+			hash = Mix(hash, Centimetres(patch.Size));
+		}
+		Lots.Collect(x, z, hashLots, hashStairs);
+		foreach (Lot lot in hashLots)
+		{
+			hash = Mix(hash, (long)lot.Kind);
+			hash = Mix(hash, lot.District);
+			hash = Mix(hash, Centimetres(lot.Center.X));
+			hash = Mix(hash, Centimetres(lot.Center.Z));
+			hash = Mix(hash, Centimetres(lot.Axis.X * 1000.0));
+			hash = Mix(hash, Centimetres(lot.HalfU));
+			hash = Mix(hash, Centimetres(lot.HalfV));
+			hash = Mix(hash, lot.Floors);
+			hash = Mix(hash, Centimetres(lot.Base));
+			hash = Mix(hash, lot.Door);
+			hash = Mix(hash, (long)lot.Seed);
+			if (LotPlan.HasItem(lot, out _))
+			{
+				hash = Mix(hash, (long)Gen2.ItemId(Layer, x, z, Gen2.ItemIndex(lot.Center, x, z, 0)));
+			}
+		}
+		foreach (Stair stair in hashStairs)
+		{
+			hash = Mix(hash, Centimetres(stair.Foot.X));
+			hash = Mix(hash, Centimetres(stair.Foot.Z));
+			hash = Mix(hash, Centimetres(stair.Deck));
+		}
+		return hash;
+	}
+
+	public static long Centimetres(double v)
 	{
 		return (long)Math.Round(v * 100.0);
 	}
 
+	public static ulong Mix(ulong hash, string text)
+	{
+		foreach (char c in text)
+		{
+			hash = (hash ^ c) * 1099511628211uL;
+		}
+		return hash;
+	}
+
 	// fnv-1a over the 8 bytes
-	internal static ulong Mix(ulong hash, long value)
+	public static ulong Mix(ulong hash, long value)
 	{
 		ulong v = (ulong)value;
 		for (int i = 0; i < 8; i++)

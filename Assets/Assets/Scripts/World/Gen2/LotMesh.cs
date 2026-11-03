@@ -132,7 +132,7 @@ public class LotMesh
 				{
 					continue;
 				}
-				if (Unit() < 0.3f && Harvested(Props, centre, u, Mathf.Min(hu, 6f), Mathf.Min(hv, 6f), concrete, 0.8f))
+				if (Unit() < (float)TileOdds.HarvestedProp && Harvested(Props, centre, u, Mathf.Min(hu, 6f), Mathf.Min(hv, 6f), concrete, 0.8f))
 				{
 					continue;
 				}
@@ -144,7 +144,7 @@ public class LotMesh
 				continue;
 			}
 			BuildingStyle style = districts[lot.District].Style;
-			float share = (style == BuildingStyle.Ruin) ? 0.25f : (style == BuildingStyle.Industrial) ? 0f : 0.35f;
+			float share = (float)TileOdds.Harvested(style);
 			int first = vertices.Count;
 			if (lot.Door != 0)
 			{

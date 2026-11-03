@@ -74,7 +74,23 @@ public class WorldGenerator : MonoBehaviour
 
 	public int Layer => (Plan != null) ? Plan.Layer : 0;
 
-	public uint LayoutHash { get; private set; }
+	private uint layoutHash;
+
+	private bool hashStale;
+
+	// v2's costs tens of ms, and only a co-op peer asks: not worked out until then
+	public uint LayoutHash
+	{
+		get
+		{
+			if (hashStale)
+			{
+				hashStale = false;
+				layoutHash = Fold(PlanHash(Plan));
+			}
+			return layoutHash;
+		}
+	}
 
 	// nodeCOLUMN, the tower piece
 	public GameObject PillarPrefab => (nodeData != null) ? nodeData.pillarEdge : null;
@@ -105,7 +121,7 @@ public class WorldGenerator : MonoBehaviour
 			Vector3 facing = node.transform.rotation * Vector3.forward;
 			Plan = new LayerPlan(Seed, 0, new XZ(centre.x, centre.z), null, new XZ(facing.x, facing.z));
 			Layers = new LayerStack(Plan);
-			Debug.Log("WorldGenerator: gen2 seed=" + Seed + " origin=" + Plan.Origin + " planhash=" + PlanHash(Plan).ToString("x16"));
+			Debug.Log("WorldGenerator: gen2 seed=" + Seed + " origin=" + Plan.Origin);
 			if (RequestedOrigins != null)
 			{
 				foreach (XZ origin in RequestedOrigins)
@@ -115,7 +131,7 @@ public class WorldGenerator : MonoBehaviour
 				Plan = Layers.Get(Mathf.Clamp(RequestedLayer, 0, Layers.Count - 1));
 				Debug.Log("WorldGenerator: on layer " + Plan.Layer + " of " + Layers.Count + " (the host's or the save's)");
 			}
-			LayoutHash = Fold(PlanHash(Plan));
+			hashStale = true;
 #if DUMP_WORLDGEN
 			base.gameObject.AddComponent<WorldGenOverheadView>();
 #endif
@@ -126,7 +142,7 @@ public class WorldGenerator : MonoBehaviour
 		}
 		Layout = BuildLayout(node, nodeData, rootPose, Seed);
 		string text = Layout.Describe();
-		LayoutHash = WorldLayout.Hash(text);
+		layoutHash = WorldLayout.Hash(text);
 		Debug.Log("WorldGenerator: seed=" + Seed + " nodes=" + Layout.Nodes.Count + " edges=" + Layout.Edges.Count + " hash=" + LayoutHash.ToString("x8"));
 #if DUMP_WORLDGEN
 		System.IO.File.WriteAllText(System.IO.Path.Combine(Application.persistentDataPath, "worldgen_layout_" + Seed + ".txt"), text);
@@ -147,14 +163,15 @@ public class WorldGenerator : MonoBehaviour
 	public void SetLayer(LayerPlan plan)
 	{
 		Plan = plan;
-		LayoutHash = Fold(PlanHash(plan));
+		hashStale = true;
 	}
 
-	// roads, voids, viaducts and the underground too, so peers on different world code see the mismatch warning.
-	// round the layer's origin, which both peers know
+	// roads, voids, viaducts, the underground, a spread of whole tiles and the kit, so peers on different world code
+	// or assets see the mismatch warning. round the layer's origin, which both peers know
 	public static ulong PlanHash(LayerPlan plan)
 	{
-		return plan.PlanHash(plan.Origin, 1) ^ plan.Roads.Hash(plan.Origin, 1) ^ plan.Chasms.Hash(plan.Origin, 1) ^ plan.Underground.Hash(plan.Origin, 3);
+		WorldKit kit = WorldKit.Load();
+		return plan.PlanHash(plan.Origin, 1) ^ plan.Roads.Hash(plan.Origin, 1) ^ plan.Chasms.Hash(plan.Origin, 1) ^ plan.Underground.Hash(plan.Origin, 3) ^ plan.TilesHash() ^ ((kit != null) ? kit.Hash() : 0uL);
 	}
 
 	private static uint Fold(ulong hash)
