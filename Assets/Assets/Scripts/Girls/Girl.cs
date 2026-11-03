@@ -103,12 +103,46 @@ public class Girl : MonoBehaviour
 		characterController = GetComponent<CharacterController>();
 		gunMovement = GetComponentInChildren<PlayerGunMovement>(true);
 		capsule = GetComponentInChildren<CapsuleCollider>();
+		// the girl the scene starts as the AI never goes through SetControl
+		if (agent != null && agent.enabled)
+		{
+			BodyFor(GirlControl.AI);
+		}
 		Footsteps = GetComponentInChildren<AudioSource>();
+	}
+
+	// the AI girl's agent moves her, a controller only did harm: an immovable capsule to the ket, shoved and flipped by
+	// her walking in, kicked 1.5 m by her stepping off its back, and no ignoring it held. off, as on a remote girl. a
+	// kinematic body in its place: her triggers (a fire's warmth) still need something that isn't static
+	private void BodyFor(GirlControl control)
+	{
+		bool ai = control == GirlControl.AI;
+		if (characterController != null)
+		{
+			characterController.enabled = !ai;
+		}
+		Rigidbody body = GetComponent<Rigidbody>();
+		if (ai && body == null)
+		{
+			body = gameObject.AddComponent<Rigidbody>();
+			body.isKinematic = true;
+			body.useGravity = false;
+			// standing still it'd sleep, and OnTriggerStay stops: no warmth from a fire
+			body.sleepThreshold = 0f;
+		}
+		else if (!ai && body != null)
+		{
+			Destroy(body);
+		}
 	}
 
 	public void SetControl(GirlControl control)
 	{
 		Control = control;
+		if (control == GirlControl.AI || control == GirlControl.Player)
+		{
+			BodyFor(control);
+		}
 		if (Input != null)
 		{
 			Input.Contexts.SetBase(control == GirlControl.Player ? InputContext.OnFoot : InputContext.None);

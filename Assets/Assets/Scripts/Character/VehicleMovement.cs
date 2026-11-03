@@ -86,6 +86,24 @@ public class VehicleMovement : MonoBehaviour
         contacts[10] = new Contact { local = new Vector3(0f, tuning.castFrom, 1.15f) };
 
         RaiseHull();
+        FitObstacles();
+    }
+
+    // the ket's footprint, tracks, front wheel and seat, for the navmesh
+    // the ket in the navmesh build, solid on the floor (NavMeshAreaBaker). the build adds the agent's radius, 0.5 m, so
+    // it keeps her 0.8 m off its middle and 1.7 m off its ends: over the hull with room for her, and the seats (1 m out)
+    // and the back spot (1.9 m) just outside
+    // down through the floor: a few cm clear of it, as it stands after a drive, the floor stayed walkable under it
+    public static readonly Vector3 FootprintCentre = new Vector3(0f, 0f, 0f);
+    public static readonly Vector3 FootprintSize = new Vector3(0.6f, 2.5f, 2.4f);
+
+    // the scene's carving obstacles: off, the build has the ket
+    private void FitObstacles()
+    {
+        foreach (UnityEngine.AI.NavMeshObstacle obstacle in GetComponentsInChildren<UnityEngine.AI.NavMeshObstacle>(true))
+        {
+            obstacle.enabled = false;
+        }
     }
 
     // what hit the ground was the box and thin pegs; lifted clear so low things meet the springs instead
@@ -123,6 +141,10 @@ public class VehicleMovement : MonoBehaviour
     {
         //get input
         movement = playerInputScript.actions.Vehicle.Drive.ReadValue<Vector2>();
+        if (BrakeToStop)
+        {
+            movement = Vector2.zero;
+        }
         // hands are on the map
         if (MapPaper.Holding)
         {
@@ -134,6 +156,21 @@ public class VehicleMovement : MonoBehaviour
         {
             movement = new Vector2(0.6f, Mathf.Repeat(Time.time, 6f) < 3f ? 1f : -1f);
             ketBarrelMesh.enabled = true;
+        }
+        // -ketrun [speed]: flat out on a wide curve at speed m/s (40 default), for floating origin tests.
+        // waits till 20s so a co-op friend can get on first
+        if (playerInputScript.actions.Vehicle.enabled && KetRunSpeed() > 0f)
+        {
+            movement = Time.timeSinceLevelLoad >= 20f ? new Vector2(0.05f, 1f) : Vector2.zero;
+            ketBarrelMesh.enabled = true;
+            vehicleFuelManagerScript.currentFuel = vehicleFuelManagerScript.maxFuel;
+        }
+        // -ketramp (TileStreamer steers)
+        if (playerInputScript.actions.Vehicle.enabled && DebugDrive.HasValue)
+        {
+            movement = DebugDrive.Value;
+            ketBarrelMesh.enabled = true;
+            vehicleFuelManagerScript.currentFuel = vehicleFuelManagerScript.maxFuel;
         }
 #endif
 
@@ -166,12 +203,113 @@ public class VehicleMovement : MonoBehaviour
         }
     }
 
+    // left by the driver: comes to rest on its own springs first. frozen on the spot it stayed mid-pitch, tilted, or
+    // down in the ground, its boarding triggers with it
+    private bool parking;
+    private float parkedStill;
+    private float parkGiveUp;
+    private const float parkStillTime = 0.5f;
+    private const float parkMaxTime = 6f;
+    private bool parkRighted;
+    // about 8 degrees, then back to about 3. only on flat ground: on a real slope it's meant to lean
+    private const float parkLeaningUp = 0.99f;
+    private const float parkRightedUp = 0.998f;
+    private const float flatGroundUp = 0.98f;
+
+    private bool OnFlatGround()
+    {
+        return Physics.Raycast(transform.position + Vector3.up, Vector3.down, out RaycastHit hit, 4f, layerMask, QueryTriggerInteraction.Ignore) && hit.normal.y > flatGroundUp;
+    }
+
+    public void Park()
+    {
+        Unpark();
+        parking = true;
+        parkRighted = false;
+        parkedStill = 0f;
+        parkGiveUp = Time.time + parkMaxTime;
+        rb.constraints = RigidbodyConstraints.None;
+    }
+
+    private void Parking()
+    {
+        // something else took it over: a ride's carry, the other player
+        if (rb.constraints == RigidbodyConstraints.FreezeAll || rb.isKinematic || movement != Vector2.zero)
+        {
+            parking = false;
+            if (movement == Vector2.zero)
+            {
+                Physics.IgnoreLayerCollision(6, 7, false);
+            }
+            return;
+        }
+        parkedStill = (rb.velocity.sqrMagnitude < 0.04f && rb.angularVelocity.sqrMagnitude < 0.04f) ? parkedStill + Time.fixedDeltaTime : 0f;
+        // come to rest leaning on something: back on its tracks, left like that nobody could get on
+        if (parkedStill >= parkStillTime && !parkRighted && transform.up.y < parkLeaningUp && OnFlatGround())
+        {
+            parkRighted = true;
+            righting = true;
+            parkedStill = 0f;
+            parkGiveUp = Time.time + parkMaxTime;
+        }
+        if (parkedStill >= parkStillTime || Time.time >= parkGiveUp)
+        {
+            parking = false;
+            rb.constraints = RigidbodyConstraints.FreezeAll;
+            // only now: the girl who just got off is right against it, with it still loose it was flung about
+            Physics.IgnoreLayerCollision(6, 7, false);
+        }
+    }
+
+    // the driver's getting off: hands off, it stops
+    public bool BrakeToStop;
+
+    // parked it's kinematic: nothing can push it. frozen by constraints it still got shoved about by a controller against
+    // it, the barrel widening hers on the spot, 25 degrees and into the ground in the end. off again for whatever moves it
+    private bool parkedSolid;
+
+    public bool Carried;
+
+    public void MovedByScript()
+    {
+        Unpark();
+    }
+
+    private void Unpark()
+    {
+        if (parkedSolid)
+        {
+            parkedSolid = false;
+            rb.isKinematic = false;
+        }
+    }
+
+    private void HoldStill()
+    {
+        if (rb.constraints != RigidbodyConstraints.FreezeAll || parking || Carried)
+        {
+            Unpark();
+            return;
+        }
+        if (!rb.isKinematic)
+        {
+            parkedSolid = true;
+            rb.isKinematic = true;
+        }
+    }
+
     void FixedUpdate()
     {
         if (CoopKettenkrad.FollowsRemote)
         {
+            parkedSolid = false;
             return;
         }
+        if (parking)
+        {
+            Parking();
+        }
+        HoldStill();
         // changing the colliders wipes it to zero, and with zero it can't turn at all
         if (rb.inertiaTensor != tuning.inertia)
         {
@@ -397,6 +535,10 @@ public class VehicleMovement : MonoBehaviour
     // the acceleration the tracks are asked for along the ket
     private float Wanted(float throttle, float along)
     {
+        if (BrakeToStop)
+        {
+            return Mathf.Clamp(-along / Time.fixedDeltaTime, -tuning.brake, tuning.brake);
+        }
         float rate = currentMovementRate > 0f ? currentMovementRate : 1f;
         if (throttle == 0f)
         {
@@ -445,7 +587,8 @@ public class VehicleMovement : MonoBehaviour
     // on its side or roof for a while: it comes back over by itself, till the girls can push it (WP-VEH-2)
     private void Right(bool tipped)
     {
-        if (!tipped && transform.up.y >= tuning.rightedUp)
+        // driving on from a lean's fine, parked it goes all the way back on its tracks
+        if (!tipped && transform.up.y >= (parking ? parkRightedUp : tuning.rightedUp))
         {
             righting = false;
         }

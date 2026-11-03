@@ -42,6 +42,9 @@ public class CharacterVehicleInteraction : MonoBehaviour, IInteractionSource
 
     [SerializeField] private GameObject light;
     private Transform vehicleEnter;
+    private bool walkingIn;
+    private const float boardWalkSpeed = 2.5f;
+    private const float reachedSpot = 0.05f;
 
     [SerializeField] VehicleFuelManager vehicleFuelManagerScript;
 
@@ -132,6 +135,11 @@ public class CharacterVehicleInteraction : MonoBehaviour, IInteractionSource
             }
         }
 
+        if (exitWanted)
+        {
+            ExitWhenStopped();
+        }
+
         //vehicle movement controls
         if (playerInputScript.actions.Vehicle.Drive.enabled)
         {
@@ -141,27 +149,30 @@ public class CharacterVehicleInteraction : MonoBehaviour, IInteractionSource
             anim.SetFloat("steer", steerSmooth);
         }
 
-        //handle player movement animation when navmesh agent takes over to position player in correct position to enter vehichle
-        if (agent.isActiveAndEnabled)
+        // the press came from inside the side's trigger, right beside where she climbs on, so it's a few steps in a
+        // straight line that can't meet the ket. no navmesh: that spot is up against the hole cut for the ket
+        if (walkingIn)
         {
-            CharacterMovementAnimation.Movement(anim, agent.velocity, maxSpeed);
-        }
-
-        //orient position to enter ket
-        if (!preOrientEnter && !GetComponent<NavMeshObstacle>().enabled)
-        {
-            agent.angularSpeed = angularSpeed;
-            if (agent.enabled)
+            if (AngleUtils.FlatDistance(transform.position, vehicleEnter.position) >= reachedSpot)
             {
-                agent.destination = vehicleEnter.position;
+                Vector3 before = transform.position;
+                transform.position = Vector3.MoveTowards(before, vehicleEnter.position, boardWalkSpeed * Time.deltaTime);
+                Vector3 step = transform.position - before;
+                CharacterMovementAnimation.Movement(anim, step / Mathf.Max(Time.deltaTime, 0.0001f), maxSpeed);
+                step.y = 0f;
+                if (step.sqrMagnitude > 0.000001f)
+                {
+                    Quaternion facing = Quaternion.LookRotation(step);
+                    transform.rotation = Quaternion.RotateTowards(transform.rotation, facing, angularSpeed * Time.deltaTime);
+                    child.rotation = Quaternion.RotateTowards(child.rotation, facing, angularSpeed * Time.deltaTime);
+                }
             }
-            if (Vector3.Distance(transform.position, vehicleEnter.position) < 0.1f)
+            else
             {
+                CharacterMovementAnimation.Movement(anim, Vector3.zero, maxSpeed);
                 //orient rotation to enter ket
-                agent.enabled = false;
                 transform.rotation = Quaternion.RotateTowards(transform.rotation, vehicleEnter.rotation, rotationSpeed * Time.deltaTime);
                 child.rotation = Quaternion.RotateTowards(child.rotation, vehicleEnter.rotation, rotationSpeed * Time.deltaTime);
-
                 if (AngleUtils.RotationsApproximatelyEqual(transform, vehicleEnter) && AngleUtils.RotationsApproximatelyEqual(child, vehicleEnter))
                 {
                     if (vehicleEnter.gameObject.name == "Right")
@@ -173,6 +184,7 @@ public class CharacterVehicleInteraction : MonoBehaviour, IInteractionSource
                         anim.SetBool("ket left", true);
                     }
                     preOrientEnter = true;
+                    walkingIn = false;
                 }
             }
         }
@@ -194,7 +206,6 @@ public class CharacterVehicleInteraction : MonoBehaviour, IInteractionSource
     IEnumerator DelayExit(float duration)
     {
         yield return new WaitForSeconds(duration);
-        Physics.IgnoreLayerCollision(6, 7, false);
         controller.enabled = true;
         // wait for the exit lerp or she swings off the anim
         boarding?.Release();
@@ -205,7 +216,7 @@ public class CharacterVehicleInteraction : MonoBehaviour, IInteractionSource
         exitRight = false;
         elapsed = 0f;
 
-        GetComponent<CharacterBarrelInteraction>().vehicleRigidbody.constraints = RigidbodyConstraints.FreezeAll;
+        GetComponent<CharacterBarrelInteraction>().vehicleRigidbody.GetComponent<VehicleMovement>().Park();
     }
 
     // getting on or off: no walking. driving goes on top once the enter anim says so (CharacterVehicleAnimationEvents)
@@ -219,12 +230,6 @@ public class CharacterVehicleInteraction : MonoBehaviour, IInteractionSource
         }
     }
 
-    IEnumerator DelayEnter()
-    {
-        yield return new WaitForSeconds(0.1f);
-        agent.enabled = true;
-    }
-
     IEnumerator CancelEnter()
     {
         yield return new WaitForSeconds(5f);
@@ -234,11 +239,16 @@ public class CharacterVehicleInteraction : MonoBehaviour, IInteractionSource
             Physics.IgnoreLayerCollision(6, 7, false);
             boarding?.Release();
             boarding = null;
+            walkingIn = false;
             controller.enabled = true;
             GetComponent<NavMeshObstacle>().enabled = true;
-            agent.enabled = false;
             enterable = true;
         }
+    }
+
+    private Transform NearerSide()
+    {
+        return AngleUtils.FlatDistance(transform.position, vehicleLeftExit.position) < AngleUtils.FlatDistance(transform.position, vehicleRightExit.position) ? vehicleLeftExit : vehicleRightExit;
     }
 
     // hold to get in (or on/off the back in coop). a tap near the ket is the barrel's
@@ -284,9 +294,10 @@ public class CharacterVehicleInteraction : MonoBehaviour, IInteractionSource
             //disable character controller
             controller.enabled = false;
 
-            //disable navmesh obstacle, and wait a short time before enabling the agent
             GetComponent<NavMeshObstacle>().enabled = false;
-            StartCoroutine(DelayEnter());
+            // the side she's at, not whichever trigger had her last: the walk's a straight line
+            vehicleEnter = NearerSide();
+            walkingIn = true;
             StartCoroutine(CancelEnter());
 
             enterable = false;
@@ -323,7 +334,7 @@ public class CharacterVehicleInteraction : MonoBehaviour, IInteractionSource
             Board();
             controller.enabled = false;
             GetComponent<NavMeshObstacle>().enabled = false;
-            StartCoroutine(DelayEnter());
+            walkingIn = true;
             StartCoroutine(CancelEnter());
             enterable = false;
         }
@@ -331,20 +342,55 @@ public class CharacterVehicleInteraction : MonoBehaviour, IInteractionSource
 
     public void DebugExit()
     {
-        if (anim.GetCurrentAnimatorStateInfo(1).IsName("Ket Steer") && PickExitSide())
+        if (anim.GetCurrentAnimatorStateInfo(1).IsName("Ket Steer"))
         {
-            anim.SetTrigger("ket exit");
-            GetComponent<NavMeshObstacle>().enabled = true;
+            exitWanted = true;
         }
     }
 #endif
 
-    public void Exit(InputAction.CallbackContext context)
+    // co-op: someone else has the ket. false while she can't get off yet (still getting on, both sides blocked)
+    public bool LeaveSeat()
     {
-        if (context.performed && anim.GetCurrentAnimatorStateInfo(1).IsName("Ket Steer") && Time.timeScale == 1 && PickExitSide())
+        if (anim.GetCurrentAnimatorStateInfo(1).IsName("Ket Steer") && PickExitSide())
         {
             anim.SetTrigger("ket exit");
             GetComponent<NavMeshObstacle>().enabled = true;
+            NavMeshAreaBaker.RebuildAll();
+            return true;
+        }
+        return false;
+    }
+
+    public void Exit(InputAction.CallbackContext context)
+    {
+        if (context.performed && anim.GetCurrentAnimatorStateInfo(1).IsName("Ket Steer") && Time.timeScale == 1)
+        {
+            exitWanted = true;
+        }
+    }
+
+    // off a moving ket the girls were left playing the climb where it started, the ket rolling on without them: it stops first
+    private bool exitWanted;
+    private const float stoppedForExit = 0.3f;
+
+    private void ExitWhenStopped()
+    {
+        VehicleMovement ket = GetComponent<CharacterBarrelInteraction>().vehicleRigidbody.GetComponent<VehicleMovement>();
+        if (!exitWanted || !anim.GetCurrentAnimatorStateInfo(1).IsName("Ket Steer"))
+        {
+            exitWanted = false;
+            ket.BrakeToStop = false;
+            return;
+        }
+        ket.BrakeToStop = true;
+        if (ket.GetComponent<Rigidbody>().velocity.magnitude < stoppedForExit && PickExitSide())
+        {
+            exitWanted = false;
+            ket.BrakeToStop = false;
+            anim.SetTrigger("ket exit");
+            GetComponent<NavMeshObstacle>().enabled = true;
+            NavMeshAreaBaker.RebuildAll();
         }
     }
 
@@ -391,7 +437,8 @@ public class CharacterVehicleInteraction : MonoBehaviour, IInteractionSource
 
     void OnTriggerStay(Collider other)
     {
-        if (other.gameObject.CompareTag("Ket"))
+        // on her way to one side she passes the others: she keeps to the one she chose
+        if (other.gameObject.CompareTag("Ket") && boarding == null)
         {
             vehicleEnter = other.transform;
             enterable = true;

@@ -3,9 +3,10 @@ using UnityEngine;
 using UnityEngine.AI;
 using Unity.AI.Navigation;
 
-// keeps a navmesh around one agent. builds run in the background (NavMeshBakeScheduler) and swap in when done,
+// keeps a navmesh around one agent, or several when they're close: separate navmeshes don't join up, she couldn't path
+// from hers onto the player's, and a hole only held where every one of them had it. builds run in the background (NavMeshBakeScheduler) and swap in when done,
 // so the main thread never waits on one and there is always a navmesh under the agent.
-// rebuilds when the agent walks off the middle of it, when a map piece shows up or goes in reach, or every maxInterval.
+// rebuilds when an agent walks off the middle of it, when a map piece shows up or goes in reach, or every maxInterval.
 // the NavMeshSurface on the same object gives the settings: agent type, layers, geometry, area, the box (size/center)
 public class NavMeshAreaBaker : MonoBehaviour
 {
@@ -48,19 +49,41 @@ public class NavMeshAreaBaker : MonoBehaviour
 	// floating origin moves everything at once by thousands of meters
 	private const float originShift = 1000f;
 
+	private const float levelChange = 1f;
+
+	// how far the navmesh goes past the agents on each side, what she can plan a route through
+	private const float reach = 20f;
+
+	// close enough to share. apart further than the first to split, so it doesn't flip at the edge, and not on another level
+	private const float shareWithin = 25f;
+
+	private const float shareUntil = 35f;
+
+	private const float levelApart = 3f;
+
+	private static readonly List<NavMeshAreaBaker> active = new List<NavMeshAreaBaker>();
+
+	// the baker whose navmesh this agent's on, null when it's on its own
+	private NavMeshAreaBaker lead;
+
+	// room taken up by the agents sharing this one, on top of reach
+	private Vector2 span;
+
 	private readonly List<NavMeshBuildSource> sources = new List<NavMeshBuildSource>();
 
 	private readonly List<NavMeshBuildMarkup> markups = new List<NavMeshBuildMarkup>();
-
-	private static readonly Dictionary<Mesh, int> triangleCounts = new Dictionary<Mesh, int>();
 
 	private static readonly HashSet<Mesh> reported = new HashSet<Mesh>();
 
 	private void Awake()
 	{
 		surface = GetComponent<NavMeshSurface>();
-		// the surface only holds settings now, the data is ours
+		// the surface only holds settings now, the data is ours. off with the reference too: one has a navmesh saved in the
+		// scene, its OnEnable comes after this Awake and put it back, a stale one with no hole for the ket at the start
 		surface.RemoveData();
+		surface.navMeshData = null;
+		// what's solid to the girls, not what's drawn: the sky scenery was going in, and invisible blockers weren't
+		surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
 		transform.position = navMeshAgent.position;
 		data = NavMeshBuilder.BuildNavMeshData(surface.GetBuildSettings(), CollectSources(), LocalBounds(), transform.position, transform.rotation);
 		bakedBounds = WorldBounds();
@@ -74,6 +97,13 @@ public class NavMeshAreaBaker : MonoBehaviour
 	{
 		WorldGenerator.PieceChanged += OnPieceChanged;
 		FloatingOrigin.Shifted += OnOriginShifted;
+		active.Add(this);
+		// back from being switched off, what it had is out of date but better than nothing till the next build
+		if (data != null && !instance.valid)
+		{
+			instance = NavMesh.AddNavMeshData(data, transform.position, transform.rotation);
+			instancePosition = transform.position;
+		}
 	}
 
 	private void OnDisable()
@@ -81,10 +111,15 @@ public class NavMeshAreaBaker : MonoBehaviour
 		WorldGenerator.PieceChanged -= OnPieceChanged;
 		FloatingOrigin.Shifted -= OnOriginShifted;
 		NavMeshBakeScheduler.Forget(this);
+		active.Remove(this);
+		lead = null;
+		// Kanazawa's wakes up and gets switched off at the start. its navmesh stayed, floor under the ket whatever the others built
+		instance.Remove();
 	}
 
 	private void OnDestroy()
 	{
+		reported.Clear();
 		instance.Remove();
 		if (data != null)
 		{
@@ -111,11 +146,19 @@ public class NavMeshAreaBaker : MonoBehaviour
 			}
 			return;
 		}
-		Vector3 offset = navMeshAgent.position - transform.position;
+		FindLead();
+		if (lead != null)
+		{
+			// its navmesh has to be under this agent before ours goes
+			if (instance.valid && lead.Covers(navMeshAgent.position))
+			{
+				instance.Remove();
+			}
+			return;
+		}
 		// elevators, the box isn't grown upwards so a quarter of its height is the margin there
-		bool climbed = Mathf.Abs(offset.y) > Mathf.Abs(surface.size.y) * 0.25f;
-		offset.y = 0f;
-		if (dirty || climbed || offset.sqrMagnitude > rebuildDistance * rebuildDistance || Time.time - lastStart > maxInterval)
+		bool climbed = Mathf.Abs(navMeshAgent.position.y - transform.position.y) > Mathf.Abs(surface.size.y) * 0.25f;
+		if (dirty || climbed || WalkedOff() || Time.time - lastStart > maxInterval)
 		{
 			NavMeshBakeScheduler.Request(this);
 			if (NavMeshBakeScheduler.TryStart(this))
@@ -125,12 +168,90 @@ public class NavMeshAreaBaker : MonoBehaviour
 		}
 	}
 
+	private void FindLead()
+	{
+		if (lead != null && (lead.lead != null || Apart(lead) > shareUntil))
+		{
+			lead = null;
+			dirty = true;
+		}
+		if (lead != null)
+		{
+			return;
+		}
+		foreach (NavMeshAreaBaker baker in active)
+		{
+			if (baker == this)
+			{
+				return;
+			}
+			if (baker.lead == null && Apart(baker) < shareWithin)
+			{
+				lead = baker;
+				baker.dirty = true;
+				NavMeshBakeScheduler.Forget(this);
+				return;
+			}
+		}
+	}
+
+	private float Apart(NavMeshAreaBaker other)
+	{
+		Vector3 apart = other.navMeshAgent.position - navMeshAgent.position;
+		if (Mathf.Abs(apart.y) > levelApart)
+		{
+			return float.MaxValue;
+		}
+		apart.y = 0f;
+		return apart.magnitude;
+	}
+
+	private bool Covers(Vector3 position)
+	{
+		return building == null && !dirty && Mathf.Abs(position.x - bakedBounds.center.x) < bakedBounds.extents.x - rebuildDistance && Mathf.Abs(position.z - bakedBounds.center.z) < bakedBounds.extents.z - rebuildDistance;
+	}
+
+	private bool WalkedOff()
+	{
+		foreach (NavMeshAreaBaker baker in active)
+		{
+			if (baker == this || baker.lead == this)
+			{
+				Vector3 offset = baker.navMeshAgent.position - transform.position;
+				if (Mathf.Abs(offset.x) > span.x * 0.5f + rebuildDistance || Mathf.Abs(offset.z) > span.y * 0.5f + rebuildDistance)
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
 	private void StartBuild()
 	{
 		dirty = false;
 		lastStart = Time.time;
 		// the box is laid out around the transform, the transform waits there until the build is in
-		transform.position = navMeshAgent.position;
+		// its height stays till she's really changed level (an elevator, stairs): built around her height every time,
+		// each build's surface came out a voxel above the last and she rode it up, 4 cm a second, into the air
+		Vector3 low = navMeshAgent.position;
+		Vector3 high = low;
+		foreach (NavMeshAreaBaker baker in active)
+		{
+			if (baker.lead == this)
+			{
+				low = Vector3.Min(low, baker.navMeshAgent.position);
+				high = Vector3.Max(high, baker.navMeshAgent.position);
+			}
+		}
+		span = new Vector2(high.x - low.x, high.z - low.z);
+		Vector3 centre = 0.5f * (low + high);
+		centre.y = navMeshAgent.position.y;
+		if (Mathf.Abs(centre.y - transform.position.y) < levelChange)
+		{
+			centre.y = transform.position.y;
+		}
+		transform.position = centre;
 		lastPosition = transform.position;
 		pending = new NavMeshData(surface.agentTypeID)
 		{
@@ -161,11 +282,24 @@ public class NavMeshAreaBaker : MonoBehaviour
 	private void OnOriginShifted(Vector3 offset)
 	{
 		instancePosition -= offset;
-		NavMeshDataInstance old = instance;
-		instance = NavMesh.AddNavMeshData(data, instancePosition, transform.rotation);
-		old.Remove();
+		// taken out while another one's lead
+		if (instance.valid)
+		{
+			NavMeshDataInstance old = instance;
+			instance = NavMesh.AddNavMeshData(data, instancePosition, transform.rotation);
+			old.Remove();
+		}
 		bakedBounds.center -= offset;
 		pendingBounds.center -= offset;
+	}
+
+	// something big just stopped somewhere new (the ket): now, not at the next interval
+	public static void RebuildAll()
+	{
+		foreach (NavMeshAreaBaker baker in FindObjectsOfType<NavMeshAreaBaker>())
+		{
+			baker.dirty = true;
+		}
 	}
 
 	private void OnPieceChanged(Bounds bounds)
@@ -179,7 +313,7 @@ public class NavMeshAreaBaker : MonoBehaviour
 	private Bounds LocalBounds()
 	{
 		Vector3 size = surface.size;
-		size = new Vector3(Mathf.Abs(size.x) + 2f * rebuildDistance, Mathf.Abs(size.y), Mathf.Abs(size.z) + 2f * rebuildDistance);
+		size = new Vector3(span.x + 2f * reach, Mathf.Abs(size.y), span.y + 2f * reach);
 		return new Bounds(surface.center, size);
 	}
 
@@ -220,19 +354,48 @@ public class NavMeshAreaBaker : MonoBehaviour
 				sources.RemoveAt(i);
 			}
 		}
+		// the ket as a solid box in every build, so the navmesh goes round it with its usual margin (the agent's radius).
+		// the scene's carving obstacles left all but a band of its footprint walkable, seen on a map of it
+		if (ket == null)
+		{
+			ket = FindObjectOfType<VehicleMovement>();
+		}
+		if (ket != null)
+		{
+			sources.Add(new NavMeshBuildSource
+			{
+				shape = NavMeshBuildSourceShape.Box,
+				transform = Matrix4x4.TRS(ket.transform.TransformPoint(VehicleMovement.FootprintCentre), ket.transform.rotation, Vector3.one),
+				size = VehicleMovement.FootprintSize,
+				// walkable: the build drops the triangles of anything not, and it'd block nothing. its top's too narrow to
+				// survive the agent's radius
+				area = surface.defaultArea
+			});
+		}
 		return sources;
 	}
+
+	private VehicleMovement ket;
 
 	private bool Drop(NavMeshBuildSource source)
 	{
 		Component component = source.component;
 		if (component != null)
 		{
+			if (component is Collider collider && collider.isTrigger)
+			{
+				return true;
+			}
 			if (surface.ignoreNavMeshAgent && component.TryGetComponent(out NavMeshAgent _))
 			{
 				return true;
 			}
 			if (surface.ignoreNavMeshObstacle && component.TryGetComponent(out NavMeshObstacle _))
+			{
+				return true;
+			}
+			// pickups are on Default too: she'd walk up onto a crate, and be left standing on the air once it's taken
+			if (component.GetComponentInParent<CoopItem>() != null || component.GetComponentInParent<CampfireFuelLevel>() != null)
 			{
 				return true;
 			}
@@ -260,16 +423,11 @@ public class NavMeshAreaBaker : MonoBehaviour
 
 	private static int Triangles(Mesh mesh)
 	{
-		if (!triangleCounts.TryGetValue(mesh, out int count))
+		long indices = 0;
+		for (int i = 0; i < mesh.subMeshCount; i++)
 		{
-			long indices = 0;
-			for (int i = 0; i < mesh.subMeshCount; i++)
-			{
-				indices += mesh.GetIndexCount(i);
-			}
-			count = (int)(indices / 3);
-			triangleCounts[mesh] = count;
+			indices += mesh.GetIndexCount(i);
 		}
-		return count;
+		return (int)(indices / 3);
 	}
 }

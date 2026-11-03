@@ -252,6 +252,7 @@ public class LayerTransition : MonoBehaviour
 		{
 			Rigidbody body = ket.GetComponent<Rigidbody>();
 			body.position = car + outward * (2f + ketOut) + Vector3.up * 1f;
+			ket.MovedByScript();
 			body.rotation = Quaternion.LookRotation(outward, Vector3.up);
 			ket.transform.SetPositionAndRotation(body.position, body.rotation);
 			body.velocity = Vector3.zero;
@@ -271,6 +272,16 @@ public class LayerTransition : MonoBehaviour
 		}
 		held.Clear();
 		RestoreAgents();
+		if (ketCarried && ketBody != null)
+		{
+			// where it is, it's off this ride
+			ketBody.GetComponent<VehicleMovement>().Carried = false;
+			ketBody.GetComponent<VehicleMovement>().MovedByScript();
+			ketBody.constraints = ketConstraints;
+			ketBody.useGravity = ketGravity;
+			ketBody.interpolation = ketInterpolation;
+			ketCarried = false;
+		}
 		if (characterManager != null)
 		{
 			characterManager.SetActive(true);
@@ -340,7 +351,8 @@ public class LayerTransition : MonoBehaviour
 		Physics.SyncTransforms();
 		if (controller != null)
 		{
-			controller.enabled = true;
+			// the AI girl has none on (Girl.BodyFor)
+			controller.enabled = girl.Control != GirlControl.AI;
 		}
 	}
 
@@ -407,9 +419,23 @@ public class LayerTransition : MonoBehaviour
 		from = GameSession.Current.Layer;
 		arriving = new PillarStreamer.Spot { CellX = spot.CellX, CellZ = spot.CellZ };
 		next = GameSession.Current.BeginLayer(to, tiles.GroundY + way * (float)Gen2.LayerHeight, tiles.GroundLayer, arriving);
+		if (CoopSession.Active)
+		{
+			StartCoroutine(HashAhead(to));
+		}
 		next.GetComponent<TileStreamer>().FarReach = (way > 0) ? upReach : downReach;
 		Debug.Log("LayerTransition: riding " + (way > 0 ? "up" : "down") + " from layer " + world.Layer + " to " + to.Layer + " at pillar " + spot.CellX + "," + spot.CellZ);
 		return true;
+	}
+
+	// the swap tells the other peer this layer's hash, and a third of a second there would show
+	private System.Collections.IEnumerator HashAhead(LayerPlan plan)
+	{
+		WaitForSeconds wait = new WaitForSeconds(0.2f);
+		while (plan.TilesHashStep())
+		{
+			yield return wait;
+		}
 	}
 
 	private System.Collections.IEnumerator ArriveBuilt()
@@ -519,6 +545,8 @@ public class LayerTransition : MonoBehaviour
 			ketBody.transform.SetPositionAndRotation(ketBody.position, ketBody.rotation);
 			ketBody.constraints = ketConstraints;
 			ketBody.useGravity = ketGravity;
+			ketBody.GetComponent<VehicleMovement>().Carried = false;
+			ketBody.GetComponent<VehicleMovement>().MovedByScript();
 			if (ketCarried)
 			{
 				ketBody.interpolation = ketInterpolation;
@@ -634,6 +662,8 @@ public class LayerTransition : MonoBehaviour
 			return;
 		}
 		ketBody = ket.GetComponent<Rigidbody>();
+		ket.MovedByScript();
+		ket.Carried = true;
 		ketConstraints = ketBody.constraints;
 		ketGravity = ketBody.useGravity;
 		ketInterpolation = ketBody.interpolation;
@@ -733,7 +763,8 @@ public class LayerTransition : MonoBehaviour
 		}
 		if (controller != null)
 		{
-			controller.enabled = true;
+			// the AI girl has none on (Girl.BodyFor)
+			controller.enabled = girl.Control != GirlControl.AI;
 		}
 	}
 }
