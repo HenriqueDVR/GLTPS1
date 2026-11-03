@@ -12,8 +12,7 @@ public class CoopBarrel : MonoBehaviour
 		Took,
 		Dropped,
 		Mounted,
-		Pose,
-		Request
+		Pose
 	}
 
 	private const float poseInterval = 0.1f;
@@ -60,17 +59,24 @@ public class CoopBarrel : MonoBehaviour
 		barrel = null;
 	}
 
-	private System.Collections.IEnumerator Start()
+	// a friend arriving or coming back (Ready): the host's word on where it is
+	public static void SendCurrentAsHost()
 	{
 		if (CoopSession.Instance.IsHost)
 		{
-			yield break;
+			SendCurrent();
 		}
-		while (CoopPlayers.Instance == null || CoopPlayers.Instance.Remote == null)
+	}
+
+	// they've got it, or it's on the ket: whatever we thought during a drop, we're not carrying it
+	private static void LoseIfCarrying()
+	{
+		CoopPlayers players = CoopPlayers.Instance;
+		CharacterBarrelInteraction carrier = players.Local.GetComponentInChildren<CharacterBarrelInteraction>();
+		if (!CoopSession.Instance.IsHost && carrier != null && carrier.isCarrying)
 		{
-			yield return null;
+			carrier.LoseBarrel();
 		}
-		Send(Op.Request);
 	}
 
 	// if they had it, drop it where it was
@@ -178,14 +184,6 @@ public class CoopBarrel : MonoBehaviour
 			return;
 		}
 		Op op = (Op)reader.GetByte();
-		if (op == Op.Request)
-		{
-			if (CoopSession.Instance.IsHost)
-			{
-				SendCurrent();
-			}
-			return;
-		}
 		CharacterBarrelInteraction componentInChildren = instance.Remote.GetComponentInChildren<CharacterBarrelInteraction>();
 		switch (op)
 		{
@@ -225,6 +223,7 @@ public class CoopBarrel : MonoBehaviour
 			Quaternion rotation = new Quaternion(reader.GetFloat(), reader.GetFloat(), reader.GetFloat(), reader.GetFloat());
 			if (op == Op.Dropped)
 			{
+				LoseIfCarrying();
 				if (barrel == null)
 				{
 					barrel = GameObject.FindWithTag("Barrel") ?? componentInChildren.SpawnBarrel();
@@ -240,6 +239,7 @@ public class CoopBarrel : MonoBehaviour
 			break;
 		}
 		case Op.Mounted:
+			LoseIfCarrying();
 			if (barrel == null)
 			{
 				barrel = GameObject.FindWithTag("Barrel");

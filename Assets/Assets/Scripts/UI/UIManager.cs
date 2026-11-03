@@ -282,6 +282,10 @@ public class UIManager : MonoBehaviour
     public void QuitToTitleMenu()
     {
         GameSave.SaveIfPossible();
+        if (CoopSession.Active && !CoopSession.Instance.IsHost)
+        {
+            CoopSession.Instance.QuitAsFriend();
+        }
         SceneManager.LoadScene(Scenes.Title);
     }
 

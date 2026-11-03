@@ -100,6 +100,12 @@ public class SafeGround : MonoBehaviour
 		{
 			nextKeep = Time.time + keepInterval;
 			Keep(girl, at, driving, deck);
+			// nobody can drive without it
+			GameObject barrel = GameObject.FindWithTag("Barrel");
+			if (barrel != null && !CoopBarrel.RemoteOwned && !SaveScene.BarrelSettling && Fallen(barrel.transform.position + Offset(), deck))
+			{
+				SaveScene.PutBesideKet(barrel);
+			}
 		}
 		if (Fallen(at, deck))
 		{
@@ -218,6 +224,7 @@ public class SafeGround : MonoBehaviour
 
 	private void PlaceKet()
 	{
+		ket.MovedByScript();
 #if DUMP_WORLDGEN
 		Debug.Log("SafeGround: ket back to " + ketSafe);
 #endif

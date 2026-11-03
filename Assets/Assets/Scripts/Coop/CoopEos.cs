@@ -347,13 +347,27 @@ public class CoopEos
 		{
 			int piece = Math.Min(maxPacket - 1, length - offset);
 			byte kind = (offset == 0 && piece == length) ? wholeMessage : ((offset + piece < length) ? morePieces : lastPiece);
-			SendPacket(to, side ? sideChannel : reliableChannel, PacketReliability.ReliableOrdered, kind, data, offset, piece);
+			if (!SendPacket(to, side ? sideChannel : reliableChannel, PacketReliability.ReliableOrdered, kind, data, offset, piece))
+			{
+				sendFailed = true;
+				return;
+			}
 			offset += piece;
 		}
 		while (offset < length);
 	}
 
-	private void SendPacket(ProductUserId to, byte channel, PacketReliability reliability, byte kind, byte[] data, int offset, int length)
+	private bool sendFailed;
+
+	// since last asked, a reliable send was refused
+	public bool TakeSendFailed()
+	{
+		bool failed = sendFailed;
+		sendFailed = false;
+		return failed;
+	}
+
+	private bool SendPacket(ProductUserId to, byte channel, PacketReliability reliability, byte kind, byte[] data, int offset, int length)
 	{
 		sendBuffer[0] = kind;
 		Array.Copy(data, offset, sendBuffer, 1, length);
@@ -367,7 +381,13 @@ public class CoopEos
 			AllowDelayedDelivery = true,
 			Reliability = reliability
 		};
-		p2p.SendPacket(ref options);
+		Result result = p2p.SendPacket(ref options);
+		if (result != Result.Success)
+		{
+			Debug.LogWarning("Coop: EOS refused a packet: " + result);
+			return false;
+		}
+		return true;
 	}
 
 	public void Close(ProductUserId remote)

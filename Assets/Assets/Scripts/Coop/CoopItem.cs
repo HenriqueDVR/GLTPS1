@@ -99,7 +99,8 @@ public class CoopItem : MonoBehaviour
 
 	public bool RequestAsFriend()
 	{
-		if (taken.Contains(Id) || requested.ContainsKey(Id))
+		// the host wouldn't hear: it stays lying there
+		if (taken.Contains(Id) || requested.ContainsKey(Id) || !CoopSession.Instance.Connected)
 		{
 			return false;
 		}

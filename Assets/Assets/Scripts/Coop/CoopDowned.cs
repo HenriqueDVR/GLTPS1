@@ -30,6 +30,11 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 
 	private const float gameOverDelay = 6f;
 
+	// down with nobody there to revive her, longer than a friend takes to reconnect
+	private const float aloneDelay = 60f;
+
+	private float downAloneSince = -1f;
+
 	private static readonly NetDataWriter writer = new NetDataWriter();
 
 	private CoopSession session;
@@ -66,7 +71,15 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 	{
 		Instance = this;
 		session = CoopSession.Instance;
+		session.PartnerLeft += OnPartnerLeft;
 		InteractionPicker.AddGlobal(this);
+	}
+
+	// whether she's down comes again if they come back (OnState)
+	private void OnPartnerLeft()
+	{
+		remoteDown = false;
+		reviveProgress = 0f;
 	}
 
 	// last frame the picker had Interact held on the revive
@@ -84,7 +97,7 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 
 	private bool CanRevive(CoopPlayers players)
 	{
-		if (!remoteDown || localDown || !CanReach(players))
+		if (!remoteDown || localDown || !session.Connected || !CanReach(players))
 		{
 			return false;
 		}
@@ -108,6 +121,7 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 	private void OnDestroy()
 	{
 		InteractionPicker.RemoveGlobal(this);
+		session.PartnerLeft -= OnPartnerLeft;
 		if (Instance == this)
 		{
 			Instance = null;
@@ -139,6 +153,23 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 				gameOverAt = float.MaxValue;
 				SceneManager.LoadScene(Scenes.Title);
 			}
+		}
+		// nobody's coming: over, the save's kept like any game over
+		if (localDown && !session.Connected)
+		{
+			if (downAloneSince < 0f)
+			{
+				downAloneSince = Time.unscaledTime;
+			}
+			else if (Time.unscaledTime >= downAloneSince + aloneDelay)
+			{
+				downAloneSince = float.MaxValue;
+				SceneManager.LoadScene(Scenes.Title);
+			}
+		}
+		else
+		{
+			downAloneSince = -1f;
 		}
 	}
 
@@ -280,7 +311,7 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 
 	private void UpdateRevive(CoopPlayers players, CharacterItemInteraction local)
 	{
-		if (!remoteDown || localDown || !CanReach(players))
+		if (!remoteDown || localDown || !session.Connected || !CanReach(players))
 		{
 			reviveProgress = 0f;
 			return;
@@ -340,6 +371,19 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 		writer.Reset();
 		writer.Put((byte)type);
 		CoopSession.Instance.Send(writer, DeliveryMethod.ReliableOrdered);
+	}
+
+	public void SendState()
+	{
+		writer.Reset();
+		writer.Put((byte)CoopSession.MessageType.DownedState);
+		writer.Put(localDown);
+		session.Send(writer, DeliveryMethod.ReliableOrdered);
+	}
+
+	public void OnState(bool down)
+	{
+		remoteDown = down;
 	}
 
 	public void OnMessage(CoopSession.MessageType type)
@@ -456,7 +500,7 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 		if (localDown)
 		{
 			List<Need> needs = Needs(Girl(players.Local));
-			text2 = "You're down. " + text + " can revive you with " + NeedsText(needs) + ".";
+			text2 = session.Connected ? ("You're down. " + text + " can revive you with " + NeedsText(needs) + ".") : ("You're down, and " + text + " is gone.");
 		}
 		else if (remoteDown)
 		{
@@ -498,6 +542,10 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 	// map is a screenshot taken when it's opened
 	private void UpdateMapMarker(CoopPlayers players, string name)
 	{
+		if (!remoteDown && mapMarker == null)
+		{
+			return;
+		}
 		PlayerMapController playerMapController = null;
 		PlayerMapController[] array = Object.FindObjectsOfType<PlayerMapController>(includeInactive: true);
 		foreach (PlayerMapController playerMapController2 in array)

@@ -358,4 +358,170 @@ public class StateTests
 		Assert.AreEqual(0x4000000000000007uL, gotId);
 		Assert.AreEqual(77, gotValue);
 	}
+
+	private class Failing : IStateful
+	{
+		public string Key => "broken";
+
+		public int Version => 1;
+
+		public bool failWrite;
+
+		public bool failRead;
+
+		public int value;
+
+		public void Write(StateWriter writer)
+		{
+			if (failWrite)
+			{
+				throw new System.Exception("can't write");
+			}
+			writer.Put(value);
+		}
+
+		public void Read(StateReader reader, int version)
+		{
+			if (failRead)
+			{
+				throw new System.Exception("can't read");
+			}
+			value = reader.GetInt();
+		}
+	}
+
+	private static StateSection BrokenSection(int value, int version = 1)
+	{
+		StateWriter writer = new StateWriter();
+		writer.Put(value);
+		return new StateSection { Key = "broken", Version = version, Data = writer.ToArray() };
+	}
+
+	private static int SavedValue()
+	{
+		StateSection saved = StateRegistry.Capture(StateUse.Save).Find(section => section.Key == "broken");
+		Assert.IsNotNull(saved, "the section was left out");
+		return new StateReader(saved.Data).GetInt();
+	}
+
+	// a section that can't write this time keeps what it had, the save replaces the only good copy
+	[Test]
+	public void FailedWriteKeepsTheOldData()
+	{
+		StateRegistry.ClearPending();
+		Failing broken = new Failing();
+		StateRegistry.Register(broken);
+		try
+		{
+			StateRegistry.SetPending(new[] { BrokenSection(5) });
+			Assert.AreEqual(5, broken.value);
+			broken.value = 6;
+			Assert.AreEqual(6, SavedValue());
+			broken.failWrite = true;
+			broken.value = 7;
+			Assert.AreEqual(6, SavedValue());
+			// a snapshot just goes without
+			Assert.IsNull(StateRegistry.Capture(StateUse.Join).Find(section => section.Key == "broken"));
+		}
+		finally
+		{
+			StateRegistry.Unregister(broken);
+			StateRegistry.ClearPending();
+		}
+	}
+
+	// one that couldn't be read goes back in the file as it was, not as whatever the system holds
+	[Test]
+	public void FailedReadKeepsTheSection()
+	{
+		StateRegistry.ClearPending();
+		Failing broken = new Failing { failRead = true, value = 99 };
+		StateRegistry.Register(broken);
+		try
+		{
+			StateRegistry.SetPending(new[] { BrokenSection(5) });
+			Assert.AreEqual(5, SavedValue());
+			broken.failRead = false;
+			StateRegistry.SetPending(new[] { BrokenSection(8, 2) });
+			Assert.AreEqual(8, SavedValue(), "from a newer version");
+			StateRegistry.SetPending(new[] { BrokenSection(9) });
+			Assert.AreEqual(9, broken.value);
+			Assert.AreEqual(9, SavedValue(), "read fine now");
+		}
+		finally
+		{
+			StateRegistry.Unregister(broken);
+			StateRegistry.ClearPending();
+		}
+	}
+
+	private static string SaveJson(string seed)
+	{
+		return JsonUtility.ToJson(new GameSave.SaveData { version = GameSave.CurrentVersion, genVersion = 2, seed = seed });
+	}
+
+	private static string TempSlot()
+	{
+		string folder = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "gltps1-save-test-" + System.Guid.NewGuid().ToString("N"));
+		System.IO.Directory.CreateDirectory(folder);
+		return System.IO.Path.Combine(folder, "slot.json");
+	}
+
+	[Test]
+	public void SavingKeepsABackup()
+	{
+		string path = TempSlot();
+		try
+		{
+			Assert.AreEqual(GameSave.SlotState.Empty, GameSave.Inspect(path, out _));
+			GameSave.WriteAtomic(path, SaveJson("1"));
+			Assert.IsFalse(System.IO.File.Exists(path + ".bak"), "nothing to back up the first time");
+			GameSave.WriteAtomic(path, SaveJson("2"));
+			Assert.AreEqual(GameSave.SlotState.Ok, GameSave.Inspect(path, out GameSave.SaveData data));
+			Assert.AreEqual("2", data.seed);
+			Assert.IsFalse(System.IO.File.Exists(path + ".tmp"));
+			Assert.AreEqual("1", JsonUtility.FromJson<GameSave.SaveData>(System.IO.File.ReadAllText(path + ".bak")).seed);
+		}
+		finally
+		{
+			System.IO.Directory.Delete(System.IO.Path.GetDirectoryName(path), true);
+		}
+	}
+
+	[Test]
+	public void DamagedSlots()
+	{
+		string path = TempSlot();
+		try
+		{
+			// nothing else to fall back on
+			System.IO.File.WriteAllText(path, "{\"version\":3,\"seed\":\"12");
+			Assert.AreEqual(GameSave.SlotState.Corrupt, GameSave.Inspect(path, out GameSave.SaveData none));
+			Assert.IsNull(none);
+			System.IO.File.WriteAllText(path, "{}");
+			Assert.AreEqual(GameSave.SlotState.Corrupt, GameSave.Inspect(path, out _), "parses, no seed");
+			// a good backup stands in, and the next save doesn't push it out
+			System.IO.File.WriteAllText(path + ".bak", SaveJson("1"));
+			Assert.AreEqual(GameSave.SlotState.Backup, GameSave.Inspect(path, out GameSave.SaveData backup));
+			Assert.AreEqual("1", backup.seed);
+			GameSave.WriteAtomic(path, SaveJson("2"));
+			Assert.AreEqual("1", JsonUtility.FromJson<GameSave.SaveData>(System.IO.File.ReadAllText(path + ".bak")).seed);
+			Assert.IsTrue(System.IO.File.Exists(path + ".corrupt"));
+			Assert.AreEqual(GameSave.SlotState.Ok, GameSave.Inspect(path, out _));
+			// what a crash left under the old way of saving: the temp file, no slot
+			System.IO.File.Delete(path);
+			System.IO.File.Delete(path + ".bak");
+			System.IO.File.WriteAllText(path + ".tmp", SaveJson("3"));
+			Assert.AreEqual(GameSave.SlotState.Backup, GameSave.Inspect(path, out GameSave.SaveData temp));
+			Assert.AreEqual("3", temp.seed);
+			// not ours to read
+			System.IO.File.WriteAllText(path, JsonUtility.ToJson(new GameSave.SaveData { version = GameSave.CurrentVersion + 1, seed = "4" }));
+			Assert.AreEqual(GameSave.SlotState.Newer, GameSave.Inspect(path, out GameSave.SaveData newer));
+			Assert.IsNull(newer);
+		}
+		finally
+		{
+			System.IO.Directory.Delete(System.IO.Path.GetDirectoryName(path), true);
+		}
+	}
 }

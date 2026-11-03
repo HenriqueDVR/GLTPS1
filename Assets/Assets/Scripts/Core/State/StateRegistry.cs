@@ -31,6 +31,12 @@ public static class StateRegistry
 
 	private static readonly Dictionary<string, StateSection> pending = new Dictionary<string, StateSection>();
 
+	// the last good bytes of each section, for a save when its system can't write this time
+	private static readonly Dictionary<string, StateSection> lastGood = new Dictionary<string, StateSection>();
+
+	// loaded but couldn't be read (broken, or from a newer version): saves write these back as they were
+	private static readonly Dictionary<string, StateSection> unread = new Dictionary<string, StateSection>();
+
 	public static void Register(IStateful stateful, StateUse use = StateUse.Save)
 	{
 		registered[stateful.Key] = stateful;
@@ -79,6 +85,8 @@ public static class StateRegistry
 	public static void ClearPending()
 	{
 		pending.Clear();
+		lastGood.Clear();
+		unread.Clear();
 	}
 
 	// every registered section for that use. a save also keeps the unread ones,
@@ -88,10 +96,16 @@ public static class StateRegistry
 		List<StateSection> sections = new List<StateSection>();
 		foreach (KeyValuePair<string, IStateful> stateful in registered)
 		{
-			if ((uses[stateful.Key] & use) != 0)
+			if ((uses[stateful.Key] & use) == 0)
 			{
-				Add(sections, stateful.Value);
+				continue;
 			}
+			if ((use & StateUse.Save) != 0 && unread.TryGetValue(stateful.Key, out StateSection kept))
+			{
+				sections.Add(kept);
+				continue;
+			}
+			Add(sections, stateful.Value, (use & StateUse.Save) != 0);
 		}
 		if ((use & StateUse.Save) != 0)
 		{
@@ -107,24 +121,31 @@ public static class StateRegistry
 		{
 			if (registered.TryGetValue(key, out IStateful stateful))
 			{
-				Add(sections, stateful);
+				Add(sections, stateful, false);
 			}
 		}
 		return sections;
 	}
 
-	// one broken section is left out, not the whole save or snapshot
-	private static void Add(List<StateSection> sections, IStateful stateful)
+	// one broken section doesn't stop the whole save or snapshot. a snapshot goes without it, a save keeps its old
+	// data: the file's about to replace the only good copy
+	private static void Add(List<StateSection> sections, IStateful stateful, bool keepOld)
 	{
 		try
 		{
 			StateWriter writer = new StateWriter();
 			stateful.Write(writer);
-			sections.Add(new StateSection { Key = stateful.Key, Version = stateful.Version, Data = writer.ToArray() });
+			StateSection section = new StateSection { Key = stateful.Key, Version = stateful.Version, Data = writer.ToArray() };
+			sections.Add(section);
+			lastGood[stateful.Key] = section;
 		}
 		catch (Exception e)
 		{
 			Debug.LogWarning("State: couldn't write " + stateful.Key + ": " + e);
+			if (keepOld && lastGood.TryGetValue(stateful.Key, out StateSection old))
+			{
+				sections.Add(old);
+			}
 		}
 	}
 
@@ -133,15 +154,19 @@ public static class StateRegistry
 		if (section.Version > stateful.Version)
 		{
 			Debug.LogWarning("State: " + section.Key + " is from a newer version (" + section.Version + " > " + stateful.Version + "), skipped");
+			unread[section.Key] = section;
 			return;
 		}
 		try
 		{
 			stateful.Read(new StateReader(section.Data), section.Version);
+			lastGood[section.Key] = section;
+			unread.Remove(section.Key);
 		}
 		catch (Exception e)
 		{
 			Debug.LogWarning("State: couldn't read " + section.Key + ": " + e);
+			unread[section.Key] = section;
 		}
 	}
 

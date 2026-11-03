@@ -134,6 +134,11 @@ public class CoopKanazawa : MonoBehaviour
 			return;
 		}
 		nextPoses = Time.unscaledTime + poseInterval;
+		// none in the open world yet
+		if (WorldGenerator.GenVersion != 1)
+		{
+			return;
+		}
 		GameObject[] all = GameObject.FindGameObjectsWithTag("Kanazawa");
 		writer.Reset();
 		writer.Put((byte)CoopSession.MessageType.KanazawaPoses);
@@ -271,6 +276,9 @@ public class CoopKanazawa : MonoBehaviour
 		}
 	}
 
+	// as index: they had it already, no notice
+	private const int catchUp = 1;
+
 	public static void SendUnlocks()
 	{
 		if (Instance == null || Instance.map == null)
@@ -279,11 +287,11 @@ public class CoopKanazawa : MonoBehaviour
 		}
 		if (Instance.map.enabled)
 		{
-			Send(Op.UnlockMap);
+			Send(Op.UnlockMap, catchUp);
 		}
 		if (Instance.photoCamera.enabled)
 		{
-			Send(Op.UnlockCamera);
+			Send(Op.UnlockCamera, catchUp);
 		}
 	}
 
@@ -349,7 +357,10 @@ public class CoopKanazawa : MonoBehaviour
 				map.enabled = true;
 				mapWasOn = true;
 			}
-			CoopNotice.Show("Kanazawa gave you a map.");
+			if (@int != catchUp)
+			{
+				CoopNotice.Show("Kanazawa gave you a map.");
+			}
 			break;
 		case Op.UnlockCamera:
 			if (photoCamera != null)
@@ -357,7 +368,10 @@ public class CoopKanazawa : MonoBehaviour
 				photoCamera.enabled = true;
 				cameraWasOn = true;
 			}
-			CoopNotice.Show("Kanazawa gave you a camera.");
+			if (@int != catchUp)
+			{
+				CoopNotice.Show("Kanazawa gave you a camera.");
+			}
 			break;
 		case Op.Open:
 			FindDialogueBox();

@@ -153,6 +153,20 @@ public class CoopKettenkrad : MonoBehaviour
 			return;
 		}
 		SeatState seat = LocalSeat;
+		// both got on within a round trip: the host keeps it, the friend gets back off
+		if (remoteDriving && Driving(seat) && !CoopSession.Instance.IsHost)
+		{
+			CharacterVehicleInteraction interaction = LocalVehicleInteraction();
+			if (interaction != null && interaction.LeaveSeat() && !yielding)
+			{
+				yielding = true;
+				CoopNotice.Show(CoopPlayers.Instance.Remote.name.Replace("Parent", "") + " got on first.");
+			}
+		}
+		else
+		{
+			yielding = false;
+		}
 		if (Driving(lastLocalSeat) && !Driving(seat) && !remoteDriving)
 		{
 			SendPlaced();
@@ -166,6 +180,17 @@ public class CoopKettenkrad : MonoBehaviour
 			{
 				SendPlaced();
 			}
+		}
+	}
+
+	private bool yielding;
+
+	// a friend arriving or coming back: a ket moved during a drop would be in two places
+	public void SendCurrentPlace()
+	{
+		if (vehicle != null && !Driving(LocalSeat) && !remoteDriving)
+		{
+			SendPlaced();
 		}
 	}
 
@@ -253,6 +278,7 @@ public class CoopKettenkrad : MonoBehaviour
 		{
 			return;
 		}
+		vehicle.MovedByScript();
 		body.position = position;
 		body.rotation = rotation;
 		vehicle.transform.SetPositionAndRotation(position, rotation);
@@ -276,7 +302,7 @@ public class CoopKettenkrad : MonoBehaviour
 
 	public void SetRemoteDriving(bool driving)
 	{
-		if (driving == remoteDriving || (driving && LocalSeat == SeatState.Driver && CoopSession.Instance.IsHost))
+		if (driving == remoteDriving || (driving && Driving(LocalSeat) && CoopSession.Instance.IsHost))
 		{
 			return;
 		}

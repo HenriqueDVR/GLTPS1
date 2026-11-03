@@ -138,6 +138,7 @@ public class GirlsSection : IStateful
 	public void Read(StateReader reader, int version)
 	{
 		ReadData(reader, out SavedGirl chito, out SavedGirl yuuri);
+		SaveScene.Restoring = true;
 		GameSession.Current.StartCoroutine(SaveScene.PutGirlsBack(chito, yuuri));
 	}
 }
@@ -330,6 +331,12 @@ public class LayersSection : IStateful
 // scene helpers for the sections above
 public static class SaveScene
 {
+	// the girls are on their way back: saved now, one would be at the scene's start
+	public static bool Restoring;
+
+	// SettleBarrel has it, SafeGround keeps out
+	public static bool BarrelSettling;
+
 	public static Transform Chito => (Girls.Chito != null) ? Girls.Chito.transform : null;
 
 	public static Transform Yuuri => (Girls.Yuuri != null) ? Girls.Yuuri.transform : null;
@@ -374,6 +381,7 @@ public static class SaveScene
 		}
 		VehicleMovement vehicle = UnityEngine.Object.FindObjectOfType<VehicleMovement>();
 		Rigidbody body = vehicle.GetComponent<Rigidbody>();
+		vehicle.MovedByScript();
 		body.position = position;
 		body.rotation = rotation;
 		vehicle.transform.SetPositionAndRotation(position, rotation);
@@ -403,6 +411,63 @@ public static class SaveScene
 		}
 		barrel.GetComponent<VehicleBarrel>().characterBarrelInteractionScript = carrier;
 		barrel.transform.position = position;
+		GameSession.Current.StartCoroutine(SettleBarrel(barrel, position + Offset()));
+	}
+
+	// its tile might not be built yet: held up until there's ground under it, or it falls through for good, its tag
+	// stops a new one being taken and with none on the ket nobody drives. no ground in time, it goes by the ket
+	private static IEnumerator SettleBarrel(GameObject barrel, Vector3 layout)
+	{
+		Rigidbody body = barrel.GetComponent<Rigidbody>();
+		Collider[] colliders = barrel.GetComponentsInChildren<Collider>();
+		bool wasKinematic = body.isKinematic;
+		body.isKinematic = true;
+		BarrelSettling = true;
+		foreach (Collider collider in colliders)
+		{
+			collider.enabled = false;
+		}
+		float giveUpAt = Time.unscaledTime + 15f;
+		while (barrel != null)
+		{
+			Vector3 target = FromLayout(layout);
+			barrel.transform.position = target;
+			if (Physics.Raycast(target + Vector3.up * 2f, Vector3.down, 6f, -1, QueryTriggerInteraction.Ignore))
+			{
+				break;
+			}
+			if (Time.unscaledTime > giveUpAt)
+			{
+				PutBesideKet(barrel);
+				break;
+			}
+			yield return null;
+		}
+		BarrelSettling = false;
+		if (barrel != null)
+		{
+			foreach (Collider collider in colliders)
+			{
+				collider.enabled = true;
+			}
+			body.isKinematic = wasKinematic;
+		}
+	}
+
+	public static void PutBesideKet(GameObject barrel)
+	{
+		VehicleMovement ket = UnityEngine.Object.FindObjectOfType<VehicleMovement>();
+		if (ket == null)
+		{
+			return;
+		}
+		barrel.transform.position = ket.transform.position + ket.transform.right * 3f + Vector3.up;
+		Rigidbody body = barrel.GetComponent<Rigidbody>();
+		if (!body.isKinematic)
+		{
+			body.velocity = Vector3.zero;
+		}
+		Debug.Log("Save: the barrel was lost, it's by the ket");
 	}
 
 	public static IEnumerator PutGirlsBack(SavedGirl savedChito, SavedGirl savedYuuri)
@@ -431,6 +496,7 @@ public static class SaveScene
 			// friend got the world before ket/map were back, resend
 			CoopSession.Instance.ResendRejoin();
 		}
+		Restoring = false;
 		Debug.Log("Save: loaded");
 #if DUMP_WORLDGEN
 		yield return new WaitForSeconds(3f);
@@ -485,6 +551,8 @@ public static class SaveScene
 	// waits for the scene's objects and their Start()s, then registers (a loaded save goes back in now, girls last)
 	public static IEnumerator Register()
 	{
+		Restoring = false;
+		BarrelSettling = false;
 		while (!Ready())
 		{
 			yield return null;

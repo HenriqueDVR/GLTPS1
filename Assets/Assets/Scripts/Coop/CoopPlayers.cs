@@ -183,6 +183,8 @@ public class CoopPlayers : MonoBehaviour
 			session.PlayerStateReceived -= OnPlayerState;
 			session.PartnerLeft -= OnPartnerLeft;
 		}
+		StateRegistry.Unregister(campfires);
+		CoopPause.Forget();
 		if (Instance == this)
 		{
 			Instance = null;
@@ -214,7 +216,10 @@ public class CoopPlayers : MonoBehaviour
 		{
 			floatingOrigin.ReferenceObject = Local;
 		}
+		StateRegistry.Register(campfires, StateUse.Join);
 	}
+
+	private readonly CoopCampfire.State campfires = new CoopCampfire.State();
 
 	// pipe water went through her with the CharacterController off
 	private static void AddWaterCatcher(Transform girl, Transform local)

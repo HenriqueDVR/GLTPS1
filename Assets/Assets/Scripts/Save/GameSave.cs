@@ -78,6 +78,17 @@ public static class GameSave
 
 	public const int CurrentVersion = 3;
 
+	public enum SlotState
+	{
+		Empty,
+		Ok,
+		// the file's gone or broken, this is the one before it
+		Backup,
+		Corrupt,
+		// a newer game wrote it
+		Newer
+	}
+
 	// sections that live for the whole run. the world's own register with the scene (SaveScene)
 	[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
 	private static void RegisterSections()
@@ -113,15 +124,96 @@ public static class GameSave
 
 	public static SaveData Read(int slot)
 	{
+		Inspect(SlotPath(slot), out SaveData data);
+		return data;
+	}
+
+	public static SlotState State(int slot)
+	{
+		return Inspect(SlotPath(slot), out _);
+	}
+
+	// the file, or what's left of the last write: a backup, or a temp file a crash left behind by the old way of saving
+	public static SlotState Inspect(string path, out SaveData data)
+	{
+		data = null;
+		bool any = File.Exists(path);
+		if (any)
+		{
+			SlotState state = ReadFile(path, out data);
+			if (state != SlotState.Corrupt)
+			{
+				return state;
+			}
+		}
+		foreach (string other in new[] { path + ".bak", path + ".tmp" })
+		{
+			if (File.Exists(other))
+			{
+				any = true;
+				if (ReadFile(other, out data) == SlotState.Ok)
+				{
+					return SlotState.Backup;
+				}
+			}
+		}
+		data = null;
+		return any ? SlotState.Corrupt : SlotState.Empty;
+	}
+
+	private static SlotState ReadFile(string path, out SaveData data)
+	{
+		data = null;
 		try
 		{
-			string path = SlotPath(slot);
-			return File.Exists(path) ? Parse(File.ReadAllText(path)) : null;
+			string json = File.ReadAllText(path);
+			data = Parse(json);
+			if (data == null)
+			{
+				SaveData header = JsonUtility.FromJson<SaveData>(json);
+				return (header != null && header.version > CurrentVersion) ? SlotState.Newer : SlotState.Corrupt;
+			}
+			if (!ulong.TryParse(data.seed, out _))
+			{
+				data = null;
+				return SlotState.Corrupt;
+			}
+			ToStateSections(data.sections);
+			return SlotState.Ok;
 		}
 		catch (Exception e)
 		{
-			Debug.LogWarning("Save: couldn't read slot " + (slot + 1) + ": " + e.Message);
-			return null;
+			Debug.LogWarning("Save: couldn't read " + Path.GetFileName(path) + ": " + e.Message);
+			data = null;
+			return SlotState.Corrupt;
+		}
+	}
+
+	// the new file in full first, then swapped in, the old one kept as .bak. killed at any point the slot still reads.
+	// a broken old file isn't worth a backup: it would push out the good one
+	public static void WriteAtomic(string path, string json)
+	{
+		string temp = path + ".tmp";
+		using (FileStream stream = new FileStream(temp, FileMode.Create, FileAccess.Write))
+		using (StreamWriter text = new StreamWriter(stream))
+		{
+			text.Write(json);
+			text.Flush();
+			stream.Flush(true);
+		}
+		if (!File.Exists(path))
+		{
+			File.Move(temp, path);
+		}
+		else if (ReadFile(path, out _) == SlotState.Corrupt)
+		{
+			File.Copy(path, path + ".corrupt", true);
+			File.Delete(path);
+			File.Move(temp, path);
+		}
+		else
+		{
+			File.Replace(temp, path, path + ".bak");
 		}
 	}
 
@@ -210,14 +302,22 @@ public static class GameSave
 
 	public static string Describe(int slot)
 	{
-		SaveData data = Read(slot);
+		SlotState state = Inspect(SlotPath(slot), out SaveData data);
+		if (state == SlotState.Corrupt)
+		{
+			return "slot " + (slot + 1) + ": damaged, can't be read";
+		}
+		if (state == SlotState.Newer)
+		{
+			return "slot " + (slot + 1) + ": from a newer version";
+		}
 		if (data == null)
 		{
 			return "slot " + (slot + 1) + ": empty";
 		}
 		int minutes = Mathf.FloorToInt(data.playSeconds / 60f);
 		string played = (minutes >= 60) ? (minutes / 60 + "h " + minutes % 60 + "m") : (minutes + " min");
-		return "slot " + (slot + 1) + ": " + (data.coop ? "co-op" : "solo") + ", " + played + ", " + data.savedAt;
+		return "slot " + (slot + 1) + ": " + (data.coop ? "co-op" : "solo") + ", " + played + ", " + data.savedAt + ((state == SlotState.Backup) ? " (backup)" : "");
 	}
 
 	public static void StartNewGame(int slot)
@@ -292,7 +392,7 @@ public static class GameSave
 			return "Can't save during the ending.";
 		}
 		// the world's sections register a few frames in, and a loaded save is still going back in till then
-		if (!StateRegistry.IsRegistered(GirlsSection.SectionKey))
+		if (!StateRegistry.IsRegistered(GirlsSection.SectionKey) || SaveScene.Restoring)
 		{
 			return "Can't save yet.";
 		}
@@ -318,19 +418,26 @@ public static class GameSave
 		return WhyNotSave() == null && SaveNow();
 	}
 
+	private static bool savedForQuit;
+
+	// CoopSession leaves on quit too. whichever hears first saves, while it still knows who's who: after that the host
+	// would save the puppet, and a friend its own solo slot
+	public static void SaveForQuit()
+	{
+		if (!savedForQuit)
+		{
+			savedForQuit = true;
+			SaveIfPossible();
+		}
+	}
+
 	public static bool SaveNow()
 	{
 		try
 		{
 			SaveData data = Capture();
 			Directory.CreateDirectory(Folder);
-			string path = SlotPath(CurrentSlot);
-			File.WriteAllText(path + ".tmp", JsonUtility.ToJson(data, prettyPrint: true));
-			if (File.Exists(path))
-			{
-				File.Delete(path);
-			}
-			File.Move(path + ".tmp", path);
+			WriteAtomic(SlotPath(CurrentSlot), JsonUtility.ToJson(data, prettyPrint: true));
 			PlayerPrefs.SetInt(lastSlotKey, CurrentSlot);
 			PlayerPrefs.Save();
 			Debug.Log("Save: saved slot " + (CurrentSlot + 1));
@@ -443,7 +550,7 @@ public static class GameSave
 
 		private void OnApplicationQuit()
 		{
-			SaveIfPossible();
+			SaveForQuit();
 		}
 	}
 }

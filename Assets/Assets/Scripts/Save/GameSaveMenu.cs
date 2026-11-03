@@ -83,7 +83,15 @@ public static class GameSaveMenu
 			}
 			if (args[i] == "-loadslot" && int.TryParse(args[i + 1], out int loadSlot))
 			{
-				GameSave.Load(loadSlot - 1);
+				// hosting starts by clearing the requested world, so a host loads once it's up (like the menu)
+				if (System.Array.IndexOf(args, "-coophost") >= 0)
+				{
+					CoopSession.EnsureExists().StartCoroutine(LoadWhenHosting(loadSlot - 1));
+				}
+				else
+				{
+					GameSave.Load(loadSlot - 1);
+				}
 			}
 		}
 #endif
@@ -144,7 +152,7 @@ public static class GameSaveMenu
 		for (int i = 0; i < slotLabels.Count; i++)
 		{
 			string description = GameSave.Describe(i);
-			bool empty = GameSave.Read(i) == null;
+			bool empty = GameSave.State(i) == GameSave.SlotState.Empty;
 			slotLabels[i].text = (mode == Mode.NewGame && !empty) ? (description + " (replace)") : description;
 		}
 		from.SetActive(false);

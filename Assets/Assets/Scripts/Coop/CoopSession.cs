@@ -62,6 +62,8 @@ public class CoopSession : MonoBehaviour
 		Snapshot = 29,
 		// [kind][netId][payload] for systems on NetRegistry
 		Entity = 30,
+		// this player's down or not, for a peer that missed the event
+		DownedState = 31,
 		// EOS only (no handshake there)
 		Hello = 100,
 		Welcome = 101,
@@ -87,7 +89,7 @@ public class CoopSession : MonoBehaviour
 	private const float lanHeadStart = 1f;
 
 	// bump on protocol changes
-	private const string connectionKey = "GLTPS1-coop-22";
+	private const string connectionKey = "GLTPS1-coop-23";
 
 	private const string difficultyKey = "difficultySetting";
 
@@ -141,7 +143,8 @@ public class CoopSession : MonoBehaviour
 	// host: bumped on every level load
 	private int hostLevelRun;
 
-	private ushort nextSequence;
+	// one count per message kind: a kind that's been silent a while mustn't look stale next to a busy one
+	private readonly Dictionary<byte, ushort> nextSequence = new Dictionary<byte, ushort>();
 
 	private readonly Dictionary<byte, ushort> lastSequence = new Dictionary<byte, ushort>();
 
@@ -484,6 +487,7 @@ public class CoopSession : MonoBehaviour
 
 	private void OnApplicationQuit()
 	{
+		GameSave.SaveForQuit();
 		Leave();
 		eos.Shutdown();
 	}
@@ -509,6 +513,13 @@ public class CoopSession : MonoBehaviour
 		}
 		UpdateEosJoin();
 		UpdateReconnect();
+		if (eos.TakeSendFailed() && eosPeer != null)
+		{
+			// a reliable message went out in part, what follows would be read as the rest of it
+			eos.Close(eosPeer);
+			eosPeer = null;
+			LinkDown("send failed");
+		}
 		// don't sit out the 20s transport timeout
 		if (!IsHost && Together && SilentFor > ((peer != null) ? deadAfterDirect : deadAfterEpic))
 		{
@@ -753,6 +764,13 @@ public class CoopSession : MonoBehaviour
 #if DUMP_WORLDGEN
 		link++;
 #endif
+	}
+
+	// a friend quitting to the title: the host sees them go, or it's left with a frozen puppet
+	public void QuitAsFriend()
+	{
+		Leave();
+		Status = "You left the game.";
 	}
 
 	public void Leave()
@@ -1188,7 +1206,20 @@ public class CoopSession : MonoBehaviour
 	}
 #endif
 
+	// one bad message loses that message, not the rest of the frame's
 	private void Dispatch(NetDataReader reader)
+	{
+		try
+		{
+			Handle(reader);
+		}
+		catch (Exception e)
+		{
+			Debug.LogError("Coop: a message failed: " + e);
+		}
+	}
+
+	private void Handle(NetDataReader reader)
 	{
 		MessageType messageType = (MessageType)reader.GetByte();
 		switch (messageType)
@@ -1230,13 +1261,12 @@ public class CoopSession : MonoBehaviour
 				{
 					// same world still running, carry on from where we are
 					Debug.Log("Coop: back in the same world, no reload");
-					writer.Reset();
-					writer.Put((byte)MessageType.Ready);
-					writer.Put(joinedLayoutHash);
-					Send(writer, DeliveryMethod.ReliableOrdered);
+					SendReady(joinedLayoutHash, true);
 					Status = "Playing together.";
 					break;
 				}
+				// the world's the host's now: it saves, this player's own slot stays out of it
+				GameSave.CurrentSlot = -1;
 				joinedSeed = @ulong;
 				joinedLevelRun = levelRun;
 				joinedGenVersion = genVersion;
@@ -1265,9 +1295,18 @@ public class CoopSession : MonoBehaviour
 			if (IsHost)
 			{
 				uint @uint = reader.GetUInt();
+				bool arrived = reader.GetBool();
 				Warning = ((@uint == hostLayoutHash) ? "" : "Your friend's world came out different from yours. Make sure you both have the same version of the mod.");
 				CoopWeather.SendCurrent();
 				CoopMusic.SendCurrent();
+				// what events told them while they were loading or away
+				if (arrived)
+				{
+					CoopKanazawa.SendUnlocks();
+					CoopBarrel.SendCurrentAsHost();
+					CoopKettenkrad.Instance?.SendCurrentPlace();
+					CoopDowned.Instance?.SendState();
+				}
 			}
 			break;
 		case MessageType.PlayerState:
@@ -1315,6 +1354,9 @@ public class CoopSession : MonoBehaviour
 			{
 				CoopDowned.Instance.OnMessage(messageType);
 			}
+			break;
+		case MessageType.DownedState:
+			CoopDowned.Instance?.OnState(reader.GetBool());
 			break;
 		case MessageType.Kanazawa:
 			if (CoopKanazawa.Instance != null)
@@ -1405,11 +1447,36 @@ public class CoopSession : MonoBehaviour
 			joinedGenVersion = WorldGenerator.GenVersion;
 			joinedLayer = generator.Layer;
 			joinedLayers = (generator.Layers != null) ? generator.Layers.Count : 1;
-			writer.Reset();
-			writer.Put((byte)MessageType.Ready);
-			writer.Put(generator.LayoutHash);
-			Send(writer, DeliveryMethod.ReliableOrdered);
+			StartCoroutine(ReadyWhenUp(generator.LayoutHash));
 			Status = "Playing together.";
+		}
+	}
+
+	// not from the world's Awake: nothing's there yet to take what the host sends back
+	private System.Collections.IEnumerator ReadyWhenUp(uint hash)
+	{
+		while (CoopPlayers.Instance == null || CoopPlayers.Instance.Local == null || CoopDowned.Instance == null)
+		{
+			if (!Connected || !Scenes.InGame)
+			{
+				yield break;
+			}
+			yield return null;
+		}
+		SendReady(hash, true);
+	}
+
+	// arrived: in the world for the first time, or back in it after a drop; not just on another layer
+	private void SendReady(uint hash, bool arrived)
+	{
+		writer.Reset();
+		writer.Put((byte)MessageType.Ready);
+		writer.Put(hash);
+		writer.Put(arrived);
+		Send(writer, DeliveryMethod.ReliableOrdered);
+		if (arrived)
+		{
+			CoopDowned.Instance?.SendState();
 		}
 	}
 
@@ -1435,10 +1502,7 @@ public class CoopSession : MonoBehaviour
 		joinedLayoutHash = generator.LayoutHash;
 		joinedLayer = generator.Layer;
 		joinedLayers = generator.Layers.Count;
-		writer.Reset();
-		writer.Put((byte)MessageType.Ready);
-		writer.Put(generator.LayoutHash);
-		Send(writer, DeliveryMethod.ReliableOrdered);
+		SendReady(generator.LayoutHash, false);
 	}
 
 	public void OnLayerArrived()
@@ -1484,7 +1548,6 @@ public class CoopSession : MonoBehaviour
 			sections.RemoveAll(s => s.Key == CoopGirlState.RejoinSection.SectionKey);
 		}
 		SendSnapshot(sections);
-		CoopKanazawa.SendUnlocks();
 		Status = "Playing together.";
 	}
 
@@ -1518,6 +1581,14 @@ public class CoopSession : MonoBehaviour
 		if (IsHost)
 		{
 			CoopGirlState.HostKept = null;
+			// back to the last save of this world. a fresh start would get a new seed, and autosave it over the slot
+			GameSave.SaveData saved = (GameSave.CurrentSlot >= 0) ? GameSave.Read(GameSave.CurrentSlot) : null;
+			if (saved != null && saved.seed == hostSeed.ToString())
+			{
+				GameSave.Load(GameSave.CurrentSlot);
+				return;
+			}
+			WorldGenerator.RequestedSeed = hostSeed;
 			SceneManager.LoadScene(Scenes.Game);
 			return;
 		}
@@ -1581,7 +1652,9 @@ public class CoopSession : MonoBehaviour
 		{
 			sequencedWriter.Reset();
 			sequencedWriter.Put((byte)MessageType.Sequenced);
-			sequencedWriter.Put(nextSequence++);
+			nextSequence.TryGetValue(message.Data[0], out ushort sequence);
+			nextSequence[message.Data[0]] = (ushort)(sequence + 1);
+			sequencedWriter.Put(sequence);
 			sequencedWriter.Put(message.Data, 0, message.Length);
 			message = sequencedWriter;
 		}
