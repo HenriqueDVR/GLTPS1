@@ -45,6 +45,16 @@ public class SafeGround : MonoBehaviour
 
 	private bool busy;
 
+	private bool startKnown;
+
+	private bool checkStart;
+
+	private Vector3 startSpot;
+
+	private int startChecks = 3;
+
+	private const float startDrift = 5f;
+
 	private Image black;
 
 	private GameObject overlay;
@@ -57,6 +67,41 @@ public class SafeGround : MonoBehaviour
 		floatingOrigin = origin;
 		haveGirl = false;
 		haveKet = false;
+		// a loaded save or a friend's rejoin places her themselves
+		if (!startKnown)
+		{
+			startKnown = true;
+			checkStart = Girls.Chito != null && !StateRegistry.HasPending(GirlsSection.SectionKey);
+			startSpot = checkStart ? Girls.Chito.transform.position : Vector3.zero;
+		}
+	}
+
+	// now and then chito's found inside the tunnel's rubble on a new world's first frame, 87 m from where she stood,
+	// cause not found yet. nothing else moves her that far that early, so she's put back where the scene has her
+	private void CheckStart(Girl girl)
+	{
+		if (startChecks-- <= 0)
+		{
+			checkStart = false;
+			return;
+		}
+		if (girl != Girls.Chito || (girl.transform.position - startSpot).sqrMagnitude < startDrift * startDrift)
+		{
+			return;
+		}
+		Debug.LogWarning("SafeGround: chito at " + girl.transform.position + " on frame " + Time.frameCount + ", back to " + startSpot);
+		CharacterController controller = girl.GetComponentInChildren<CharacterController>();
+		bool on = controller != null && controller.enabled;
+		if (on)
+		{
+			controller.enabled = false;
+		}
+		girl.transform.position = startSpot;
+		Physics.SyncTransforms();
+		if (on)
+		{
+			controller.enabled = true;
+		}
 	}
 
 	private void Start()
@@ -92,6 +137,10 @@ public class SafeGround : MonoBehaviour
 		if (plan == null || girl == null || busy || tiles == null || LayerTransition.Busy)
 		{
 			return;
+		}
+		if (checkStart)
+		{
+			CheckStart(girl);
 		}
 		float deck = tiles.GroundY;
 		bool driving = Driving(girl);
