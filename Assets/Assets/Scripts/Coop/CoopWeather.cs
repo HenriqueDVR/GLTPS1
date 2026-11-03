@@ -29,6 +29,7 @@ public static class CoopWeather
 	private static void Init()
 	{
 		NetRegistry.Register(NetRegistry.Kind.Weather, OnMessage);
+		NetRegistry.CatchUp += arrived => SendCurrent();
 	}
 
 	public static void ResetLevel()

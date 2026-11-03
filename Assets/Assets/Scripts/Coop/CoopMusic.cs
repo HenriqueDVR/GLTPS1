@@ -29,6 +29,12 @@ public static class CoopMusic
 		}
 	}
 
+	[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+	private static void Init()
+	{
+		NetRegistry.CatchUp += arrived => SendCurrent();
+	}
+
 	public static void ResetLevel()
 	{
 		hasState = false;

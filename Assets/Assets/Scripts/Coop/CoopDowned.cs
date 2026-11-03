@@ -373,6 +373,18 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 		CoopSession.Instance.Send(writer, DeliveryMethod.ReliableOrdered);
 	}
 
+	[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+	private static void InitCatchUp()
+	{
+		NetRegistry.CatchUp += delegate(bool arrived)
+		{
+			if (arrived)
+			{
+				Instance?.SendState();
+			}
+		};
+	}
+
 	public void SendState()
 	{
 		writer.Reset();

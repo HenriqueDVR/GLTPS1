@@ -34,10 +34,7 @@ public class ItemSpawnManager : MonoBehaviour
         {
             GameObject newItem = Instantiate(item[randomIndex], transform.position, transform.rotation);
             spawned = newItem;
-            if (itemId != 0)
-            {
-                CoopItem.Track(newItem, itemId);
-            }
+            CoopItem.Track(newItem, itemId);
         }
 #if DUMP_WORLDGEN
         Debug.Log("WorldGenItem " + transform.root.name + "/" + name + " -> " + (item[randomIndex] != null ? item[randomIndex].name : "nothing"));

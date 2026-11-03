@@ -1,49 +1,63 @@
-using System.Collections.Generic;
-using LiteNetLib;
 using LiteNetLib.Utils;
 using UnityEngine;
 
-// item ids come from the seeded spawner (or name+pos for scene items) so they match.
-// host decides: host takes right away, friend asks first
+// food and ammo lying around, an Interactable with a WorldFlags id. ids come from the seeded spawner (or name+pos for
+// scene items) so they match. host decides: alone or hosting it's taken right away, a friend asks first
 public class CoopItem : MonoBehaviour
 {
-	private enum Kind : byte
-	{
-		Food,
-		Ammo
-	}
-
-	private static readonly Dictionary<ulong, CoopItem> spawned = new Dictionary<ulong, CoopItem>();
-
-	private static readonly HashSet<ulong> taken = new HashSet<ulong>();
-
-	private static readonly Dictionary<ulong, Kind> requested = new Dictionary<ulong, Kind>();
-
-	private static readonly NetDataWriter writer = new NetDataWriter();
+	// about what the old 1 m trigger reached, with the girl's own width
+	private const float reach = 1.2f;
 
 	public ulong Id { get; private set; }
 
-	// keep what a loaded save already took
-	public static void ResetLevel()
+	[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+	public static void Init()
 	{
-		taken.Clear();
-		requested.Clear();
-		if (GameSave.RestoreTaken != null)
-		{
-			taken.UnionWith(GameSave.RestoreTaken);
-		}
+		NetRegistry.RegisterDecider(NetRegistry.Kind.Item, OnAsked);
 	}
 
-	public static IEnumerable<ulong> TakenIds => taken;
+	public static void ResetLevel()
+	{
+		WorldFlags.ResetLevel();
+	}
 
 	public static bool IsTaken(ulong id)
 	{
-		return taken.Contains(id);
+		return WorldFlags.Has(id);
 	}
 
+	// id 0: a loose one nobody else knows about, each player has their own and saves don't remember it
 	public static void Track(GameObject item, ulong id)
 	{
 		item.AddComponent<CoopItem>().Id = id;
+		bool food = !item.CompareTag("Ammo");
+		Interactable thing = item.AddComponent<Interactable>();
+		thing.Verb = Verb.Take;
+		thing.Range = reach;
+		thing.Label = "take";
+		if (food)
+		{
+			thing.Can = girl => girl == null || girl.Items.FoodHasRoom;
+		}
+		if (id == 0)
+		{
+			thing.Run = delegate(Girl girl)
+			{
+				if (food)
+				{
+					AddToBar(girl);
+				}
+				Give(girl, food);
+				Destroy(item);
+			};
+			return;
+		}
+		thing.Authority = Authority.Host;
+		thing.Kind = NetRegistry.Kind.Item;
+		thing.AskBody = writer => writer.Put(food);
+		thing.HideWhileAsking = true;
+		thing.Run = girl => Give(girl, food);
+		thing.UseFlag(id);
 	}
 
 	public static void TrackScenePickups()
@@ -72,208 +86,77 @@ public class CoopItem : MonoBehaviour
 		}
 	}
 
-	// single player too, for saves
-	public static CoopItem Find(Collider collider)
+	// host or alone: who gets it. food goes in the shared bar here, which the friend's follows
+	private static bool OnAsked(ulong id, NetDataReader reader)
 	{
-		return collider.GetComponentInParent<CoopItem>();
-	}
-
-	private void Start()
-	{
-		spawned[Id] = this;
-	}
-
-	private void OnDestroy()
-	{
-		if (spawned.TryGetValue(Id, out var value) && value == this)
+		bool food = reader.GetBool();
+		bool first = WorldFlags.Set(id);
+		if (first && food)
 		{
-			spawned.Remove(Id);
+			AddToBar(Girls.Local);
+		}
+		return first;
+	}
+
+	private static void AddToBar(Girl girl)
+	{
+		if (girl != null)
+		{
+			girl.Items.AddFood(girl.Items.RollFood());
 		}
 	}
 
-	public void TakeAsHost()
+	// to whoever picked it up: ammo in the gun, food's already in the bar
+	private static void Give(Girl girl, bool food)
 	{
-		taken.Add(Id);
-		SendTaken(Id, toFriend: false);
-	}
-
-	public bool RequestAsFriend()
-	{
-		// the host wouldn't hear: it stays lying there
-		if (taken.Contains(Id) || requested.ContainsKey(Id) || !CoopSession.Instance.Connected)
+		if (girl == null)
 		{
-			return false;
+			return;
 		}
-		requested[Id] = (base.gameObject.CompareTag("Ammo") ? Kind.Ammo : Kind.Food);
-		base.gameObject.SetActive(false);
-		writer.Reset();
-		writer.Put((byte)CoopSession.MessageType.TakeItem);
-		writer.Put(Id);
-		writer.Put(requested[Id] == Kind.Food);
-		CoopSession.Instance.Send(writer, DeliveryMethod.ReliableOrdered);
-		return true;
-	}
-
-	// food goes in the shared bar, ammo to the friend's gun
-	public static void OnTakeRequest(ulong id, bool isFood)
-	{
-		bool flag = taken.Add(id);
-		if (flag && isFood && CoopPlayers.Instance != null && CoopPlayers.Instance.Local != null)
+		if (food)
 		{
-			CharacterItemInteraction componentInChildren = CoopPlayers.Instance.Local.GetComponentInChildren<CharacterItemInteraction>();
-			componentInChildren.AddFood(componentInChildren.RollFood());
+			girl.Items.PlayPickupSound();
 		}
-#if DUMP_WORLDGEN
-		Debug.Log("CoopDebug friend asked for " + id + " (" + (spawned.TryGetValue(id, out var item) && item != null ? item.tag : "not spawned here") + ")" + (flag ? ", granted" : ", already gone"));
-#endif
-		Remove(id);
-		SendTaken(id, flag);
-	}
-
-	public static void OnTaken(ulong id, bool toFriend)
-	{
-		taken.Add(id);
-		Remove(id);
-		if (requested.TryGetValue(id, out var value))
+		else
 		{
-			requested.Remove(id);
-#if DUMP_WORLDGEN
-			Debug.Log("CoopDebug host answered " + id + (toFriend ? ": got it" : ": host had it"));
-#endif
-			if (toFriend)
-			{
-				GiveToLocalGirl(value);
-			}
-		}
-	}
-
-	// taken item ids, in the save and in the join snapshot
-	public class State : IStateful
-	{
-		public const string SectionKey = "items";
-
-		public string Key => SectionKey;
-
-		public int Version => 1;
-
-		public static void WriteData(StateWriter writer, ICollection<ulong> ids)
-		{
-			writer.Put(ids.Count);
-			foreach (ulong id in ids)
-			{
-				writer.Put(id);
-			}
-		}
-
-		public static List<ulong> ReadData(StateReader reader)
-		{
-			List<ulong> ids = new List<ulong>();
-			int count = reader.GetInt();
-			for (int i = 0; i < count; i++)
-			{
-				ids.Add(reader.GetULong());
-			}
-			return ids;
-		}
-
-		public void Write(StateWriter writer)
-		{
-			WriteData(writer, taken);
-		}
-
-		// before the world is built (a save loading, the friend joining) or into a running one (the friend resuming)
-		public void Read(StateReader reader, int version)
-		{
-			List<ulong> ids = ReadData(reader);
-			GameSave.RestoreTaken = new HashSet<ulong>(ids);
-			foreach (ulong id in ids)
-			{
-				taken.Add(id);
-				Remove(id);
-			}
-#if DUMP_WORLDGEN
-			Debug.Log("CoopDebug items taken: " + ids.Count);
-#endif
-		}
-	}
-
-	private static void SendTaken(ulong id, bool toFriend)
-	{
-		writer.Reset();
-		writer.Put((byte)CoopSession.MessageType.ItemTaken);
-		writer.Put(id);
-		writer.Put(toFriend);
-		if (CoopSession.Active)
-		{
-			CoopSession.Instance.Send(writer, DeliveryMethod.ReliableOrdered);
+			girl.Items.GiveAmmo();
 		}
 	}
 
 #if DUMP_WORLDGEN
 	public static void DebugTakeNearest(Transform girl)
 	{
-		CoopItem coopItem = null;
+		Interactable nearest = null;
 		float num = float.MaxValue;
 		ulong num2 = 0uL;
-		foreach (CoopItem value in spawned.Values)
+		int count = 0;
+		foreach (Interactable thing in Interactable.DebugLive)
 		{
-			if (value != null && value.gameObject.activeInHierarchy)
+			CoopItem item = thing.GetComponent<CoopItem>();
+			if (item != null)
 			{
-				num2 ^= value.Id * 0x9E3779B97F4A7C15uL;
-				float num3 = Vector3.Distance(girl.position, value.transform.position);
+				count++;
+				num2 ^= item.Id * 0x9E3779B97F4A7C15uL;
+				float num3 = Vector3.Distance(girl.position, thing.transform.position);
 				if (num3 < num)
 				{
 					num = num3;
-					coopItem = value;
+					nearest = thing;
 				}
 			}
 		}
-		Debug.Log("CoopDebug items spawned " + spawned.Count + " taken " + taken.Count + " set " + num2.ToString("x16"));
+		Debug.Log("CoopDebug items spawned " + count + " taken " + WorldFlags.Count + " set " + num2.ToString("x16"));
 		// also ask for one already taken, to test the refusal
-		if (!CoopSession.Instance.IsHost && taken.Count > 0)
+		if (!CoopSession.Instance.IsHost && WorldFlags.Count > 0)
 		{
-			writer.Reset();
-			writer.Put((byte)CoopSession.MessageType.TakeItem);
-			writer.Put(System.Linq.Enumerable.First(taken));
-			writer.Put(true);
-			CoopSession.Instance.Send(writer, DeliveryMethod.ReliableOrdered);
+			ulong gone = System.Linq.Enumerable.First(WorldFlags.All);
+			NetRegistry.Ask(NetRegistry.Kind.Item, gone, writer => writer.Put(true), granted => Debug.Log("CoopDebug host answered " + gone + (granted ? ": got it" : ": host had it")));
 		}
-		if (coopItem != null)
+		if (nearest != null)
 		{
-			Collider collider = coopItem.GetComponentInChildren<Collider>();
-			Debug.Log("CoopDebug taking " + coopItem.Id + " (" + coopItem.tag + ") " + num.ToString("F0") + "m away");
-			girl.GetComponentInChildren<CharacterItemInteraction>().DebugTake(collider);
+			Debug.Log("CoopDebug taking " + nearest.NetId + " (" + nearest.tag + ") " + num.ToString("F0") + "m away");
+			nearest.DebugFire(girl.GetComponent<Girl>());
 		}
 	}
 #endif
-
-	private static void Remove(ulong id)
-	{
-		if (spawned.TryGetValue(id, out var value))
-		{
-			spawned.Remove(id);
-			if (value != null)
-			{
-				Object.Destroy(value.gameObject);
-			}
-		}
-	}
-
-	private static void GiveToLocalGirl(Kind kind)
-	{
-		if (CoopPlayers.Instance == null || CoopPlayers.Instance.Local == null)
-		{
-			return;
-		}
-		CharacterItemInteraction componentInChildren = CoopPlayers.Instance.Local.GetComponentInChildren<CharacterItemInteraction>();
-		if (kind == Kind.Food)
-		{
-			// food comes with the host's food bar
-			componentInChildren.PlayPickupSound();
-		}
-		else
-		{
-			componentInChildren.GiveAmmo();
-		}
-	}
 }

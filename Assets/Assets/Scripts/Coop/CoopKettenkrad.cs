@@ -185,6 +185,18 @@ public class CoopKettenkrad : MonoBehaviour
 
 	private bool yielding;
 
+	[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+	private static void InitCatchUp()
+	{
+		NetRegistry.CatchUp += delegate(bool arrived)
+		{
+			if (arrived)
+			{
+				Instance?.SendCurrentPlace();
+			}
+		};
+	}
+
 	// a friend arriving or coming back: a ket moved during a drop would be in two places
 	public void SendCurrentPlace()
 	{

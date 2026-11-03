@@ -7,8 +7,6 @@ using TMPro;
 public class CharacterItemInteraction : MonoBehaviour, IInteractionSource
 {
     public PlayerInputInitialize playerInputScript;
-    private bool isFood;
-    private bool isAmmo;
     private bool isCampfire;
     public bool isInCampfireArea;
 
@@ -67,44 +65,10 @@ public class CharacterItemInteraction : MonoBehaviour, IInteractionSource
         {
             return;
         }
-        if (isFood && characterStatusScript.index < maxFoodCount && item.gameObject.CompareTag("Food"))
-        {
-            into.Add(new Interaction { Verb = Verb.Take, Press = Press.Tap, Target = item.transform, Priority = 1, Run = () => TakeFood(item), Source = "food" });
-        }
-        else if (isAmmo && item.gameObject.CompareTag("Ammo"))
-        {
-            into.Add(new Interaction { Verb = Verb.Take, Press = Press.Tap, Target = item.transform, Priority = 1, Run = () => TakeAmmo(item), Source = "ammo" });
-        }
-        else if (isCampfire && item.gameObject.CompareTag("CampfireInteractArea") && item.gameObject.GetComponentInParent<CampfireFuelLevel>().currentFuelLevel > 0)
+        if (isCampfire && item.gameObject.CompareTag("CampfireInteractArea") && item.gameObject.GetComponentInParent<CampfireFuelLevel>().currentFuelLevel > 0)
         {
             into.Add(new Interaction { Verb = Verb.PutOut, Press = Press.Tap, Target = item.transform, Priority = 1, Run = () => PutOut(item), Source = "campfire" });
         }
-    }
-
-    private void TakeFood(Collider item)
-    {
-        if (item == null || item != other)
-        {
-            return;
-        }
-        if (TakeItem())
-        {
-            GiveFood();
-        }
-        isFood = false;
-    }
-
-    private void TakeAmmo(Collider item)
-    {
-        if (item == null || item != other)
-        {
-            return;
-        }
-        if (TakeItem())
-        {
-            GiveAmmo();
-        }
-        isAmmo = false;
     }
 
     private void PutOut(Collider area)
@@ -119,26 +83,7 @@ public class CharacterItemInteraction : MonoBehaviour, IInteractionSource
         }
     }
 
-    // false if the loot comes later (coop friend asks the host first)
-    private bool TakeItem()
-    {
-        CoopItem coopItem = CoopItem.Find(other);
-        if (coopItem != null && CoopSession.Active && !CoopSession.Instance.IsHost)
-        {
-            coopItem.RequestAsFriend();
-            return false;
-        }
-        coopItem?.TakeAsHost();
-        Destroy(other.gameObject);
-        return true;
-    }
-
-    public void GiveFood()
-    {
-        //increase food count by random amount
-        AddFood(RollFood());
-        PlayPickupSound();
-    }
+    public bool FoodHasRoom => characterStatusScript.index < maxFoodCount;
 
     public void GiveAmmo()
     {
@@ -226,23 +171,6 @@ public class CharacterItemInteraction : MonoBehaviour, IInteractionSource
     public string DebugSupplies()
     {
         return "food " + characterStatusScript.index + " water " + characterStatusScript.waterLevel.ToString("F2");
-    }
-
-    // -cooptake
-    public void DebugTake(Collider item)
-    {
-        other = item;
-        if (TakeItem())
-        {
-            if (item.CompareTag("Ammo"))
-            {
-                GiveAmmo();
-            }
-            else
-            {
-                GiveFood();
-            }
-        }
     }
 #endif
 
@@ -404,17 +332,7 @@ public class CharacterItemInteraction : MonoBehaviour, IInteractionSource
 
     void OnTriggerStay(Collider other)
     {
-        if (other.gameObject.CompareTag("Food"))
-        {
-            isFood = true;
-            this.other = other;
-        }
-        else if (other.gameObject.CompareTag("Ammo"))
-        {
-            isAmmo = true;
-            this.other = other;
-        }
-        else if (other.gameObject.CompareTag("Water"))
+        if (other.gameObject.CompareTag("Water"))
         {
             if (!IsCoopPuppet)
             {
@@ -439,14 +357,6 @@ public class CharacterItemInteraction : MonoBehaviour, IInteractionSource
 
     void OnTriggerExit(Collider other)
     {
-        if (other.gameObject.CompareTag("Food"))
-        {
-            isFood = false;
-        }
-        if (other.gameObject.CompareTag("Ammo"))
-        {
-            isAmmo = false;
-        }
         if (other.gameObject.CompareTag("CampfireWarmthArea"))
         {
             isInCampfireArea = false;

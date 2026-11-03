@@ -30,10 +30,6 @@ public class CoopSession : MonoBehaviour
 		PlayerState = 3,
 		// host went back to title
 		Menu = 4,
-		// friend asks for an item
-		TakeItem = 5,
-		// item gone (+ did the friend get it)
-		ItemTaken = 6,
 		// food/water/stats
 		Supplies = 8,
 		CampfirePlaced = 10,
@@ -66,6 +62,10 @@ public class CoopSession : MonoBehaviour
 		DownedState = 31,
 		// [which][direction] a player's emote (GirlIdle)
 		Emote = 32,
+		// friend->host [kind][netId][token][payload]: NetRegistry.Ask
+		Request = 33,
+		// host->friend [token][granted]
+		Answer = 34,
 		// EOS only (no handshake there)
 		Hello = 100,
 		Welcome = 101,
@@ -91,7 +91,7 @@ public class CoopSession : MonoBehaviour
 	private const float lanHeadStart = 1f;
 
 	// bump on protocol changes
-	private const string connectionKey = "GLTPS1-coop-24";
+	private const string connectionKey = "GLTPS1-coop-25";
 
 	private const string difficultyKey = "difficultySetting";
 
@@ -145,10 +145,7 @@ public class CoopSession : MonoBehaviour
 	// host: bumped on every level load
 	private int hostLevelRun;
 
-	// one count per message kind: a kind that's been silent a while mustn't look stale next to a busy one
-	private readonly Dictionary<byte, ushort> nextSequence = new Dictionary<byte, ushort>();
-
-	private readonly Dictionary<byte, ushort> lastSequence = new Dictionary<byte, ushort>();
+	private readonly NetSequence sequences = new NetSequence();
 
 	private readonly NetDataWriter sequencedWriter = new NetDataWriter();
 
@@ -668,6 +665,7 @@ public class CoopSession : MonoBehaviour
 		Debug.Log("Coop: lost the host (" + reason + "), reconnecting");
 		reconnectUntil = Time.unscaledTime + reconnectWindow;
 		Status = "Lost the host (" + reason + "). Reconnecting...";
+		NetRegistry.LinkLost();
 		PartnerLeft?.Invoke();
 		RetryJoin();
 		return true;
@@ -881,7 +879,7 @@ public class CoopSession : MonoBehaviour
 			eos.Close(eosTarget);
 		}
 		eosTarget = null;
-		lastSequence.Clear();
+		sequences.ClearSeen();
 		Debug.Log("Coop: connected (" + LinkKind + ")");
 		if (IsHost)
 		{
@@ -1233,12 +1231,10 @@ public class CoopSession : MonoBehaviour
 			{
 				break;
 			}
-			byte inner = reader.PeekByte();
-			if (lastSequence.TryGetValue(inner, out ushort last) && (short)(sequence - last) <= 0)
+			if (!sequences.Fresh(NetSequence.KeyOf(reader.RawData, reader.Position), sequence))
 			{
 				break;
 			}
-			lastSequence[inner] = sequence;
 			Dispatch(reader);
 			break;
 		}
@@ -1299,16 +1295,7 @@ public class CoopSession : MonoBehaviour
 				uint @uint = reader.GetUInt();
 				bool arrived = reader.GetBool();
 				Warning = ((@uint == hostLayoutHash) ? "" : "Your friend's world came out different from yours. Make sure you both have the same version of the mod.");
-				CoopWeather.SendCurrent();
-				CoopMusic.SendCurrent();
-				// what events told them while they were loading or away
-				if (arrived)
-				{
-					CoopKanazawa.SendUnlocks();
-					CoopBarrel.SendCurrentAsHost();
-					CoopKettenkrad.Instance?.SendCurrentPlace();
-					CoopDowned.Instance?.SendState();
-				}
+				NetRegistry.RunCatchUp(arrived);
 			}
 			break;
 		case MessageType.PlayerState:
@@ -1321,22 +1308,22 @@ public class CoopSession : MonoBehaviour
 				SceneManager.LoadScene(Scenes.Title);
 			}
 			break;
-		case MessageType.TakeItem:
-			if (IsHost)
-			{
-				ulong ulong3 = reader.GetULong();
-				CoopItem.OnTakeRequest(ulong3, reader.GetBool());
-			}
-			break;
-		case MessageType.ItemTaken:
-			if (!IsHost)
-			{
-				ulong ulong2 = reader.GetULong();
-				CoopItem.OnTaken(ulong2, reader.GetBool());
-			}
-			break;
 		case MessageType.Entity:
 			NetRegistry.Dispatch(reader);
+			break;
+		case MessageType.Request:
+			if (IsHost)
+			{
+				NetDataWriter reply = new NetDataWriter();
+				NetRegistry.AnswerRequest(reader, reply);
+				Send(reply, DeliveryMethod.ReliableOrdered);
+			}
+			break;
+		case MessageType.Answer:
+			if (!IsHost)
+			{
+				NetRegistry.OnAnswer(reader);
+			}
 			break;
 		case MessageType.Music:
 			if (!IsHost)
@@ -1657,9 +1644,7 @@ public class CoopSession : MonoBehaviour
 		{
 			sequencedWriter.Reset();
 			sequencedWriter.Put((byte)MessageType.Sequenced);
-			nextSequence.TryGetValue(message.Data[0], out ushort sequence);
-			nextSequence[message.Data[0]] = (ushort)(sequence + 1);
-			sequencedWriter.Put(sequence);
+			sequencedWriter.Put(sequences.Next(NetSequence.KeyOf(message.Data, 0)));
 			sequencedWriter.Put(message.Data, 0, message.Length);
 			message = sequencedWriter;
 		}

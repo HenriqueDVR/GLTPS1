@@ -95,7 +95,7 @@ public static class GameSave
 	{
 		// read as soon as a save loads, the world's built from it
 		StateRegistry.Register(new LayersSection(), StateUse.Save);
-		StateRegistry.Register(new CoopItem.State(), StateUse.Both);
+		StateRegistry.Register(new WorldFlags.State(), StateUse.Both);
 		StateRegistry.Register(new CoopPipes.State(), StateUse.Both);
 		StateRegistry.Register(new CoopGirlState.RejoinSection(), StateUse.Join);
 	}
@@ -272,8 +272,8 @@ public static class GameSave
 			taken.Add(ulong.Parse(item));
 		}
 		writer = new StateWriter();
-		CoopItem.State.WriteData(writer, taken);
-		sections.Add(Section(CoopItem.State.SectionKey, 1, writer));
+		WorldFlags.State.WriteData(writer, taken);
+		sections.Add(Section(WorldFlags.State.SectionKey, 1, writer));
 		Dictionary<ulong, float> pipes = new Dictionary<ulong, float>();
 		for (int i = 0; old.pipeKeys != null && old.pipeLevels != null && i < old.pipeKeys.Count && i < old.pipeLevels.Count; i++)
 		{

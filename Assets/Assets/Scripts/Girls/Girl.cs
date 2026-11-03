@@ -79,6 +79,11 @@ public class Girl : MonoBehaviour
 
 	public NPCInteraction Npc => npc;
 
+	public bool CanBoard => vehicle != null && vehicle.isActiveAndEnabled && vehicle.ClaimsInteract;
+
+	// at the wheel, on the back seat, or on her way on or off
+	public bool OnKet => (vehicle != null && vehicle.IsDriving) || Animator.GetCurrentAnimatorStateInfo(1).IsTag("Ket");
+
 	public void Init(GirlId id, GirlControl control)
 	{
 		Id = id;

@@ -41,6 +41,11 @@ public class Interaction
 
 	public Action Run;
 
+	// what the prompt says (InteractPrompt), and how far over Target. null: no prompt
+	public string Label;
+
+	public float PromptHeight;
+
 	// for logs
 	public string Source;
 
@@ -50,7 +55,7 @@ public class Interaction
 	}
 }
 
-// anything that offers interactions: the girl's own scripts for now, objects later
+// anything on the girl or session-wide that offers interactions. things in the world are Interactables
 public interface IInteractionSource
 {
 	void Collect(List<Interaction> into);
@@ -95,6 +100,26 @@ public class InteractionResolver
 		}
 		return best;
 	}
+
+	// what a press now would do, without doing it. a tap shows over a hold: it needs nothing more than the press. unless
+	// only the hold has something to say (the barrel's tap by the ket's get in)
+	public static Interaction Preview(List<Interaction> now, Vector3 eye, Vector3 forward)
+	{
+		Interaction continuous = Best(now, global::Press.Continuous, eye, forward);
+		if (continuous != null)
+		{
+			return continuous;
+		}
+		Interaction tap = Best(now, global::Press.Tap, eye, forward);
+		Interaction hold = Best(now, global::Press.Hold, eye, forward);
+		return (tap == null || (tap.Label == null && hold != null && hold.Label != null)) ? hold : tap;
+	}
+
+	// being held, not fired yet
+	public Interaction Holding => holding;
+
+	// 0-1, -1 when nothing's being held
+	public float HeldShare => (holding == null) ? -1f : ((holding.HoldTime > 0f) ? Mathf.Clamp01(held / holding.HoldTime) : 1f);
 
 	public void Press(List<Interaction> now, Vector3 eye, Vector3 forward)
 	{

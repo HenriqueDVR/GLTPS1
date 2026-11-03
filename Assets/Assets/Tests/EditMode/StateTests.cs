@@ -250,7 +250,7 @@ public class StateTests
 		Assert.IsTrue(ket.HasLooseBarrel);
 		Assert.AreEqual(new Vector3(11f, 0f, -21f), ket.Barrel);
 
-		CollectionAssert.AreEquivalent(new[] { ulong.MaxValue, 42uL }, CoopItem.State.ReadData(new StateReader(sections["items"].Data)));
+		CollectionAssert.AreEquivalent(new[] { ulong.MaxValue, 42uL }, WorldFlags.State.ReadData(new StateReader(sections["items"].Data)));
 		Dictionary<ulong, float> pipes = CoopPipes.State.ReadData(new StateReader(sections["pipes"].Data));
 		Assert.AreEqual(1, pipes.Count);
 		Assert.AreEqual(0.25f, pipes[99uL]);

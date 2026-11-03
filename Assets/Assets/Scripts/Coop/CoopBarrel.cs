@@ -60,12 +60,16 @@ public class CoopBarrel : MonoBehaviour
 	}
 
 	// a friend arriving or coming back (Ready): the host's word on where it is
-	public static void SendCurrentAsHost()
+	[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+	private static void InitCatchUp()
 	{
-		if (CoopSession.Instance.IsHost)
+		NetRegistry.CatchUp += delegate(bool arrived)
 		{
-			SendCurrent();
-		}
+			if (arrived && CoopSession.Instance.IsHost)
+			{
+				SendCurrent();
+			}
+		};
 	}
 
 	// they've got it, or it's on the ket: whatever we thought during a drop, we're not carrying it

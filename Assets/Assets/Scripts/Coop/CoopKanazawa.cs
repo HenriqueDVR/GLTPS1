@@ -279,6 +279,18 @@ public class CoopKanazawa : MonoBehaviour
 	// as index: they had it already, no notice
 	private const int catchUp = 1;
 
+	[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+	private static void InitCatchUp()
+	{
+		NetRegistry.CatchUp += delegate(bool arrived)
+		{
+			if (arrived)
+			{
+				SendUnlocks();
+			}
+		};
+	}
+
 	public static void SendUnlocks()
 	{
 		if (Instance == null || Instance.map == null)

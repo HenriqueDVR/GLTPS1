@@ -256,7 +256,7 @@ public class CharacterVehicleInteraction : MonoBehaviour, IInteractionSource
     {
         if (ClaimsInteract)
         {
-            into.Add(new Interaction { Verb = Verb.Board, Press = Press.Hold, HoldTime = holdToEnterTime, Target = vehicleSeat, Priority = 1, Run = Enter, Source = "ket" });
+            into.Add(new Interaction { Verb = Verb.Board, Press = Press.Hold, HoldTime = holdToEnterTime, Target = vehicleSeat, Priority = 1, Run = Enter, Label = boardLabel, PromptHeight = 2.1f, Source = "ket" });
         }
     }
 
@@ -273,8 +273,11 @@ public class CharacterVehicleInteraction : MonoBehaviour, IInteractionSource
         }
     }
 
+    private const string boardLabel = "get in";
+
     private void Enter()
     {
+        InteractPrompt.Used(boardLabel);
         // coop: hop on/off the back
         if (CoopKettenkrad.Instance != null && CoopKettenkrad.Instance.HandleInteract(enterable))
         {
