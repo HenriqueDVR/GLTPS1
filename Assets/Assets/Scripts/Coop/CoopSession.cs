@@ -91,7 +91,7 @@ public class CoopSession : MonoBehaviour
 	private const float lanHeadStart = 1f;
 
 	// bump on protocol changes
-	private const string connectionKey = "GLTPS1-coop-25";
+	private const string connectionKey = "GLTPS1-coop-26";
 
 	private const string difficultyKey = "difficultySetting";
 
@@ -1283,6 +1283,7 @@ public class CoopSession : MonoBehaviour
 				WorldGenerator.RequestedOrigins = origins;
 				WorldGenerator.RequestedLayer = layer;
 				CoopItem.ResetLevel();
+				WorldClock.ResetLevel();
 				CoopWeather.ResetLevel();
 				CoopMusic.ResetLevel();
 				Status = "Loading the host's world...";
@@ -1580,6 +1581,7 @@ public class CoopSession : MonoBehaviour
 				GameSave.Load(GameSave.CurrentSlot);
 				return;
 			}
+			WorldClock.ResetLevel();
 			WorldGenerator.RequestedSeed = hostSeed;
 			SceneManager.LoadScene(Scenes.Game);
 			return;

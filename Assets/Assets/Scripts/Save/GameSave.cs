@@ -328,6 +328,7 @@ public static class GameSave
 		RestoreTaken = null;
 		CoopPipes.SetRestore(null);
 		playSecondsBefore = 0f;
+		WorldClock.ResetLevel();
 		if (!CoopSession.Active || CoopSession.Instance.IsHost)
 		{
 			WorldGenerator.ClearRequested();
@@ -361,7 +362,8 @@ public static class GameSave
 			GirlsSection.ReadData(new StateReader(girls.Data), out SavedGirl _, out SavedGirl yuuri);
 			CoopGirlState.HostKept = yuuri.ToState();
 		}
-		// layers, items and pipes are read now, the rest once the world is up
+		// layers, items, pipes and the clock are read now, the rest once the world is up
+		WorldClock.ResetForLoad();
 		StateRegistry.ClearPending();
 		StateRegistry.SetPending(sections);
 		Debug.Log("Save: loading slot " + (slot + 1));
