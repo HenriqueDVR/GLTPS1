@@ -19,7 +19,8 @@ public enum InputContext
 	Carrying,
 	HoldingMap,
 	KetAirborne,
-	ElevatorClosing
+	ElevatorClosing,
+	Emoting
 }
 
 // one per girl (PlayerInputInitialize). push a context and keep the token, pop the token when done.
@@ -143,6 +144,7 @@ public class InputContextStack
 		bool possess = true;
 		bool interact = true;
 		bool exit = true;
+		bool move = true;
 		foreach (Token token in stack)
 		{
 			if (IsMode(token.Context))
@@ -169,6 +171,11 @@ public class InputContextStack
 			case InputContext.ElevatorClosing:
 				interact = false;
 				break;
+			case InputContext.Emoting:
+				move = false;
+				jump = false;
+				interact = false;
+				break;
 			}
 		}
 		Mode = mode;
@@ -182,6 +189,7 @@ public class InputContextStack
 			Set(actions.Player.Sprint, sprint);
 			Set(actions.Player.Possess, possess);
 			Set(actions.Player.Interact, interact);
+			Set(actions.Player.Move, move);
 		}
 		if (vehicle)
 		{

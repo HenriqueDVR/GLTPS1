@@ -64,6 +64,8 @@ public class CoopSession : MonoBehaviour
 		Entity = 30,
 		// this player's down or not, for a peer that missed the event
 		DownedState = 31,
+		// [which][direction] a player's emote (GirlIdle)
+		Emote = 32,
 		// EOS only (no handshake there)
 		Hello = 100,
 		Welcome = 101,
@@ -89,7 +91,7 @@ public class CoopSession : MonoBehaviour
 	private const float lanHeadStart = 1f;
 
 	// bump on protocol changes
-	private const string connectionKey = "GLTPS1-coop-23";
+	private const string connectionKey = "GLTPS1-coop-24";
 
 	private const string difficultyKey = "difficultySetting";
 
@@ -1357,6 +1359,9 @@ public class CoopSession : MonoBehaviour
 			break;
 		case MessageType.DownedState:
 			CoopDowned.Instance?.OnState(reader.GetBool());
+			break;
+		case MessageType.Emote:
+			GirlIdle.OnEmote(reader);
 			break;
 		case MessageType.Kanazawa:
 			if (CoopKanazawa.Instance != null)

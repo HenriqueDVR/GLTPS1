@@ -113,6 +113,7 @@ public class Girl : MonoBehaviour
 			BodyFor(GirlControl.AI);
 		}
 		Footsteps = GetComponentInChildren<AudioSource>();
+		gameObject.AddComponent<GirlIdle>().Init(this);
 	}
 
 	// the AI girl's agent moves her, a controller only did harm: an immovable capsule to the ket, shoved and flipped by
