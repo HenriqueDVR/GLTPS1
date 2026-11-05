@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using NUnit.Framework;
 
-// world gen v2 plan: districts and the pillar grid. golden values freeze the genVersion 2 output
+// world gen v2 plan: districts and the pillar grid. golden values catch an unmeant change to the world
 public class LayerPlanTests
 {
 	private const ulong seed = 12345uL;
@@ -204,8 +204,8 @@ public class LayerPlanTests
 		Assert.AreNotEqual(h, new LayerPlan(seed, 1, new XZ(7300.0, -2000.0), stack[0]).PlanHash(new XZ(100.0, 100.0), 1));
 	}
 
-	// frozen genVersion 2 output, cross-checked against a separate python port.
-	// a failure here means v2 saves or mixed-version co-op would break: bump genVersion instead
+	// the world as it stands, cross-checked against a separate python port.
+	// a failure means tile output changed: fine before 1.0 if you meant it (update the numbers), a bug if you didn't
 	// our own sin and cos: the same bits on every runtime, and close to the real thing
 	[Test]
 	public void SinAndCos()

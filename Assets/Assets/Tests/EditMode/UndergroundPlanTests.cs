@@ -355,7 +355,7 @@ public class UndergroundPlanTests
 		Assert.IsFalse(plan.Underground.Blocks(plan.Origin, RoadPlan.StartClearance * 0.5));
 	}
 
-	// frozen genVersion 2 output. a failure here means v2 saves or mixed-version co-op would break: bump genVersion instead
+	// the world as it stands. a failure means tile output changed: fine before 1.0 if you meant it (update the numbers), a bug if you didn't
 	[Test]
 	public void GoldenValues()
 	{

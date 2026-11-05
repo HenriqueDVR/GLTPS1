@@ -69,7 +69,8 @@ public class CharacterItemInteraction : MonoBehaviour, IInteractionSource
         }
         if (isCampfire && item.gameObject.CompareTag("CampfireInteractArea") && item.gameObject.GetComponentInParent<CampfireFuelLevel>().currentFuelLevel > 0)
         {
-            into.Add(new Interaction { Verb = Verb.PutOut, Press = Press.Tap, Target = item.transform, Priority = 1, Run = () => PutOut(item), Source = "campfire" });
+            // held: a tap's what's left over when a cook's let go of early
+            into.Add(new Interaction { Verb = Verb.PutOut, Press = Press.Hold, HoldTime = 1f, Target = item.transform, Priority = 1, Label = "put out", Run = () => PutOut(item), Source = "campfire" });
         }
     }
 

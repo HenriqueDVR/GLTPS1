@@ -194,6 +194,12 @@ public class StateTests
 		Assert.AreEqual(-3, new StateReader(back[1].Data).GetInt());
 	}
 
+	[SetUp]
+	public void WarnsToLog()
+	{
+		StateRegistry.Warn = Debug.LogWarning;
+	}
+
 	private static List<string> Keys(List<StateSection> sections)
 	{
 		return sections.ConvertAll(s => s.Key);

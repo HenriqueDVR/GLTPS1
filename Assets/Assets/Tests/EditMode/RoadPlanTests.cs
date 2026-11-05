@@ -301,7 +301,7 @@ public class RoadPlanTests
 		Assert.AreNotEqual(h, new LayerPlan(seed + 1, 0, new XZ(0.0, 0.0), null).Roads.Hash(new XZ(100.0, 100.0), 1));
 	}
 
-	// frozen genVersion 2 output. a failure here means v2 saves or mixed-version co-op would break: bump genVersion instead
+	// the world as it stands. a failure means tile output changed: fine before 1.0 if you meant it (update the numbers), a bug if you didn't
 	[Test]
 	public void GoldenValues()
 	{

@@ -109,7 +109,7 @@ public struct HighwayLink
 // grid per street district, buried roads between sites in open districts. the pillars are the city's columns, not
 // destinations: roads bend around them and keep their footprint clear. pure like LayerPlan, so a tile asks for its own
 // pieces in any order. not thread safe (shared sample buffers).
-// everything here is part of the genVersion 2 output once a v2 release ships
+// everything here is part of tile output
 public sealed class RoadPlan
 {
 	public const double PieceLength = 16.0;

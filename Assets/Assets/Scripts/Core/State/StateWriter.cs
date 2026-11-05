@@ -1,6 +1,5 @@
 using System.IO;
 using System.Text;
-using UnityEngine;
 
 // binary, little endian. the same bytes go in the save file and to a joining friend
 public class StateWriter
@@ -47,21 +46,6 @@ public class StateWriter
 	public void Put(string value)
 	{
 		writer.Write(value ?? "");
-	}
-
-	public void Put(Vector3 value)
-	{
-		writer.Write(value.x);
-		writer.Write(value.y);
-		writer.Write(value.z);
-	}
-
-	public void Put(Quaternion value)
-	{
-		writer.Write(value.x);
-		writer.Write(value.y);
-		writer.Write(value.z);
-		writer.Write(value.w);
 	}
 
 	// length first

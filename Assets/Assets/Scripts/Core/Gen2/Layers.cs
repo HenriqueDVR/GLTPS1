@@ -10,7 +10,7 @@
 public static class Layers
 {
 	// stretches every layer's district bands and its elevators' distance together: 2 = everything twice as far out.
-	// stays 1 (17). changes the world (genVersion 2's output): a bump after a v2 release
+	// stays 1 (17). changes the world: free until 1.0
 	public const double DistanceScale = 1.0;
 
 	public static readonly LayerDef[] All =

@@ -1,6 +1,5 @@
 using System.IO;
 using System.Text;
-using UnityEngine;
 
 public class StateReader
 {
@@ -55,15 +54,5 @@ public class StateReader
 	public byte[] GetBytes()
 	{
 		return reader.ReadBytes(reader.ReadInt32());
-	}
-
-	public Vector3 GetVector3()
-	{
-		return new Vector3(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
-	}
-
-	public Quaternion GetQuaternion()
-	{
-		return new Quaternion(reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle(), reader.ReadSingle());
 	}
 }

@@ -1,5 +1,5 @@
 // the odds of what a tile places on top of its plan. changing one changes tiles, so they're in the co-op hash:
-// tune them before a v2 release, a genVersion bump after
+// tile output: free to tune until 1.0
 public static class TileOdds
 {
 	// share of lots with an item spawner, about one per city tile like the legacy nodes (tuned with SURV-4)

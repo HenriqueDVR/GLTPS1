@@ -41,8 +41,8 @@ public struct XZ : IEquatable<XZ>
 	}
 }
 
-// world gen v2 constants and the shared hashing. everything here is part of the genVersion 2 output:
-// once a v2 release ships, changing any of it needs a genVersion bump
+// world gen v2 constants and the shared hashing. everything here is part of tile output: until 1.0 it may change between
+// releases, co-op peers must only agree
 public static class Gen2
 {
 	public const int GenVersion = 2;

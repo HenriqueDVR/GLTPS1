@@ -42,6 +42,7 @@ public class CampFire : MonoBehaviour
 		cook.HoldTime = cookHold;
 		cook.Range = reach;
 		cook.Label = "cook";
+		cook.Priority = 2;
 		cook.Can = CanCook;
 		cook.Run = Cook;
 		Interactable sleep = gameObject.AddComponent<Interactable>();

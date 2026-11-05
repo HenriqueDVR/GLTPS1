@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using UnityEngine;
 
 // where a section goes: the save file, the snapshot a joining friend gets, or both
 [Flags]
@@ -25,6 +24,9 @@ public class StateSection
 // so when something registers is when its saved state comes back
 public static class StateRegistry
 {
+	// the game side points this at its log, Core doesn't know Unity
+	public static Action<string> Warn = delegate { };
+
 	private static readonly Dictionary<string, IStateful> registered = new Dictionary<string, IStateful>();
 
 	private static readonly Dictionary<string, StateUse> uses = new Dictionary<string, StateUse>();
@@ -141,7 +143,7 @@ public static class StateRegistry
 		}
 		catch (Exception e)
 		{
-			Debug.LogWarning("State: couldn't write " + stateful.Key + ": " + e);
+			Warn("State: couldn't write " + stateful.Key + ": " + e);
 			if (keepOld && lastGood.TryGetValue(stateful.Key, out StateSection old))
 			{
 				sections.Add(old);
@@ -153,7 +155,7 @@ public static class StateRegistry
 	{
 		if (section.Version > stateful.Version)
 		{
-			Debug.LogWarning("State: " + section.Key + " is from a newer version (" + section.Version + " > " + stateful.Version + "), skipped");
+			Warn("State: " + section.Key + " is from a newer version (" + section.Version + " > " + stateful.Version + "), skipped");
 			unread[section.Key] = section;
 			return;
 		}
@@ -165,7 +167,7 @@ public static class StateRegistry
 		}
 		catch (Exception e)
 		{
-			Debug.LogWarning("State: couldn't read " + section.Key + ": " + e);
+			Warn("State: couldn't read " + section.Key + ": " + e);
 			unread[section.Key] = section;
 		}
 	}
