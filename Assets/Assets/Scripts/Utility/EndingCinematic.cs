@@ -39,9 +39,6 @@ public class EndingCinematic : MonoBehaviour
 
 	private const float fogTime = 10f;
 
-	// map pieces spawn and stay shown out to this far
-	private const float reach = 3000f;
-
 	private static EndingCinematic running;
 
 	private Transform elevator;
@@ -68,12 +65,6 @@ public class EndingCinematic : MonoBehaviour
 	private float angle;
 
 	private float writtenFog = -1f;
-
-	private float oldHide;
-
-	private float oldSpawn;
-
-	private NodeData nodeData;
 
 	// hud that was up when the ride started, not the ending screen
 	private readonly List<CanvasGroup> hud = new List<CanvasGroup>();
@@ -224,8 +215,6 @@ public class EndingCinematic : MonoBehaviour
 		shot.m_Priority = 1000;
 		startFromCar = camera.transform.position - Anchor();
 		startRotation = camera.transform.rotation;
-		// blocks in the gaps out to the haze
-		EndingCity.Build(transform, elevator.root);
 		FindHud();
 		// the listener goes on the live camera's look at target, with none it sat out here and everything went quiet
 		brain = camera.GetComponent<CinemachineBrain>();
@@ -237,15 +226,6 @@ public class EndingCinematic : MonoBehaviour
 		if (player != null)
 		{
 			shot.LookAt = player.LookAt != null ? player.LookAt : player.Follow;
-		}
-		oldHide = WorldGenerator.HideDistance;
-		WorldGenerator.HideDistance = Mathf.Max(oldHide, reach);
-		GameObject data = GameObject.FindWithTag("NodeData");
-		nodeData = data != null ? data.GetComponent<NodeData>() : null;
-		if (nodeData != null)
-		{
-			oldSpawn = nodeData.spawnThreshold;
-			nodeData.spawnThreshold = Mathf.Max(oldSpawn, reach);
 		}
 	}
 
@@ -466,12 +446,6 @@ public class EndingCinematic : MonoBehaviour
 		if (brain != null)
 		{
 			brain.m_DefaultBlend = oldBlend;
-		}
-		// static, it would carry into the next game
-		WorldGenerator.HideDistance = oldHide;
-		if (nodeData != null)
-		{
-			nodeData.spawnThreshold = oldSpawn;
 		}
 	}
 }

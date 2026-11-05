@@ -94,7 +94,7 @@ public class CharacterStatus : MonoBehaviour
         waterLevel = Mathf.Clamp(waterLevel, 0, maxWaterLevel);
 
         // snow melts at a lit fire: the open world's water, there's no pipe to count on. friend gets water from the host
-        if (WorldGenerator.GenVersion == 2 && (chitoItems.AtLitFire || yuuriItems.AtLitFire) && (!CoopSession.InGame || CoopSession.Instance.IsHost))
+        if ((chitoItems.AtLitFire || yuuriItems.AtLitFire) && (!CoopSession.InGame || CoopSession.Instance.IsHost))
         {
             waterLevel += snowMeltRate * Time.deltaTime;
         }
@@ -131,8 +131,8 @@ public class CharacterStatus : MonoBehaviour
     {
         // colder out in the weather
         float scaledTemperatureLossRate = temperatureLossRate[items.isUnderCeiling ? 0 : weatherManagerScript.index] / referenceFrameRate;
-        // and at night, out in the open. the legacy world has no night
-        if (!items.isUnderCeiling && WorldGenerator.GenVersion == 2)
+        // and at night, out in the open
+        if (!items.isUnderCeiling)
         {
             scaledTemperatureLossRate *= DayCurve.Cold(WorldClock.TimeOfDay);
         }

@@ -100,15 +100,11 @@ public class DistantPillar : MonoBehaviour
 
 		public Material Material;
 
-		// legacy
-		public WorldLayout.PlacedNode Node;
-
-		// v2
 		public PillarStreamer.Spot Spot;
 
-		public Pose Pose => (Node != null) ? Node.Pose : Spot.Pose;
+		public Pose Pose => Spot.Pose;
 
-		public GameObject Instance => (Node != null) ? Node.Instance : Spot.Instance;
+		public GameObject Instance => Spot.Instance;
 
 		// the real one's tower meshes, off while the copy stands in
 		public GameObject RealInstance;
@@ -119,8 +115,6 @@ public class DistantPillar : MonoBehaviour
 	private readonly List<Distant> pillars = new List<Distant>();
 
 	private WorldGenerator world;
-
-	private WorldLayout.PlacedNode pillar;
 
 	// the tower piece, and where the ceiling's tiling and the clouds are pinned (layout)
 	private GameObject prefab;
@@ -153,9 +147,6 @@ public class DistantPillar : MonoBehaviour
 
 	// copies of towers that went out of range, for the next ones
 	private readonly Stack<Distant> spare = new Stack<Distant>();
-
-	// nearest nine tiles round the eye
-	private readonly List<Transform> ceilings = new List<Transform>();
 
 	private Material ceilingMaterial;
 
@@ -289,54 +280,26 @@ public class DistantPillar : MonoBehaviour
 	{
 		world = GameSession.Get<WorldGenerator>();
 		streamer = GetComponent<PillarStreamer>();
-		pillar = world.Layout != null ? world.Pillar() : null;
-		if (pillar == null && (streamer == null || streamer.Prefab == null))
+		if (streamer == null || streamer.Prefab == null)
 		{
 			Destroy(this);
 			return;
 		}
 		instance = this;
 		silhouette = Resources.Load<Shader>("DistantSilhouette");
-		prefab = (pillar != null) ? pillar.Def.Prefab : streamer.Prefab;
+		prefab = streamer.Prefab;
 		albedo = TowerAlbedo(prefab);
-		// every real pillar gets the same treatment, not just the one the map points at
-		List<Vector3> towers = new List<Vector3>();
-		if (pillar != null)
-		{
-			anchor = pillar.Pose.position;
-			foreach (WorldLayout.PlacedNode node in world.Pillars())
-			{
-				pillars.Add(Make(silhouette, node));
-				towers.Add(node.Pose.position - pillar.Pose.position);
-			}
-		}
-		else
-		{
-			// the grid never repeats, so the tiled ceiling knows no towers. each copy brings its own deck instead
-			anchor = new Vector3((float)streamer.Plan.Origin.X, streamer.GroundY, (float)streamer.Plan.Origin.Z);
-			// measures the piece (foot, height, slab) before the levels are worked out
-			Distant measure = new Distant { Material = Own(new Material(silhouette)) };
-			measure.Copy = Copy(prefab, measure.Material).transform;
-			measure.Copy.gameObject.SetActive(false);
-			spare.Push(measure);
-		}
+		// the grid never repeats, so there's no tiled ceiling that knows the towers. each copy brings its own deck
+		anchor = new Vector3((float)streamer.Plan.Origin.X, streamer.GroundY, (float)streamer.Plan.Origin.Z);
+		// measures the piece (foot, height, slab) before the levels are worked out
+		Distant measure = new Distant { Material = Own(new Material(silhouette)) };
+		measure.Copy = Copy(prefab, measure.Material).transform;
+		measure.Copy.gameObject.SetActive(false);
+		spare.Push(measure);
 		stretch = Level() / BaseLevel();
-		// same holes every time for a seed
-		System.Random random = new System.Random((int)(world.Seed & 0x7fffffff));
 		ceilingMaterial = Own(new Material(Resources.Load<Shader>("DistantCeiling")));
-		// v2's is the layer above's real holes, built in tiles where the camera is (Uppers); the last layer has none
-		if (pillar == null)
-		{
-			upperLayer = streamer.Plan.Def.IsLast ? -1 : streamer.Plan.Layer + 1;
-		}
-		else
-		{
-			Mesh ceilingMesh = Ceiling(towers, random);
-			for (int i = 0; i < 9; i++)
-			{
-				ceilings.Add(CeilingTile(ceilingMesh).transform);
-			}
-		}
+		// the layer above's real holes, built in tiles where the camera is (Uppers); the last layer has none
+		upperLayer = streamer.Plan.Def.IsLast ? -1 : streamer.Plan.Layer + 1;
 		GameObject dome = GameObject.CreatePrimitive(PrimitiveType.Sphere);
 		Destroy(dome.GetComponent<Collider>());
 		dome.name = "DistantSky";
@@ -371,18 +334,6 @@ public class DistantPillar : MonoBehaviour
 			clouds.Add(layer.transform);
 			cloudMaterials.Add(material);
 		}
-	}
-
-	private Distant Make(Shader shader, WorldLayout.PlacedNode node)
-	{
-		Distant distant = new Distant
-		{
-			Material = Own(new Material(shader)),
-			Node = node
-		};
-		distant.Copy = Copy(prefab, distant.Material).transform;
-		distant.Material.SetColor("_Albedo", albedo);
-		return distant;
 	}
 
 	// v2: copies for the streamer's towers, reusing the ones that went out of range
@@ -534,13 +485,6 @@ public class DistantPillar : MonoBehaviour
 				Destroy(distant.Copy.gameObject);
 			}
 		}
-		foreach (Transform tile in ceilings)
-		{
-			if (tile != null)
-			{
-				Destroy(tile.gameObject);
-			}
-		}
 		foreach (Transform tile in uppers.Values)
 		{
 			DropUpper(tile);
@@ -580,10 +524,6 @@ public class DistantPillar : MonoBehaviour
 		foreach (Distant distant in instance.pillars)
 		{
 			distant.Copy.gameObject.SetActive(!hide && distant.Copy.gameObject.activeSelf);
-		}
-		foreach (Transform tile in instance.ceilings)
-		{
-			tile.gameObject.SetActive(!hide);
 		}
 		foreach (Transform tile in instance.uppers.Values)
 		{
@@ -839,79 +779,6 @@ public class DistantPillar : MonoBehaviour
 			new Vector3(min.x, min.y, min.z), new Vector3(max.x, min.y, min.z), new Vector3(min.x, max.y, min.z), new Vector3(max.x, max.y, min.z),
 			new Vector3(min.x, min.y, max.z), new Vector3(max.x, min.y, max.z), new Vector3(min.x, max.y, max.z), new Vector3(max.x, max.y, max.z)
 		};
-	}
-
-	// slabs with holes, solid round the pillars, wraps at the tile's sides. rim walls marked by vertex colour
-	private Mesh Ceiling(List<Vector3> towers, System.Random random)
-	{
-		int count = Mathf.CeilToInt(ceilingSize / ceilingCell / ceilingBlock) * ceilingBlock;
-		float cell = ceilingSize / count;
-		float half = ceilingSize * 0.5f;
-		int seed = random.Next();
-		float[,] field = new float[count + 1, count + 1];
-		for (int x = 0; x <= count; x++)
-		{
-			for (int y = 0; y <= count; y++)
-			{
-				float value = 0f;
-				for (int layer = 0; layer < ceilingPeriods.Length; layer++)
-				{
-					int period = ceilingPeriods[layer];
-					value += Wrapped((float)x * period / count, (float)y * period / count, period, seed + layer) * ceilingWeights[layer];
-				}
-				field[x, y] = value;
-			}
-		}
-		field = Wear(Wear(field, count, true), count, false);
-		// levels that leave the right share standing for each storey
-		float[] sorted = new float[count * count];
-		for (int x = 0; x < count; x++)
-		{
-			for (int y = 0; y < count; y++)
-			{
-				sorted[x * count + y] = field[x, y];
-			}
-		}
-		System.Array.Sort(sorted);
-		float[] levels = new float[storeys.Length];
-		for (int i = 0; i < levels.Length; i++)
-		{
-			levels[i] = sorted[Mathf.Clamp(Mathf.RoundToInt((1f - ceilingSolid * storeyShare[i]) * sorted.Length), 0, sorted.Length - 1)];
-		}
-		// the outer tier needs the least, the bottom one the most
-		float iso = levels[levels.Length - 1];
-		float top = levels[0];
-		for (int x = 0; x <= count; x++)
-		{
-			for (int y = 0; y <= count; y++)
-			{
-				// solid round the pillars, every storey, a cell's width to spare. ragged so it isn't a circle
-				Vector3 point = new Vector3(x * cell - half, 0f, y * cell - half);
-				float reach = Mathf.Max(0f, Wrapped(x * 18f / count, y * 18f / count, 18, seed + 9)) * 250f;
-				float solid = 0f;
-				foreach (Vector3 tower in towers)
-				{
-					solid = Mathf.Max(solid, Mathf.InverseLerp(560f + reach, 450f + reach, Apart(point, tower)));
-				}
-				if (solid > 0f)
-				{
-					field[x, y] = Mathf.Max(field[x, y], Mathf.Lerp(iso - 0.3f, top + 0.05f, solid));
-				}
-			}
-		}
-		DropIslands(field, count, iso);
-		Slabs slabs = new Slabs(field, count, cell, half, random.Next());
-		for (int i = 0; i < storeys.Length; i++)
-		{
-			slabs.Storey(i, levels[i], true);
-		}
-		Chunks(slabs, random);
-		Mesh mesh = new Mesh { name = "DistantCeiling", indexFormat = IndexFormat.UInt32 };
-		mesh.SetVertices(slabs.Vertices);
-		mesh.SetColors(slabs.Colours);
-		mesh.SetTriangles(slabs.Triangles, 0);
-		mesh.RecalculateBounds();
-		return mesh;
 	}
 
 	private GameObject CeilingTile(Mesh mesh)
@@ -1583,17 +1450,7 @@ public class DistantPillar : MonoBehaviour
 		float density = RenderSettings.fog ? RenderSettings.fogDensity : 0f;
 		Color fog = RenderSettings.fogColor;
 		Vector3 centre = goal + Vector3.up * (foot + Level());
-		if (pillar == null)
-		{
-			Uppers(eye, anchor - goal, centre.y);
-		}
-		// the tile under the eye and the ring round it
-		float tileX = Mathf.Round((eye.x - centre.x) / ceilingSize);
-		float tileZ = Mathf.Round((eye.z - centre.z) / ceilingSize);
-		for (int i = 0; i < ceilings.Count; i++)
-		{
-			ceilings[i].position = centre + new Vector3((tileX + i % 3 - 1) * ceilingSize, 0f, (tileZ + i / 3 - 1) * ceilingSize);
-		}
+		Uppers(eye, anchor - goal, centre.y);
 		ceilingMaterial.SetColor("_FogColor", fog);
 		sky.position = eye;
 		skyMaterial.SetColor("_FogColor", fog);

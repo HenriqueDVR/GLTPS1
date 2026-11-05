@@ -254,7 +254,6 @@ public class MapPaper : MonoBehaviour
 		Transform self = owner.transform;
 		Vector2 you = ToPaper(render, self.position);
 		float youSize = height * 0.06f;
-		Route(render);
 		foreach (Station station in fuelStations)
 		{
 			if (station.Where == null)
@@ -287,103 +286,6 @@ public class MapPaper : MonoBehaviour
 		Stamp(arrow, you, youSize, Mathf.Atan2(ahead.y, ahead.x) - Mathf.PI * 0.5f, youColor);
 		GL.PopMatrix();
 		RenderTexture.active = previous;
-	}
-
-	private readonly List<Vector3> route = new List<Vector3>();
-
-	private float nextRoute;
-
-	// route in red pencil, from the layout since the traced line needs the pillar spawned
-	private void Route(Matrix4x4 render)
-	{
-		if (Time.unscaledTime >= nextRoute)
-		{
-			nextRoute = Time.unscaledTime + 0.5f;
-			route.Clear();
-			WorldGenerator generator = WorldGenerator.Active ? GameSession.Get<WorldGenerator>() : null;
-			if (generator != null && generator.Layout != null)
-			{
-				route.AddRange(generator.RouteToPillar(owner.transform.position));
-			}
-			else
-			{
-				NodeData data = FindObjectOfType<NodeData>();
-				LineRenderer line = data != null ? data.PathLine : null;
-				for (int i = 0; line != null && i < line.positionCount; i++)
-				{
-					route.Add(line.useWorldSpace ? line.GetPosition(i) : line.transform.TransformPoint(line.GetPosition(i)));
-				}
-			}
-		}
-		if (route.Count < 2)
-		{
-			return;
-		}
-		draw.mainTexture = Texture2D.whiteTexture;
-		draw.SetPass(0);
-		GL.Begin(GL.QUADS);
-		GL.Color(kanazawaRed);
-		const float pen = 3.6f;
-		const float step = 7f;
-		for (int i = 0; i + 1 < route.Count; i++)
-		{
-			Vector2 from = ToPaper(render, route[i]);
-			Vector2 along = ToPaper(render, route[i + 1]) - from;
-			int pieces = Mathf.Max(1, Mathf.CeilToInt(along.magnitude / step));
-			Vector2 side = new Vector2(-along.y, along.x).normalized;
-			Vector2 last = from;
-			for (int k = 1; k <= pieces; k++)
-			{
-				// a slightly shaky hand
-				float shake = (Mathf.PerlinNoise(i * 3.1f + k * 0.37f, 0.5f) - 0.5f) * 2.4f;
-				Vector2 next = from + along * ((float)k / pieces) + side * (k == pieces ? 0f : shake);
-				Vector2 width = new Vector2(-(next - last).y, (next - last).x).normalized * pen * 0.5f;
-				GL.Vertex3(last.x - width.x, last.y - width.y, 0f);
-				GL.Vertex3(last.x + width.x, last.y + width.y, 0f);
-				GL.Vertex3(next.x + width.x, next.y + width.y, 0f);
-				GL.Vertex3(next.x - width.x, next.y - width.y, 0f);
-				last = next;
-			}
-		}
-		GL.End();
-		TowerMark(render);
-	}
-
-	// tower sketch, or an arrow at the edge when it's off the sheet
-	private void TowerMark(Matrix4x4 render)
-	{
-		float margin = height * 0.07f;
-		Vector2 end = ToPaper(render, route[route.Count - 1]);
-		if (InsideBy(end, margin))
-		{
-			Stamp(tower, end, height * 0.1f, 0f, kanazawaRed);
-			return;
-		}
-		for (int i = 0; i + 1 < route.Count; i++)
-		{
-			Vector2 a = ToPaper(render, route[i]);
-			Vector2 b = ToPaper(render, route[i + 1]);
-			if (!InsideBy(a, margin) || InsideBy(b, margin))
-			{
-				continue;
-			}
-			// where the line leaves the sheet
-			float t = 1f;
-			t = b.x > width - margin ? Mathf.Min(t, (width - margin - a.x) / (b.x - a.x)) : t;
-			t = b.x < margin ? Mathf.Min(t, (margin - a.x) / (b.x - a.x)) : t;
-			t = b.y > height - margin ? Mathf.Min(t, (height - margin - a.y) / (b.y - a.y)) : t;
-			t = b.y < margin ? Mathf.Min(t, (margin - a.y) / (b.y - a.y)) : t;
-			Vector2 edge = a + (b - a) * t;
-			Vector2 away = (b - a).normalized;
-			Stamp(arrow, edge, height * 0.05f, Mathf.Atan2(away.y, away.x) - Mathf.PI * 0.5f, kanazawaRed);
-			Stamp(tower, edge - away * height * 0.075f, height * 0.08f, 0f, kanazawaRed);
-			return;
-		}
-	}
-
-	private static bool InsideBy(Vector2 at, float margin)
-	{
-		return at.x >= margin && at.x <= width - margin && at.y >= margin && at.y <= height - margin;
 	}
 
 	// skip when it's right on top of your arrow

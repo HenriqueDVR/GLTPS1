@@ -16,6 +16,17 @@ public sealed class WorldRandom
 		return Mix(seed ^ (stream * 0x9E3779B97F4A7C15uL) ^ (index * 0xD1B54A32D192ED03uL));
 	}
 
+	// fnv-1a over a name: ids for things found by their path. same as it's always been, saved pipes and items use it
+	public static uint HashName(string text)
+	{
+		uint hash = 2166136261u;
+		foreach (char c in text)
+		{
+			hash = (hash ^ c) * 16777619;
+		}
+		return hash;
+	}
+
 	public ulong NextULong()
 	{
 		ulong num = Mix(state);

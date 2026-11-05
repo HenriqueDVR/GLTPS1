@@ -13,7 +13,7 @@ public static class CoopPipes
 		{
 			path = t.name + "/" + path;
 		}
-		return WorldLayout.Hash(path);
+		return WorldRandom.HashName(path);
 	}
 
 	public static void Restore(PipeWaterLevel pipe)

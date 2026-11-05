@@ -118,7 +118,7 @@ public class CoopKanazawa : MonoBehaviour
 		{
 			path = t.name + "/" + path;
 		}
-		return WorldLayout.Hash(path);
+		return WorldRandom.HashName(path);
 	}
 
 	private static bool NearAGirl(Transform kanazawa)
@@ -134,11 +134,6 @@ public class CoopKanazawa : MonoBehaviour
 			return;
 		}
 		nextPoses = Time.unscaledTime + poseInterval;
-		// none in the open world yet
-		if (WorldGenerator.GenVersion != 1)
-		{
-			return;
-		}
 		GameObject[] all = GameObject.FindGameObjectsWithTag("Kanazawa");
 		writer.Reset();
 		writer.Put((byte)CoopSession.MessageType.KanazawaPoses);

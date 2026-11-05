@@ -9,11 +9,10 @@ using UnityEngine.SceneManagement;
 // in coop the host saves both girls. game over keeps the save
 public static class GameSave
 {
-	// v1 saves were one flat object, v2 is this header plus a section per system (StateRegistry)
+	// a header plus a section per system (StateRegistry)
 	[Serializable]
 	public class SaveData
 	{
-		// 0 or 1 = the old flat format
 		public int version;
 
 		public string savedAt;
@@ -26,7 +25,7 @@ public static class GameSave
 
 		public string difficulty;
 
-		// 1 = the legacy graph, 2 = the open world (01). version 3 on, older files are all 1
+		// the open world's is 2. older files are the removed legacy world: not read
 		public int genVersion;
 
 		public List<SavedSection> sections = new List<SavedSection>();
@@ -43,39 +42,6 @@ public static class GameSave
 		public string data;
 	}
 
-	// what version 1 wrote, only read to import
-	[Serializable]
-	public class SaveDataV1
-	{
-		public SavedGirl chito;
-
-		public SavedGirl yuuri;
-
-		public int food;
-
-		public float water;
-
-		public float fuel;
-
-		public bool hasMap;
-
-		public bool hasCamera;
-
-		public float[] vehicle;
-
-		public bool barrelMounted;
-
-		public bool hasLooseBarrel;
-
-		public float[] barrel;
-
-		public List<string> takenItems = new List<string>();
-
-		public List<string> pipeKeys = new List<string>();
-
-		public List<float> pipeLevels = new List<float>();
-	}
-
 	public const int CurrentVersion = 3;
 
 	public enum SlotState
@@ -86,7 +52,9 @@ public static class GameSave
 		Backup,
 		Corrupt,
 		// a newer game wrote it
-		Newer
+		Newer,
+		// the removed legacy world's, the file's left alone
+		Old
 	}
 
 	// sections that live for the whole run. the world's own register with the scene (SaveScene)
@@ -171,7 +139,7 @@ public static class GameSave
 			if (data == null)
 			{
 				SaveData header = JsonUtility.FromJson<SaveData>(json);
-				return (header != null && header.version > CurrentVersion) ? SlotState.Newer : SlotState.Corrupt;
+				return (header == null) ? SlotState.Corrupt : (header.version > CurrentVersion) ? SlotState.Newer : ulong.TryParse(header.seed, out _) ? SlotState.Old : SlotState.Corrupt;
 			}
 			if (!ulong.TryParse(data.seed, out _))
 			{
@@ -217,7 +185,7 @@ public static class GameSave
 		}
 	}
 
-	// v1 files are turned into sections here, so nothing past this point knows about them
+	// null: nothing this game can load, ReadFile tells a newer one from an old one
 	public static SaveData Parse(string json)
 	{
 		SaveData data = JsonUtility.FromJson<SaveData>(json);
@@ -230,64 +198,12 @@ public static class GameSave
 			Debug.LogWarning("Save: from a newer version (" + data.version + "), not read");
 			return null;
 		}
-		if (data.version < 2)
+		// every file before version 3 was the legacy world, and some after
+		if (data.version < CurrentVersion || data.genVersion != WorldGenerator.GenVersion)
 		{
-			data.sections = ImportV1(JsonUtility.FromJson<SaveDataV1>(json));
+			return null;
 		}
-		// v2 had no generator, every save then was the legacy world
-		if (data.version < 3)
-		{
-			data.genVersion = 1;
-		}
-		data.version = CurrentVersion;
 		return data;
-	}
-
-	public static List<SavedSection> ImportV1(SaveDataV1 old)
-	{
-		List<SavedSection> sections = new List<SavedSection>();
-		StateWriter writer = new StateWriter();
-		GirlsSection.WriteData(writer, old.chito ?? new SavedGirl(), old.yuuri ?? new SavedGirl());
-		sections.Add(Section(GirlsSection.SectionKey, 1, writer));
-		writer = new StateWriter();
-		new SuppliesSection { Food = old.food, Water = old.water, Fuel = old.fuel, HasMap = old.hasMap, HasCamera = old.hasCamera }.WriteData(writer);
-		sections.Add(Section(SuppliesSection.SectionKey, 1, writer));
-		writer = new StateWriter();
-		KetSection ket = new KetSection { BarrelMounted = old.barrelMounted, HasLooseBarrel = old.hasLooseBarrel && old.barrel != null && old.barrel.Length >= 3 };
-		if (old.vehicle != null && old.vehicle.Length >= 7)
-		{
-			ket.HasVehicle = true;
-			ket.VehiclePosition = new Vector3(old.vehicle[0], old.vehicle[1], old.vehicle[2]);
-			ket.VehicleRotation = new Quaternion(old.vehicle[3], old.vehicle[4], old.vehicle[5], old.vehicle[6]);
-		}
-		if (ket.HasLooseBarrel)
-		{
-			ket.Barrel = new Vector3(old.barrel[0], old.barrel[1], old.barrel[2]);
-		}
-		ket.WriteData(writer);
-		sections.Add(Section(KetSection.SectionKey, 1, writer));
-		List<ulong> taken = new List<ulong>();
-		foreach (string item in old.takenItems ?? new List<string>())
-		{
-			taken.Add(ulong.Parse(item));
-		}
-		writer = new StateWriter();
-		WorldFlags.State.WriteData(writer, taken);
-		sections.Add(Section(WorldFlags.State.SectionKey, 1, writer));
-		Dictionary<ulong, float> pipes = new Dictionary<ulong, float>();
-		for (int i = 0; old.pipeKeys != null && old.pipeLevels != null && i < old.pipeKeys.Count && i < old.pipeLevels.Count; i++)
-		{
-			pipes[ulong.Parse(old.pipeKeys[i])] = old.pipeLevels[i];
-		}
-		writer = new StateWriter();
-		CoopPipes.State.WriteData(writer, pipes);
-		sections.Add(Section(CoopPipes.State.SectionKey, 1, writer));
-		return sections;
-	}
-
-	private static SavedSection Section(string key, int version, StateWriter writer)
-	{
-		return new SavedSection { key = key, version = version, data = Convert.ToBase64String(writer.ToArray()) };
 	}
 
 	public static List<StateSection> ToStateSections(List<SavedSection> saved)
@@ -310,6 +226,10 @@ public static class GameSave
 		if (state == SlotState.Newer)
 		{
 			return "slot " + (slot + 1) + ": from a newer version";
+		}
+		if (state == SlotState.Old)
+		{
+			return "slot " + (slot + 1) + ": from an old version, can't be loaded";
 		}
 		if (data == null)
 		{
@@ -350,7 +270,6 @@ public static class GameSave
 		Save.DifficultyChanged();
 		WorldGenerator.ClearRequested();
 		WorldGenerator.RequestedSeed = ulong.Parse(data.seed);
-		WorldGenerator.RequestedGenVersion = data.genVersion;
 		RestoreTaken = new HashSet<ulong>();
 		CoopPipes.SetRestore(null);
 		List<StateSection> sections = ToStateSections(data.sections);

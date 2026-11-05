@@ -9,8 +9,6 @@ public class PlayerMapController : MonoBehaviour
     [SerializeField] private PlayerInputInitialize playerInputScript;
 
     private InputContextStack.Token holding;
-    public Node node;
-    [SerializeField] private NodeData nodeDataScript;
     [SerializeField] private Camera mapCamera;
     [SerializeField] private RenderTexture renderTexture;
     [SerializeField] private RawImage[] mapImage;
@@ -19,8 +17,6 @@ public class PlayerMapController : MonoBehaviour
     [SerializeField] private float duration = 0.2f;
     public bool isMapEnabled;
     private float elasped;
-
-    public StartEnvironmentTrace startEnvironmentTraceScript;
 
     // where the map cam was when the map got drawn, for markers
     public Matrix4x4 RenderedViewProjection { get; private set; }
@@ -67,40 +63,6 @@ public class PlayerMapController : MonoBehaviour
                 //Time.timeScale = 0;
                 StartCoroutine(RenderMap(0f));
                 MapPaper.Open(this);
-
-                // the old graph's route. the open world's sheet is just the picture, Yuuri's has no graph set
-                if (WorldGenerator.GenVersion == 1 && nodeDataScript != null)
-                {
-                    nodeDataScript.drawPath = true;
-
-                    // reset flags
-                    nodeDataScript.isFirstIntersectionNode = false;
-
-                    if (nodeDataScript.edgesFromPlayer.Count > 0)
-                    {
-                        foreach (GenerateNode edge in nodeDataScript.edgesFromPlayer)
-                        {
-                            edge.newNode.GetComponent<Node>().tracePathFromPlayerNode = false;
-                            edge.newNode.GetComponent<Node>().isIntersectionNodeSet = false;
-
-                        }
-                    }
-                    nodeDataScript.edgesFromPlayer = new List<GenerateNode>();
-                    nodeDataScript.points = new List<Transform>();
-
-                    // if player is not on pillar path node, trigger trace path from player node
-                    if (!node.tracePathFromPillarNode)
-                    {
-                        startEnvironmentTraceScript.triggerTraceFromPlayerNode = true;
-                    }
-                    // if player is on pillar path node, set current node player is on as intersect node for recalculating sub branches
-                    else
-                    {
-                        node.tracePathFromPlayerNode = true;
-                        node.isIntersectionNodeSet = false;
-                        nodeDataScript.istracePathFromPlayerNodeComplete = true;
-                    }
-                }
 
                 audioSource.Stop();
                 audioSource.PlayOneShot(mapSFX);
@@ -191,20 +153,4 @@ public class PlayerMapController : MonoBehaviour
             }
         }
     }
-
-    void OnTriggerEnter(Collider other)
-    {
-        if (other.gameObject.GetComponent<Node>() != null)
-        {
-            if (other.gameObject.GetComponent<Node>().isActive)
-            {
-                node = other.gameObject.GetComponent<Node>();
-                if (other.gameObject.GetComponent<StartEnvironmentTrace>() != null)
-                {
-                    startEnvironmentTraceScript = other.gameObject.GetComponent<StartEnvironmentTrace>();
-                }
-            }
-        }
-    }
-
 }

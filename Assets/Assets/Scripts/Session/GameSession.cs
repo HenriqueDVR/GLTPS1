@@ -63,21 +63,17 @@ public class GameSession : MonoBehaviour
 		{
 			return;
 		}
-		if (WorldGenerator.GenVersion == 2)
+		GameObject layer = BeginLayer(world.Plan, float.NaN, 0, null);
+		TileStreamer tiles = layer.GetComponent<TileStreamer>();
+		Add<SafeGround>().Init(world.Plan, tiles, floatingOrigin);
+		Add<UndergroundAtmosphere>().Init(world.Plan, tiles, floatingOrigin);
+		Add<ZoneAtmosphere>().Init(world.Plan, floatingOrigin);
+		UseLayer(layer);
+		Backdrop(layer);
+		Add<LayerTransition>();
+		if (floatingOrigin != null)
 		{
-			GameObject layer = BeginLayer(world.Plan, float.NaN, 0, null);
-			TileStreamer tiles = layer.GetComponent<TileStreamer>();
-			Add<SafeGround>().Init(world.Plan, tiles, floatingOrigin);
-			Add<UndergroundAtmosphere>().Init(world.Plan, tiles, floatingOrigin);
-			Add<ZoneAtmosphere>().Init(world.Plan, floatingOrigin);
-			UseLayer(layer);
-			Backdrop(layer);
-			Add<LayerTransition>();
-			// an endless world needs it, v1 never goes far enough
-			if (floatingOrigin != null)
-			{
-				floatingOrigin.UseFor(Camera.main != null ? Camera.main.transform : null);
-			}
+			floatingOrigin.UseFor(Camera.main != null ? Camera.main.transform : null);
 		}
 		if (CoopSession.Active)
 		{
@@ -101,12 +97,9 @@ public class GameSession : MonoBehaviour
 		}
 		CoopItem.TrackScenePickups();
 		// no Kanazawa out there to give it yet: a plain sketch from the start (12)
-		if (WorldGenerator.GenVersion == 2)
+		foreach (PlayerMapController map in FindObjectsOfType<PlayerMapController>(true))
 		{
-			foreach (PlayerMapController map in FindObjectsOfType<PlayerMapController>(true))
-			{
-				map.enabled = true;
-			}
+			map.enabled = true;
 		}
 		StartCoroutine(SaveScene.Register());
 	}

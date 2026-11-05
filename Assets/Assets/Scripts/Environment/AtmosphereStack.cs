@@ -166,8 +166,7 @@ public class AtmosphereStack : MonoBehaviour
 			DynamicGI.UpdateEnvironment();
 			baseProbe = RenderSettings.ambientProbe;
 		}
-		// the legacy world stays in daylight, it has no camps to spend a night in
-		Look = (WorldGenerator.GenVersion == 2) ? DayCurve.At(WorldClock.TimeOfDay) : DayCurve.Noon;
+		Look = DayCurve.At(WorldClock.TimeOfDay);
 		DayLook look = Look;
 		Color fog = WeatherFog * look.Fog;
 		fog.a = WeatherFog.a;
@@ -191,10 +190,7 @@ public class AtmosphereStack : MonoBehaviour
 			float light = WeatherLight * look.Light;
 			sun.intensity = Mathf.Lerp(light, Mathf.Min(light, DarkLight), Dark);
 			sun.color = sunColour * look.LightColour;
-			if (WorldGenerator.GenVersion == 2)
-			{
-				sun.transform.rotation = Direction(look);
-			}
+			sun.transform.rotation = Direction(look);
 		}
 	}
 

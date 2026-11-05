@@ -199,78 +199,13 @@ public class StateTests
 		return sections.ConvertAll(s => s.Key);
 	}
 
-	// a slot written by 0.1.x (version 1), cut down
-	private const string v1Save = "{\"version\":1,\"savedAt\":\"29 Oct 12:00\",\"playSeconds\":600.5,\"coop\":true,\"seed\":\"12345\",\"difficulty\":\"easy\","
-		+ "\"chito\":{\"x\":1.0,\"y\":2.0,\"z\":3.0,\"yaw\":90.0,\"hunger\":80.0,\"thirst\":70.0,\"temperature\":60.0,\"hasGun\":false,\"magazine\":0,\"spare\":0},"
-		+ "\"yuuri\":{\"x\":4.0,\"y\":5.0,\"z\":6.0,\"yaw\":180.0,\"hunger\":50.0,\"thirst\":40.0,\"temperature\":30.0,\"hasGun\":true,\"magazine\":3,\"spare\":12},"
-		+ "\"food\":4,\"water\":120.0,\"fuel\":33.5,\"hasMap\":true,\"hasCamera\":false,"
-		+ "\"vehicle\":[10.0,0.5,-20.0,0.0,0.7071068,0.0,0.7071068],\"barrelMounted\":false,\"hasLooseBarrel\":true,\"barrel\":[11.0,0.0,-21.0],"
-		+ "\"takenItems\":[\"18446744073709551615\",\"42\"],\"pipeKeys\":[\"99\"],\"pipeLevels\":[0.25]}";
-
-	[Test]
-	public void ImportsVersion1Save()
+	// a slot written by 0.1.x, and one the legacy world wrote later: their files stay, they don't load
+	[TestCase("{\"version\":1,\"seed\":\"12345\",\"food\":4}")]
+	[TestCase("{\"version\":2,\"seed\":\"7\",\"sections\":[]}")]
+	[TestCase("{\"version\":3,\"seed\":\"7\",\"genVersion\":1,\"sections\":[]}")]
+	public void LegacySavesAreNotRead(string json)
 	{
-		GameSave.SaveData data = GameSave.Parse(v1Save);
-		Assert.AreEqual(GameSave.CurrentVersion, data.version);
-		Assert.AreEqual(1, data.genVersion);
-		Assert.AreEqual("12345", data.seed);
-		Assert.AreEqual("easy", data.difficulty);
-		Assert.IsTrue(data.coop);
-		Assert.AreEqual(600.5f, data.playSeconds);
-		Dictionary<string, StateSection> sections = new Dictionary<string, StateSection>();
-		foreach (StateSection section in GameSave.ToStateSections(data.sections))
-		{
-			sections[section.Key] = section;
-		}
-
-		GirlsSection.ReadData(new StateReader(sections["girls"].Data), out SavedGirl chito, out SavedGirl yuuri);
-		Assert.AreEqual(new Vector3(1f, 2f, 3f), chito.Position);
-		Assert.AreEqual(90f, chito.yaw);
-		Assert.AreEqual(80f, chito.hunger);
-		Assert.AreEqual(new Vector3(4f, 5f, 6f), yuuri.Position);
-		Assert.IsTrue(yuuri.hasGun);
-		Assert.AreEqual(3, yuuri.magazine);
-		Assert.AreEqual(12, yuuri.spare);
-		Assert.AreEqual(30f, yuuri.temperature);
-
-		SuppliesSection supplies = new SuppliesSection();
-		supplies.ReadData(new StateReader(sections["supplies"].Data));
-		Assert.AreEqual(4, supplies.Food);
-		Assert.AreEqual(120f, supplies.Water);
-		Assert.AreEqual(33.5f, supplies.Fuel);
-		Assert.IsTrue(supplies.HasMap);
-		Assert.IsFalse(supplies.HasCamera);
-
-		KetSection ket = new KetSection();
-		ket.ReadData(new StateReader(sections["ket"].Data));
-		Assert.IsTrue(ket.HasVehicle);
-		Assert.AreEqual(new Vector3(10f, 0.5f, -20f), ket.VehiclePosition);
-		Assert.AreEqual(0.7071068f, ket.VehicleRotation.y, 1e-6f);
-		Assert.IsFalse(ket.BarrelMounted);
-		Assert.IsTrue(ket.HasLooseBarrel);
-		Assert.AreEqual(new Vector3(11f, 0f, -21f), ket.Barrel);
-
-		CollectionAssert.AreEquivalent(new[] { ulong.MaxValue, 42uL }, WorldFlags.State.ReadData(new StateReader(sections["items"].Data)));
-		Dictionary<ulong, float> pipes = CoopPipes.State.ReadData(new StateReader(sections["pipes"].Data));
-		Assert.AreEqual(1, pipes.Count);
-		Assert.AreEqual(0.25f, pipes[99uL]);
-	}
-
-	// a slot from before the ket or barrel were saved
-	[Test]
-	public void ImportsVersion1WithoutKet()
-	{
-		GameSave.SaveData data = GameSave.Parse("{\"version\":1,\"seed\":\"1\",\"chito\":{\"x\":1.0},\"yuuri\":{\"x\":2.0}}");
-		foreach (StateSection section in GameSave.ToStateSections(data.sections))
-		{
-			if (section.Key == "ket")
-			{
-				KetSection ket = new KetSection();
-				ket.ReadData(new StateReader(section.Data));
-				Assert.IsFalse(ket.HasVehicle);
-				Assert.IsFalse(ket.HasLooseBarrel);
-			}
-		}
+		Assert.IsNull(GameSave.Parse(json));
 	}
 
 	[Test]
@@ -283,20 +218,11 @@ public class StateTests
 	[Test]
 	public void Version2RoundTrip()
 	{
-		GameSave.SaveData data = new GameSave.SaveData { version = GameSave.CurrentVersion, seed = "5", savedAt = "now" };
+		GameSave.SaveData data = new GameSave.SaveData { version = GameSave.CurrentVersion, genVersion = 2, seed = "5", savedAt = "now" };
 		data.sections.Add(new GameSave.SavedSection { key = "test.x", version = 2, data = System.Convert.ToBase64String(new byte[] { 9, 8 }) });
 		GameSave.SaveData back = GameSave.Parse(JsonUtility.ToJson(data));
 		Assert.AreEqual(1, back.sections.Count);
 		CollectionAssert.AreEqual(new byte[] { 9, 8 }, GameSave.ToStateSections(back.sections)[0].Data);
-	}
-
-	// v2 files had no generator: all of them are the legacy world
-	[Test]
-	public void Version2SaveIsLegacyWorld()
-	{
-		GameSave.SaveData data = GameSave.Parse("{\"version\":2,\"seed\":\"7\",\"sections\":[]}");
-		Assert.AreEqual(GameSave.CurrentVersion, data.version);
-		Assert.AreEqual(1, data.genVersion);
 	}
 
 	[Test]

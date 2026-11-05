@@ -72,7 +72,7 @@ public class CoopItem : MonoBehaviour
 				{
 					Vector3 position = gameObject.transform.position;
 					// bit 62 so these don't clash with spawner ids
-					ulong id = 0x4000000000000000uL | WorldLayout.Hash(gameObject.name + "@" + Mathf.RoundToInt(position.x * 100f) + "," + Mathf.RoundToInt(position.y * 100f) + "," + Mathf.RoundToInt(position.z * 100f));
+					ulong id = 0x4000000000000000uL | WorldRandom.HashName(gameObject.name + "@" + Mathf.RoundToInt(position.x * 100f) + "," + Mathf.RoundToInt(position.y * 100f) + "," + Mathf.RoundToInt(position.z * 100f));
 					if (IsTaken(id))
 					{
 						Object.Destroy(gameObject);

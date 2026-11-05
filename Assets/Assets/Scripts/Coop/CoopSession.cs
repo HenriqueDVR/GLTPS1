@@ -1279,7 +1279,6 @@ public class CoopSession : MonoBehaviour
 					Save.DifficultyChanged();
 				}
 				WorldGenerator.RequestedSeed = @ulong;
-				WorldGenerator.RequestedGenVersion = genVersion;
 				WorldGenerator.RequestedOrigins = origins;
 				WorldGenerator.RequestedLayer = layer;
 				CoopItem.ResetLevel();

@@ -95,7 +95,6 @@ public class NavMeshAreaBaker : MonoBehaviour
 
 	private void OnEnable()
 	{
-		WorldGenerator.PieceChanged += OnPieceChanged;
 		FloatingOrigin.Shifted += OnOriginShifted;
 		active.Add(this);
 		// back from being switched off, what it had is out of date but better than nothing till the next build
@@ -108,7 +107,6 @@ public class NavMeshAreaBaker : MonoBehaviour
 
 	private void OnDisable()
 	{
-		WorldGenerator.PieceChanged -= OnPieceChanged;
 		FloatingOrigin.Shifted -= OnOriginShifted;
 		NavMeshBakeScheduler.Forget(this);
 		active.Remove(this);
@@ -299,14 +297,6 @@ public class NavMeshAreaBaker : MonoBehaviour
 		foreach (NavMeshAreaBaker baker in FindObjectsOfType<NavMeshAreaBaker>())
 		{
 			baker.dirty = true;
-		}
-	}
-
-	private void OnPieceChanged(Bounds bounds)
-	{
-		if (bounds.Intersects(bakedBounds) || (building != null && bounds.Intersects(pendingBounds)))
-		{
-			dirty = true;
 		}
 	}
 
