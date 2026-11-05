@@ -66,6 +66,7 @@ public static class GameSave
 		StateRegistry.Register(new WorldFlags.State(), StateUse.Both);
 		StateRegistry.Register(new CoopPipes.State(), StateUse.Both);
 		StateRegistry.Register(new LastShelter.State(), StateUse.Save);
+		StateRegistry.Register(new MapSheet.State(), StateUse.Both);
 		StateRegistry.Register(new CoopGirlState.RejoinSection(), StateUse.Join);
 	}
 
@@ -251,6 +252,7 @@ public static class GameSave
 		playSecondsBefore = 0f;
 		WorldClock.ResetLevel();
 		LastShelter.ResetLevel();
+		MapSheet.ResetLevel();
 		if (!CoopSession.Active || CoopSession.Instance.IsHost)
 		{
 			WorldGenerator.ClearRequested();

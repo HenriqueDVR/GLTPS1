@@ -61,13 +61,10 @@ public class PlayerMapController : MonoBehaviour
                 }
 
                 //Time.timeScale = 0;
-                StartCoroutine(RenderMap(0f));
                 MapPaper.Open(this);
 
                 audioSource.Stop();
                 audioSource.PlayOneShot(mapSFX);
-
-                StartCoroutine(RenderMap(0.3f));
 
                 isMapEnabled = true;
                 elasped = 0;

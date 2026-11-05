@@ -69,6 +69,7 @@ public class GameSession : MonoBehaviour
 		Add<UndergroundAtmosphere>().Init(world.Plan, tiles, floatingOrigin);
 		Add<ZoneAtmosphere>().Init(world.Plan, floatingOrigin);
 		Add<WakeFlow>();
+		Add<MapSheet>();
 		UseLayer(layer);
 		Backdrop(layer);
 		Add<LayerTransition>();
