@@ -1106,7 +1106,7 @@ public partial class TileStreamer : MonoBehaviour
 				}
 				if (Plan.Places.InTile(x, z, out Place shell))
 				{
-					lotMesh.AddPlace(shell, Local(shell.Center, new Vector3((float)(x * Gen2.TileSize), 0f, (float)(z * Gen2.TileSize))));
+					lotMesh.AddPlace(shell, Local(shell.Center, new Vector3((float)(x * Gen2.TileSize), 0f, (float)(z * Gen2.TileSize))), Plan.Def.Districts, Plan.Def.Ruin);
 				}
 				foreach (Stair stair in stairs)
 				{

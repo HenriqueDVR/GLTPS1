@@ -238,7 +238,7 @@ public class LotMesh
 
 	private const int darkMaterial = 2;
 
-	public void AddPlace(Place place, Vector3 centre)
+	public void AddPlace(Place place, Vector3 centre, DistrictDef[] districts, double ruin)
 	{
 		Vector3 u = new Vector3((float)place.Axis.X, 0f, (float)place.Axis.Z);
 		float hu = (float)place.RoomU;
@@ -258,22 +258,40 @@ public class LotMesh
 			break;
 		case PlaceKind.PumpHouse:
 			Room(centre, u, hu, hv, h, place.Door, 2f, 2.4f, concrete, concrete);
-			// a stack that steams, a fat pipe along the roof and down
+			// a stack that steams, fat pipes along the roof and down its walls, a run going off into the ground
 			Box(centre + u * (hu * 0.5f), u, 0.7f, 0.7f, h, h + 4.5f, metalMaterial, metalMaterial, false);
 			Box(centre - Left(u) * (hv - 0.6f), u, hu, 0.45f, h, h + 0.9f, metalMaterial, metalMaterial, false);
+			Box(centre + Left(u) * (hv - 0.6f), u, hu * 0.7f, 0.3f, h, h + 0.6f, metalMaterial, metalMaterial, false);
+			if (place.Door != 2)
+			{
+				Box(centre + Left(u) * (hv + 0.4f) + u * (hu * 0.5f), u, 0.4f, 0.4f, 0f, h + 0.4f, metalMaterial, metalMaterial, false);
+				Box(centre + Left(u) * (hv + 0.4f) - u * (hu * 0.3f), u, 0.3f, 0.3f, 0f, h + 0.3f, metalMaterial, metalMaterial, false);
+			}
+			if (place.Door != 3)
+			{
+				Box(centre - Left(u) * (hv + 0.5f) - u * (hu * 0.5f), u, 0.5f, 0.5f, 0f, h + 0.9f, metalMaterial, metalMaterial, false);
+				Box(centre - Left(u) * (hv + 0.5f) + u * (hu + 5f), u, hu + 5f, 0.35f, 0.35f, 1.05f, metalMaterial, metalMaterial, false);
+			}
 			break;
 		case PlaceKind.FuelDepot:
-			// a low bunker wall, a tall drum on legs, a crane over it: seen from a long way off
-			Box(centre + u * (hu * 0.45f), u, 2.6f, 2.6f, 0f, 11f, metalMaterial, metalMaterial, false);
-			Box(centre + u * (hu * 0.45f), u, 3f, 3f, 11f, 11.5f, metalMaterial, metalMaterial, false);
+			// a low bunker wall, a real tank from the kit if one fits, a crane over it: seen from a long way off
+			if (!Harvested(Tanks, centre + u * (hu * 0.45f), u, 6f, 6f, metalMaterial, 0.5f))
+			{
+				Box(centre + u * (hu * 0.45f), u, 2.6f, 2.6f, 0f, 11f, metalMaterial, metalMaterial, false);
+				Box(centre + u * (hu * 0.45f), u, 3f, 3f, 11f, 11.5f, metalMaterial, metalMaterial, false);
+			}
 			Box(centre - Left(u) * hv, u, 0.35f, 0.35f, 0f, 16f, metalMaterial, metalMaterial, false);
 			Box(centre - Left(u) * hv + u * 3f, u, 6f, 0.28f, 16f, 16.6f, metalMaterial, metalMaterial, false);
 			Box(centre - u * hu, u, 0.25f, hv, 0f, 1.2f, concrete, concrete, false);
 			break;
 		default:
 			Room(centre, u, hu, hv, h, place.Door, 1.6f, 2.2f, wallMaterial, concrete);
-			// a floor or two over it, so from outside it's one more block
-			Box(centre, u, hu, hv, h + 0.2f, h + 0.2f + LotMesh.FloorHeight * (1f + (float)((place.Seed >> 8) % 2uL)), wallMaterial, concrete, false);
+			// the district's own building over it, so from outside it's one more block with its door open
+			{
+				int first = vertices.Count;
+				Building(districts[place.District].Style, centre, u, hu, hv, 1 + (int)((place.Seed >> 8) % 3uL), ruin);
+				Raise(first, h + 0.2f);
+			}
 			break;
 		}
 	}
