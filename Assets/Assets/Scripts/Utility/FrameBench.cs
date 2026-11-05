@@ -235,23 +235,6 @@ public class FrameBench : MonoBehaviour
 		yield return new WaitForSeconds(5f);
 		Transform local = chito.transform;
 		CharacterController controller = local.GetComponent<CharacterController>();
-		int mapArg = System.Array.IndexOf(args, "-benchmap");
-		if (mapArg >= 0 && mapArg + 1 < args.Length)
-		{
-			// same path as pressing the map key
-			PlayerMapController map = local.GetComponent<PlayerMapController>();
-			StartCoroutine((IEnumerator)typeof(PlayerMapController).GetMethod("RenderMap", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(map, new object[1] { 0f }));
-			yield return new WaitForSeconds(1f);
-			Texture2D picture = map.MapImage.texture as Texture2D;
-			Camera mapCamera = (Camera)typeof(PlayerMapController).GetField("mapCamera", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(map);
-			Debug.Log("FrameBench map camera enabled " + mapCamera.enabled + ", picture " + ((picture != null) ? (picture.width + "x" + picture.height) : "none"));
-			if (picture != null)
-			{
-				System.IO.File.WriteAllBytes(args[mapArg + 1], picture.EncodeToPNG());
-			}
-			Application.Quit();
-			yield break;
-		}
 		int lampsArg = System.Array.IndexOf(args, "-benchlamps");
 		if (lampsArg >= 0 && lampsArg + 1 < args.Length)
 		{

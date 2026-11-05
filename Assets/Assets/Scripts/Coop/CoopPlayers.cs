@@ -560,7 +560,6 @@ public class CoopPlayers : MonoBehaviour
 			DebugTeleport(Remote.position + Remote.right * 10f);
 			component3.enabled = true;
 			component3.isMapEnabled = true;
-			StartCoroutine((System.Collections.IEnumerator)typeof(PlayerMapController).GetMethod("RenderMap", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).Invoke(component3, new object[1] { 0f }));
 		}
 		else if (debugDownStep == -1 && timeSinceLevelLoad >= 40f)
 		{

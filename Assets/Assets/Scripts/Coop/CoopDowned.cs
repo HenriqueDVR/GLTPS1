@@ -38,12 +38,6 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 
 	private Image progressBar;
 
-	private RectTransform mapMarker;
-
-	private Image mapMarkerIcon;
-
-	private TextMeshProUGUI mapMarkerLabel;
-
 	public static CoopDowned Instance { get; private set; }
 
 	public bool LocalDown => localDown;
@@ -448,7 +442,6 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 		message.text = text2;
 		progressBar.rectTransform.sizeDelta = new Vector2(x, 8f);
 		UpdateWaypoint(players, text);
-		UpdateMapMarker(players, text);
 	}
 
 	private void UpdateWaypoint(CoopPlayers players, string name)
@@ -470,66 +463,6 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 		vector2.y = Mathf.Clamp(vector2.y, num, (float)Screen.height - num);
 		waypoint.transform.position = new Vector3(vector2.x, vector2.y, 0f);
 		waypoint.text = name + " is down\nneeds " + NeedsText(GirlNeeds.Missing(Girl(players.Remote))) + "\n" + Mathf.RoundToInt(Vector3.Distance(players.Local.position, players.Remote.position)) + " m";
-	}
-
-	// map is a screenshot taken when it's opened
-	private void UpdateMapMarker(CoopPlayers players, string name)
-	{
-		if (!remoteDown && mapMarker == null)
-		{
-			return;
-		}
-		PlayerMapController playerMapController = null;
-		PlayerMapController[] array = Object.FindObjectsOfType<PlayerMapController>(includeInactive: true);
-		foreach (PlayerMapController playerMapController2 in array)
-		{
-			if (playerMapController2.isMapEnabled)
-			{
-				playerMapController = playerMapController2;
-			}
-		}
-		bool flag = remoteDown && !localDown && playerMapController != null;
-		if (mapMarker == null && flag)
-		{
-			BuildMapMarker(playerMapController.MapImage);
-		}
-		if (mapMarker == null)
-		{
-			return;
-		}
-		mapMarker.gameObject.SetActive(flag);
-		if (flag)
-		{
-			RawImage mapImage = playerMapController.MapImage;
-			Vector4 vector = playerMapController.RenderedViewProjection * new Vector4(players.Remote.position.x, players.Remote.position.y, players.Remote.position.z, 1f);
-			Vector2 vector2 = ((vector.w != 0f) ? new Vector2(vector.x / vector.w, vector.y / vector.w) : Vector2.zero);
-			// clamp to edge
-			vector2.x = Mathf.Clamp(vector2.x, -0.95f, 0.95f);
-			vector2.y = Mathf.Clamp(vector2.y, -0.95f, 0.95f);
-			Rect rect = mapImage.rectTransform.rect;
-			mapMarker.anchoredPosition = new Vector2(vector2.x * rect.width * 0.5f, vector2.y * rect.height * 0.5f);
-			float a = mapImage.color.a;
-			mapMarkerIcon.color = new Color(0.9f, 0.15f, 0.1f, a);
-			mapMarkerLabel.color = new Color(1f, 1f, 1f, a);
-			mapMarkerLabel.text = name;
-		}
-	}
-
-	private void BuildMapMarker(RawImage mapImage)
-	{
-		GameObject gameObject = new GameObject("CoopDownedMarker", typeof(RectTransform));
-		gameObject.transform.SetParent(mapImage.transform, worldPositionStays: false);
-		mapMarker = gameObject.GetComponent<RectTransform>();
-		mapMarker.sizeDelta = Vector2.zero;
-		GameObject gameObject2 = new GameObject("Icon", typeof(RectTransform), typeof(Image));
-		gameObject2.transform.SetParent(gameObject.transform, worldPositionStays: false);
-		mapMarkerIcon = gameObject2.GetComponent<Image>();
-		mapMarkerIcon.raycastTarget = false;
-		mapMarkerIcon.rectTransform.sizeDelta = new Vector2(14f, 14f);
-		mapMarkerIcon.rectTransform.localRotation = Quaternion.Euler(0f, 0f, 45f);
-		mapMarkerLabel = MakeText(gameObject.transform, "Label", waypoint.font, 18f);
-		mapMarkerLabel.rectTransform.anchoredPosition = new Vector2(0f, 18f);
-		mapMarkerLabel.rectTransform.sizeDelta = new Vector2(200f, 30f);
 	}
 
 #if DUMP_WORLDGEN
