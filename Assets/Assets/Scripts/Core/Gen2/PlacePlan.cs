@@ -359,7 +359,14 @@ public sealed class PlacePlan
 
 	private void RoadsAround(int tileX, int tileZ)
 	{
+		// its own tile's are enough in a town, and looking further was most of the cost of a place
+		plan.Roads.Collect(tileX, tileZ, onePiece, patches);
 		pieces.Clear();
+		pieces.AddRange(onePiece);
+		if (pieces.Count > 0)
+		{
+			return;
+		}
 		for (int x = tileX - 1; x <= tileX + 1; x++)
 		{
 			for (int z = tileZ - 1; z <= tileZ + 1; z++)
