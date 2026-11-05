@@ -20,7 +20,8 @@ public static class NetRegistry
 		Line = 6,
 		Wake = 7,
 		Place = 8,
-		Camp = 9
+		Camp = 9,
+		Lamp = 10
 	}
 
 	public const ulong SessionId = 0uL;

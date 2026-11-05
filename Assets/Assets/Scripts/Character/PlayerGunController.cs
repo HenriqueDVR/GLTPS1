@@ -121,6 +121,10 @@ public class PlayerGunController : MonoBehaviour
             GameObject newBulletHoleDecal = Instantiate(bulletHoleDecal, bulletRayCastHit.point - (bulletRayCastHit.normal * 0.1f), newBulletHoleDecalRotation);
 
             newBulletHoleDecal.transform.parent = bulletRayCastHit.collider.gameObject.transform;
+            if (!fromOtherPlayer)
+            {
+                Breakable.Shot(bulletRayCastHit.collider);
+            }
         }
 
         StartCoroutine(SmokeEffect(1f));

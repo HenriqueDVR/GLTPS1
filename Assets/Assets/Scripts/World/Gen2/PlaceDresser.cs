@@ -18,6 +18,15 @@ public static class PlaceDresser
 
 	private const int valve = 60;
 
+	private const int chainFlag = 70;
+
+	private const int hungCrate = 71;
+
+	// a beam by the door, a crate on a chain: the rifle's first targets, and a thing the rider can do from the seat
+	private const double hungShare = 0.5;
+
+	private const float beamHeight = 5f;
+
 	private const float hotWaterAmount = 240f;
 
 	private const float depotShare = 0.5f;
@@ -129,6 +138,56 @@ public static class PlaceDresser
 			Depot(frame);
 			break;
 		}
+		if (place.Kind != PlaceKind.FuelDepot && Gen2.Unit(WorldRandom.Derive(place.Seed, Gen2.StreamPlace, 6uL)) < hungShare)
+		{
+			Hung(frame);
+		}
+	}
+
+	private static void Hung(Frame frame)
+	{
+		Place place = frame.Place;
+		XZ door = place.DoorAt;
+		Vector3 u = frame.U;
+		Vector3 v = frame.V;
+		Vector3 doorAt = new Vector3((float)door.X, frame.Centre.y, (float)door.Z) + (frame.Centre - new Vector3((float)place.Center.X, frame.Centre.y, (float)place.Center.Z));
+		Vector3 outward = doorAt - frame.Centre;
+		outward.y = 0f;
+		outward.Normalize();
+		Vector3 along = Vector3.Cross(Vector3.up, outward);
+		Vector3 middle = doorAt + outward * 5f + along * 3f;
+		Cube(frame, "beam post", middle - along * 1.6f + Vector3.up * beamHeight * 0.5f, new Vector3(0.25f, beamHeight, 0.25f), frame.Metal);
+		Cube(frame, "beam post", middle + along * 1.6f + Vector3.up * beamHeight * 0.5f, new Vector3(0.25f, beamHeight, 0.25f), frame.Metal);
+		GameObject beam = Cube(frame, "beam", middle + Vector3.up * beamHeight, Vector3.one * 0.25f, frame.Metal);
+		beam.transform.rotation = Quaternion.LookRotation(along, Vector3.up);
+		beam.transform.localScale = new Vector3(0.25f, 0.25f, 3.5f);
+		float crateY = beamHeight - 2.1f;
+		GameObject chain = Cube(frame, "chain", middle + Vector3.up * (beamHeight - 0.8f), new Vector3(0.14f, 1.6f, 0.14f), frame.Metal);
+		chain.layer = 0;
+		GameObject crate = Cube(frame, "hung crate", middle + Vector3.up * crateY, new Vector3(1f, 0.7f, 0.7f), frame.Metal);
+		crate.layer = 0;
+		HangingCrate hanging = crate.AddComponent<HangingCrate>();
+		ulong flag = PlacePlan.Id(frame.LayerIndex, place.CellX, place.CellZ, chainFlag);
+		PlaceLoot loot = default(PlaceLoot);
+		loot.Food = 2;
+		loot.Ammo = false;
+		Interactable open = Once(crate, frame, hungCrate, "open", Verb.Use, loot.Food, 0f, 0f, girl => Got(girl, loot), null);
+		open.Gone = delegate
+		{
+			crate.transform.localScale = new Vector3(1f, 0.45f, 0.7f);
+		};
+		open.Can = girl => hanging.Down;
+		float floorY = frame.Centre.y + 0.35f;
+		bool already = WorldFlags.Has(flag);
+		chain.AddComponent<Breakable>().Init(flag, delegate
+		{
+			hanging.Drop(floorY, already);
+			chain.SetActive(false);
+			if (!already)
+			{
+				Speaker.Say(Speaker.Yuuri, "Got it.");
+			}
+		});
 	}
 
 	private static GameObject Cube(Frame frame, string name, Vector3 at, Vector3 size, Material material)
