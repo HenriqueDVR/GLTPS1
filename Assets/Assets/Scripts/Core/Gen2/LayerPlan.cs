@@ -64,6 +64,8 @@ public sealed class LayerPlan
 
 	public readonly UndergroundPlan Underground;
 
+	public readonly PlacePlan Places;
+
 	public LayerPlan(ulong worldSeed, int layer, XZ origin, LayerPlan below, XZ startFacing = default(XZ))
 	{
 		if (layer > 0 && (below == null || below.Layer != layer - 1 || below.WorldSeed != worldSeed))
@@ -82,6 +84,7 @@ public sealed class LayerPlan
 		Chasms = new ChasmPlan(this);
 		Underground = new UndergroundPlan(this);
 		Lots = new LotPlan(this);
+		Places = new PlacePlan(this);
 	}
 
 	// at most WarpAmplitude either way, so district edges wobble instead of being rings
@@ -323,6 +326,13 @@ public sealed class LayerPlan
 			hash = Mix(hash, Centimetres(patch.Center.X));
 			hash = Mix(hash, Centimetres(patch.Center.Z));
 			hash = Mix(hash, Centimetres(patch.Size));
+		}
+		if (Places.InTile(x, z, out Place place))
+		{
+			hash = Mix(hash, (long)place.Kind);
+			hash = Mix(hash, Centimetres(place.Center.X));
+			hash = Mix(hash, Centimetres(place.Center.Z));
+			hash = Mix(hash, place.Door);
 		}
 		Lots.Collect(x, z, hashLots, hashStairs);
 		foreach (Lot lot in hashLots)

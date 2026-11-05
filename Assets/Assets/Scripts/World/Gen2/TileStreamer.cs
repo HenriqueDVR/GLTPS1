@@ -1032,6 +1032,17 @@ public partial class TileStreamer : MonoBehaviour
 				return false;
 			case 2:
 				Plan.Lots.Collect(x, z, lots, stairs);
+				// a place's lot is built as the place
+				for (int i = 0; i < lots.Count; i++)
+				{
+					if (Plan.Places.OnLot(lots[i], out _))
+					{
+						Lot hollow = lots[i];
+						hollow.Hollow = true;
+						hollow.Kind = LotKind.Open;
+						lots[i] = hollow;
+					}
+				}
 				// a landmark lot with no landmark that fits is open ground
 				placed.Clear();
 				pieceOf.Clear();
@@ -1092,6 +1103,10 @@ public partial class TileStreamer : MonoBehaviour
 				if (job.Near)
 				{
 					PlaceUnderground(x, z);
+				}
+				if (Plan.Places.InTile(x, z, out Place shell))
+				{
+					lotMesh.AddPlace(shell, Local(shell.Center, new Vector3((float)(x * Gen2.TileSize), 0f, (float)(z * Gen2.TileSize))));
 				}
 				foreach (Stair stair in stairs)
 				{
@@ -1159,6 +1174,10 @@ public partial class TileStreamer : MonoBehaviour
 				}
 				PlaceLamps(props);
 				PlaceUnderLamps(x, z, props);
+				if (Plan.Places.InTile(x, z, out Place place))
+				{
+					PlaceDresser.Dress(place, Plan.Layer, groundY, Offset(), props, lotMaterials[3], lotMaterials[1], groundLayer);
+				}
 #if DUMP_WORLDGEN
 				builtTiles++;
 				roadTriangles += roadMesh.Triangles;
@@ -1995,7 +2014,7 @@ public partial class TileStreamer : MonoBehaviour
 
 	private bool Blocked(XZ p, double clear)
 	{
-		if (Plan.Origin.DistanceTo(p) < RoadPlan.StartClearance + clear || Plan.Chasms.Inside(p.X, p.Z) > -clear || Plan.Underground.Blocks(p, clear))
+		if (Plan.Origin.DistanceTo(p) < RoadPlan.StartClearance + clear || Plan.Chasms.Inside(p.X, p.Z) > -clear || Plan.Underground.Blocks(p, clear) || Plan.Places.Blocks(p, clear))
 		{
 			return true;
 		}
@@ -2046,7 +2065,7 @@ public partial class TileStreamer : MonoBehaviour
 	// a spawner by one of the lot's long edges, clear of its building or rubble; ids from the tile and where the lot is
 	private void PlaceItems(Lot lot, int x, int z, Transform props)
 	{
-		if (kit == null || kit.ItemSpawner == null || !LotPlan.HasItem(lot, out ulong roll))
+		if (kit == null || kit.ItemSpawner == null || lot.Hollow || !LotPlan.HasItem(lot, out ulong roll))
 		{
 			return;
 		}

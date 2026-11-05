@@ -5,6 +5,14 @@ public static class TileOdds
 	// share of lots with an item spawner, about one per city tile like the legacy nodes (tuned with SURV-4)
 	public const double ItemOnLandmark = 0.5;
 
+	// what's in a place's container, the rest is empty
+	public const double ContainerFood = 0.45;
+
+	public const double ContainerAmmo = 0.2;
+
+	// past the three a region deals first, this share are more fuel or water
+	public const double ExtraSupply = 0.25;
+
 	public const double ItemOnOpen = 0.1;
 
 	public const double ItemOnBuilding = 0.03;

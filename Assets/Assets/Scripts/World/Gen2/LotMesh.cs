@@ -120,6 +120,10 @@ public class LotMesh
 		for (int n = from; n < to; n++)
 		{
 			Lot lot = lots[n];
+			if (lot.Hollow)
+			{
+				continue;
+			}
 			random = new WorldRandom(lot.Seed);
 			Vector3 centre = new Vector3((float)(lot.Center.X - originX), 0f, (float)(lot.Center.Z - originZ));
 			Vector3 u = new Vector3((float)lot.Axis.X, 0f, (float)lot.Axis.Z);
@@ -225,6 +229,78 @@ public class LotMesh
 	// a flight of stairs up the side of a raised street (LotPlan.Stair) from foot along dir, out pointing away from
 	// the street: solid concrete steps, a landing half way, a top landing beside the deck's opened parapet, a wall
 	// on the outer side and across the top end
+	// a place's shell, tile-local centre (PlaceDresser puts what's inside). walls one thick, a doorway in one, a roof
+	private const float placeWall = 0.3f;
+
+	private const int wallMaterial = 0;
+
+	private const int metalMaterial = 3;
+
+	public void AddPlace(Place place, Vector3 centre)
+	{
+		Vector3 u = new Vector3((float)place.Axis.X, 0f, (float)place.Axis.Z);
+		float hu = (float)place.RoomU;
+		float hv = (float)place.RoomV;
+		float h = (float)place.Height;
+		random = new WorldRandom(place.Seed);
+		switch (place.Kind)
+		{
+		case PlaceKind.TankHull:
+			Room(centre, u, hu, hv, h, place.Door, 1.4f, 2f, metalMaterial, metalMaterial);
+			// tracks down its long sides, a turret, its gun
+			Box(centre + Left(u) * (hv + 0.45f), u, hu * 1.05f, 0.45f, 0f, 1.15f, metalMaterial, metalMaterial, false);
+			Box(centre - Left(u) * (hv + 0.45f), u, hu * 1.05f, 0.45f, 0f, 1.15f, metalMaterial, metalMaterial, false);
+			Box(centre, u, hu * 0.45f, hv * 0.7f, h, h + 1f, metalMaterial, metalMaterial, false);
+			Box(centre + u * (hu * 0.45f + 2.2f), u, 2.2f, 0.12f, h + 0.45f, h + 0.7f, metalMaterial, metalMaterial, true);
+			break;
+		case PlaceKind.PumpHouse:
+			Room(centre, u, hu, hv, h, place.Door, 2f, 2.4f, concrete, concrete);
+			// a stack that steams, a fat pipe along the roof and down
+			Box(centre + u * (hu * 0.5f), u, 0.7f, 0.7f, h, h + 4.5f, metalMaterial, metalMaterial, false);
+			Box(centre - Left(u) * (hv - 0.6f), u, hu, 0.45f, h, h + 0.9f, metalMaterial, metalMaterial, false);
+			break;
+		case PlaceKind.FuelDepot:
+			// a low bunker wall, a tall drum on legs, a crane over it: seen from a long way off
+			Box(centre + u * (hu * 0.45f), u, 2.6f, 2.6f, 0f, 11f, metalMaterial, metalMaterial, false);
+			Box(centre + u * (hu * 0.45f), u, 3f, 3f, 11f, 11.5f, metalMaterial, metalMaterial, false);
+			Box(centre - Left(u) * hv, u, 0.35f, 0.35f, 0f, 16f, metalMaterial, metalMaterial, false);
+			Box(centre - Left(u) * hv + u * 3f, u, 6f, 0.28f, 16f, 16.6f, metalMaterial, metalMaterial, false);
+			Box(centre - u * hu, u, 0.25f, hv, 0f, 1.2f, concrete, concrete, false);
+			break;
+		default:
+			Room(centre, u, hu, hv, h, place.Door, 1.6f, 2.2f, wallMaterial, concrete);
+			// a floor or two over it, so from outside it's one more block
+			Box(centre, u, hu, hv, h + 0.2f, h + 0.2f + LotMesh.FloorHeight * (1f + (float)((place.Seed >> 8) % 2uL)), wallMaterial, concrete, false);
+			break;
+		}
+	}
+
+	private void Room(Vector3 centre, Vector3 u, float hu, float hv, float height, int door, float doorWidth, float doorHeight, int walls, int roof)
+	{
+		Vector3 v = Left(u);
+		WallSide(centre + u * (hu - placeWall * 0.5f), v, hv, height, door == 0, doorWidth, doorHeight, walls);
+		WallSide(centre - u * (hu - placeWall * 0.5f), v, hv, height, door == 1, doorWidth, doorHeight, walls);
+		WallSide(centre + v * (hv - placeWall * 0.5f), u, hu - placeWall, height, door == 2, doorWidth, doorHeight, walls);
+		WallSide(centre - v * (hv - placeWall * 0.5f), u, hu - placeWall, height, door == 3, doorWidth, doorHeight, walls);
+		Box(centre, u, hu, hv, height, height + 0.2f, walls, roof, true);
+	}
+
+	// along's half length long, a gap in its middle if it has the door
+	private void WallSide(Vector3 middle, Vector3 along, float half, float height, bool doorHere, float doorWidth, float doorHeight, int material)
+	{
+		float thick = placeWall * 0.5f;
+		if (!doorHere)
+		{
+			Box(middle, along, half, thick, 0f, height, material, material, false);
+			return;
+		}
+		float gap = doorWidth * 0.5f;
+		float piece = (half - gap) * 0.5f;
+		Box(middle + along * (gap + piece), along, piece, thick, 0f, height, material, material, false);
+		Box(middle - along * (gap + piece), along, piece, thick, 0f, height, material, material, false);
+		Box(middle, along, gap, thick, doorHeight, height, material, material, false);
+	}
+
 	public void AddStair(Vector3 foot, Vector3 dir, Vector3 out_, float deck)
 	{
 		float top = deck + deckLift;

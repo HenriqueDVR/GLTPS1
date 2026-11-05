@@ -43,6 +43,9 @@ public struct Lot
 
 	// the world side's own randomness for this lot (building shape, which landmark, props)
 	public ulong Seed;
+
+	// a place's stood here (PlacePlan): the world side builds that instead. never set by the plan
+	public bool Hollow;
 }
 
 // a flight of stairs from the ground up to a raised street, against the deck's side, layout coords

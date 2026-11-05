@@ -118,4 +118,7 @@ public sealed class DistrictDef
 
 	// share of the underground's cells with a hall (UndergroundPlan)
 	public double Underground;
+
+	// of the shelters here, the share that are tank hulls (the rest dark rooms)
+	public double Tanks = 0.15;
 }

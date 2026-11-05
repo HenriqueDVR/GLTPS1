@@ -121,6 +121,9 @@ public static class Gen2
 	// the underground (UndergroundPlan). +1 and +2 the galleries east and north
 	public const ulong StreamUnder = 0x554E4452uL;
 
+	// places (17): dealing, kinds, shapes
+	public const ulong StreamPlace = 0x504C4143uL;
+
 	// Math.Sin and Cos can differ in the last bits between runtimes. plain doubles, adding and multiplying, can't
 	public static double Sin(double x)
 	{
@@ -151,6 +154,9 @@ public static class Gen2
 	// legacy spawner ids are small, scene pickups use bit 62, items made at runtime will use bit 62 with a peer (03).
 	// index is where the lot is, not a count, so taking a lot away (a place, a set piece) moves no other lot's item
 	public const ulong TileItemTag = 0x2000000000000000uL;
+
+	// a place's containers and the like: bit 60, then the same layout with the 512 m cell for the tile (PlacePlan.Id)
+	public const ulong PlaceTag = 0x1000000000000000uL;
 
 	// (u:5)(v:5)(child:2): the lot's centre on an 8 m grid from 64 m before the tile's corner. lots are 14 m+ apart and
 	// reach about half a block (56 m) out of the tile that owns them
