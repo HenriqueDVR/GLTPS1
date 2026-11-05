@@ -4,7 +4,7 @@ using UnityEngine.InputSystem;
 using UnityEngine.Rendering.Universal;
 
 // map as a sheet of paper held in first person: Chito's pencil sketch of what's been seen (MapSheet), the marks of what
-// was found there, you on top. north's up, arrow keys or the d-pad move the sheet, the wheel or the shoulder buttons
+// was found there, you on top. north's up, arrow keys or the right stick move the sheet, the wheel or the shoulder buttons
 // change the scale. own overlay camera so it never clips into walls
 public class MapPaper : MonoBehaviour
 {
@@ -196,7 +196,8 @@ public class MapPaper : MonoBehaviour
 		Gamepad pad = Gamepad.current;
 		if (pad != null)
 		{
-			move += pad.dpad.ReadValue();
+			// the d-pad's up closes the map
+			move += pad.rightStick.ReadValue();
 			if (pad.rightShoulder.wasPressedThisFrame)
 			{
 				scaleAt = Mathf.Min(scaleAt + 1, scales.Length - 1);
