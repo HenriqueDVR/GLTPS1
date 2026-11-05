@@ -81,6 +81,7 @@ public class PSXScreenFit : MonoBehaviour
         screenCamera = GetComponent<Camera>();
         // it only draws the quad: msaa here was ~140 MB of full-window buffers for nothing
         screenCamera.allowMSAA = false;
+        KeepWorldBuffers();
         MeshRenderer quadRenderer = transform.parent.GetComponentInChildren<MeshRenderer>();
         if (quadRenderer == null)
         {
@@ -103,6 +104,27 @@ public class PSXScreenFit : MonoBehaviour
                 picture = camera.targetTexture;
             }
         }
+    }
+
+    // about 50 render textures were made and thrown away every frame. on one renderer with the low-res world camera, each
+    // resized the other's buffers, so this camera has its own. but a camera with no stack makes urp free the other
+    // renderers' buffers, so it gets an overlay that draws nothing
+    private void KeepWorldBuffers()
+    {
+        const int screenRenderer = 1;
+        UniversalAdditionalCameraData data = screenCamera.GetUniversalAdditionalCameraData();
+        data.SetRenderer(screenRenderer);
+        GameObject empty = new GameObject("ScreenOverlay");
+        empty.transform.SetParent(transform, false);
+        Camera overlay = empty.AddComponent<Camera>();
+        overlay.cullingMask = 0;
+        overlay.clearFlags = CameraClearFlags.Nothing;
+        overlay.allowMSAA = false;
+        UniversalAdditionalCameraData overlayData = overlay.GetUniversalAdditionalCameraData();
+        overlayData.renderType = CameraRenderType.Overlay;
+        overlayData.SetRenderer(screenRenderer);
+        overlayData.renderShadows = false;
+        data.cameraStack.Add(overlay);
     }
 
     // msaa on the low rt: thin things far off (window bands, beams) are under a pixel and flickered as the view moved.

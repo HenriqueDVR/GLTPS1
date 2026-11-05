@@ -50,6 +50,9 @@ public class GraphicsTuning : MonoBehaviour
 	[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
 	private static void Create()
 	{
+		// a stack trace on every plain log line costs time and garbage, errors keep theirs
+		Application.SetStackTraceLogType(LogType.Log, StackTraceLogType.None);
+		Application.SetStackTraceLogType(LogType.Warning, StackTraceLogType.None);
 		GameObject obj = new GameObject("GraphicsTuning");
 		DontDestroyOnLoad(obj);
 		instance = obj.AddComponent<GraphicsTuning>();
