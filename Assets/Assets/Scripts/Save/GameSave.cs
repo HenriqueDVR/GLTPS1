@@ -300,6 +300,11 @@ public static class GameSave
 		{
 			return "Nothing to save.";
 		}
+		// the night's passing: she's on her way somewhere
+		if (WakeFlow.Busy)
+		{
+			return "Can't save now.";
+		}
 		// mid-ride the world is half one layer, half the other
 		if (LayerTransition.Busy)
 		{

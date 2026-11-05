@@ -3,6 +3,12 @@ using System;
 // what running out of something costs, as plain math (17 section 7, 09 failure flow). a setback, never a loss
 public static class NeedsRules
 {
+	// on the difficulty's rates (17 section 7): at Medium food's about 40 minutes and water about 25, a daily rhythm
+	// instead of a chore every 8 minutes
+	public const float HungerScale = 0.42f;
+
+	public const float ThirstScale = 0.33f;
+
 	// out of something this long, slow and blurred, and she's down
 	public const float ExhaustedFor = 30f;
 

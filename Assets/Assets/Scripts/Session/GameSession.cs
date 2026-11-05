@@ -70,6 +70,7 @@ public class GameSession : MonoBehaviour
 		Add<ZoneAtmosphere>().Init(world.Plan, floatingOrigin);
 		Add<WakeFlow>();
 		Add<MapSheet>();
+		Add<PlacePulls>();
 		UseLayer(layer);
 		Backdrop(layer);
 		Add<LayerTransition>();

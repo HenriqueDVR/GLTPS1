@@ -114,7 +114,7 @@ public class CharacterStatus : MonoBehaviour
             // in the pause menu her needs wait: time goes on in coop, the player can't do anything about them
             if (girl.Items != null && !(CoopPause.Paused && CoopPlayers.Instance != null && CoopPlayers.Instance.Local == girl.transform))
             {
-                Drain(girl.Items, hungerRate * rate / referenceFrameRate, thirstRate * rate / referenceFrameRate);
+                Drain(girl.Items, hungerRate * NeedsRules.HungerScale * rate / referenceFrameRate, thirstRate * NeedsRules.ThirstScale * rate / referenceFrameRate);
             }
             if (girl.Control == GirlControl.AI)
             {

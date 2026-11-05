@@ -236,6 +236,8 @@ public class LotMesh
 
 	private const int metalMaterial = 3;
 
+	private const int darkMaterial = 2;
+
 	public void AddPlace(Place place, Vector3 centre)
 	{
 		Vector3 u = new Vector3((float)place.Axis.X, 0f, (float)place.Axis.Z);
@@ -246,12 +248,13 @@ public class LotMesh
 		switch (place.Kind)
 		{
 		case PlaceKind.TankHull:
-			Room(centre, u, hu, hv, h, place.Door, 1.4f, 2f, metalMaterial, metalMaterial);
-			// tracks down its long sides, a turret, its gun
-			Box(centre + Left(u) * (hv + 0.45f), u, hu * 1.05f, 0.45f, 0f, 1.15f, metalMaterial, metalMaterial, false);
-			Box(centre - Left(u) * (hv + 0.45f), u, hu * 1.05f, 0.45f, 0f, 1.15f, metalMaterial, metalMaterial, false);
-			Box(centre, u, hu * 0.45f, hv * 0.7f, h, h + 1f, metalMaterial, metalMaterial, false);
-			Box(centre + u * (hu * 0.45f + 2.2f), u, 2.2f, 0.12f, h + 0.45f, h + 0.7f, metalMaterial, metalMaterial, true);
+			Room(centre, u, hu, hv, h, place.Door, 1.4f, 2f, darkMaterial, darkMaterial);
+			// tracks down its long sides, a sloped-looking nose in steps, a turret off centre, its gun, burnt out and rusting
+			Box(centre + Left(u) * (hv + 0.45f), u, hu * 1.08f, 0.45f, 0f, 1.15f, metalMaterial, darkMaterial, false);
+			Box(centre - Left(u) * (hv + 0.45f), u, hu * 1.08f, 0.45f, 0f, 1.15f, metalMaterial, darkMaterial, false);
+			Box(centre, u, hu * 0.42f, hv * 0.72f, h, h + 0.95f, metalMaterial, darkMaterial, false);
+			Box(centre, u, hu * 0.28f, hv * 0.5f, h + 0.95f, h + 1.25f, darkMaterial, darkMaterial, false);
+			Box(centre + u * (hu * 0.42f + 2.4f), u, 2.4f, 0.11f, h + 0.42f, h + 0.66f, darkMaterial, darkMaterial, true);
 			break;
 		case PlaceKind.PumpHouse:
 			Room(centre, u, hu, hv, h, place.Door, 2f, 2.4f, concrete, concrete);

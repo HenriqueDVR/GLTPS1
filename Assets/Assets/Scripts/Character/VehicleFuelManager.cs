@@ -11,6 +11,8 @@ public class VehicleFuelManager : MonoBehaviour
     [SerializeField] private float defaultFuelConsumptionRate;
     [SerializeField] private float increasedFuelConsumptionRate;
     public float refuelingRate;
+    // a tank's about 2 days of stops and legs (17 section 7): some 14 minutes at the wheel
+    private const float tankLasts = 0.6f;
 
     [SerializeField] private RectTransform fuelBar;
     private float rectTransformInitialHeight;
@@ -33,11 +35,11 @@ public class VehicleFuelManager : MonoBehaviour
         {
             if (playerInputScript.actions.Vehicle.Accelerate.IsPressed())
             {
-                currentFuel -= increasedFuelConsumptionRate * Time.deltaTime;
+                currentFuel -= increasedFuelConsumptionRate * tankLasts * Time.deltaTime;
             }
             else
             {
-                currentFuel -= defaultFuelConsumptionRate * Time.deltaTime;
+                currentFuel -= defaultFuelConsumptionRate * tankLasts * Time.deltaTime;
             }
         }
         //scale fuel bar directly proportionally to current fuel level
