@@ -8,26 +8,9 @@ using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 // coop death: girl goes down instead and the partner revives her (hold interact).
-// costs a ration / water / a campfire depending on what ran out. both down = game over
+// costs a ration / water / a campfire depending on what ran out. both down, they wake at the last shelter (WakeFlow)
 public class CoopDowned : MonoBehaviour, IInteractionSource
 {
-	private enum Need
-	{
-		Food,
-		Water,
-		Warmth
-	}
-
-	private const float reviveReach = 2.5f;
-
-	private const float reviveDuration = 3f;
-
-	private const float waterCost = 20f;
-
-	private const float campfireReach = 8f;
-
-	private const float revivedLevel = 25f;
-
 	private const float gameOverDelay = 6f;
 
 	// down with nobody there to revive her, longer than a friend takes to reconnect
@@ -97,19 +80,7 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 
 	private bool CanRevive(CoopPlayers players)
 	{
-		if (!remoteDown || localDown || !session.Connected || !CanReach(players))
-		{
-			return false;
-		}
-		Vector3 position = players.Remote.position;
-		foreach (Need need in Needs(Girl(players.Remote)))
-		{
-			if (!Has(need, position))
-			{
-				return false;
-			}
-		}
-		return true;
+		return remoteDown && !localDown && session.Connected && CanReach(players) && GirlNeeds.HasAll(Girl(players.Remote), status);
 	}
 
 	private void Start()
@@ -136,7 +107,7 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 			return;
 		}
 		CharacterItemInteraction local = Girl(instance.Local);
-		if (!localDown && OutOfSomething(local) && CanGoDownHere())
+		if (!localDown && GirlNeeds.DueDown(local) && CanGoDownHere())
 		{
 			GoDown();
 		}
@@ -150,11 +121,11 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 			}
 			else if (Time.unscaledTime >= gameOverAt)
 			{
-				gameOverAt = float.MaxValue;
-				SceneManager.LoadScene(Scenes.Title);
+				gameOverAt = -1f;
+				WakeFlow.Begin();
 			}
 		}
-		// nobody's coming: over, the save's kept like any game over
+		// nobody's coming: the host wakes alone at the last shelter. a friend's game was the host's, back to the title
 		if (localDown && !session.Connected)
 		{
 			if (downAloneSince < 0f)
@@ -163,27 +134,21 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 			}
 			else if (Time.unscaledTime >= downAloneSince + aloneDelay)
 			{
-				downAloneSince = float.MaxValue;
-				SceneManager.LoadScene(Scenes.Title);
+				downAloneSince = -1f;
+				if (session.IsHost)
+				{
+					WakeFlow.Begin();
+				}
+				else
+				{
+					SceneManager.LoadScene(Scenes.Title);
+				}
 			}
 		}
 		else
 		{
 			downAloneSince = -1f;
 		}
-	}
-
-	private static bool OutOfSomething(CharacterItemInteraction girl)
-	{
-		if (!(girl.thirstLevel <= 0f) && !(girl.hungerLevel <= 0f))
-		{
-			if (girl.temperatureLevel <= 0f)
-			{
-				return !girl.anim.GetCurrentAnimatorStateInfo(1).IsTag("Ket");
-			}
-			return false;
-		}
-		return true;
 	}
 
 	// not while driving, she goes down once she gets out
@@ -230,9 +195,7 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 		CoopPlayers instance = CoopPlayers.Instance;
 		Transform local = instance.Local;
 		CharacterItemInteraction characterItemInteraction = Girl(local);
-		characterItemInteraction.hungerLevel = Mathf.Max(characterItemInteraction.hungerLevel, revivedLevel);
-		characterItemInteraction.thirstLevel = Mathf.Max(characterItemInteraction.thirstLevel, revivedLevel);
-		characterItemInteraction.temperatureLevel = Mathf.Max(characterItemInteraction.temperatureLevel, revivedLevel);
+		GirlNeeds.Raise(characterItemInteraction, NeedsRules.RevivedLevel);
 		Animator componentInChildren = local.GetComponentInChildren<Animator>();
 		// death anim has no exit so force it back
 		componentInChildren.Rebind();
@@ -252,47 +215,6 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 		if (rig != null)
 		{
 			rig.Watch(girl);
-		}
-	}
-
-	private List<Need> Needs(CharacterItemInteraction girl)
-	{
-		List<Need> list = new List<Need>();
-		if (girl.hungerLevel <= 0f)
-		{
-			list.Add(Need.Food);
-		}
-		if (girl.thirstLevel <= 0f)
-		{
-			list.Add(Need.Water);
-		}
-		if (girl.temperatureLevel <= 0f)
-		{
-			list.Add(Need.Warmth);
-		}
-		return list;
-	}
-
-	private bool Has(Need need, Vector3 body)
-	{
-		switch (need)
-		{
-		case Need.Food:
-			return status.index > 0;
-		case Need.Water:
-			return status.waterLevel >= waterCost;
-		default:
-		{
-			CampfireFuelLevel[] array = Object.FindObjectsOfType<CampfireFuelLevel>();
-			foreach (CampfireFuelLevel campfireFuelLevel in array)
-			{
-				if (campfireFuelLevel.currentFuelLevel > 0f && Vector3.Distance(campfireFuelLevel.transform.position, body) < campfireReach)
-				{
-					return true;
-				}
-			}
-			return false;
-		}
 		}
 	}
 
@@ -316,14 +238,10 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 			reviveProgress = 0f;
 			return;
 		}
-		Vector3 position = players.Remote.position;
-		foreach (Need item in Needs(Girl(players.Remote)))
+		if (!GirlNeeds.HasAll(Girl(players.Remote), status))
 		{
-			if (!Has(item, position))
-			{
-				reviveProgress = 0f;
-				return;
-			}
+			reviveProgress = 0f;
+			return;
 		}
 		if (!InteractHeld(players))
 		{
@@ -331,20 +249,10 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 			return;
 		}
 		reviveProgress += Time.deltaTime;
-		if (reviveProgress >= reviveDuration)
+		if (reviveProgress >= GirlNeeds.ReviveDuration)
 		{
 			reviveProgress = 0f;
-			foreach (Need item2 in Needs(Girl(players.Remote)))
-			{
-				if (item2 == Need.Food)
-				{
-					local.RemoveFood(1);
-				}
-				else if (item2 == Need.Water)
-				{
-					status.waterLevel -= waterCost;
-				}
-			}
+			GirlNeeds.Pay(Girl(players.Remote), status, local);
 			remoteDown = false;
 			Send(CoopSession.MessageType.Revived);
 		}
@@ -352,7 +260,7 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 
 	private static bool CanReach(CoopPlayers players)
 	{
-		return Vector3.Distance(players.Local.position, players.Remote.position) < reviveReach;
+		return Vector3.Distance(players.Local.position, players.Remote.position) < GirlNeeds.ReviveReach;
 	}
 
 	private bool InteractHeld(CoopPlayers players)
@@ -396,6 +304,19 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 	public void OnState(bool down)
 	{
 		remoteDown = down;
+	}
+
+	// the night's over (WakeFlow), everyone's up
+	public void Woke()
+	{
+		remoteDown = false;
+		reviveProgress = 0f;
+		gameOverAt = -1f;
+		downAloneSince = -1f;
+		if (localDown)
+		{
+			GetUp();
+		}
 	}
 
 	public void OnMessage(CoopSession.MessageType type)
@@ -511,17 +432,17 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 		float x = 0f;
 		if (localDown)
 		{
-			List<Need> needs = Needs(Girl(players.Local));
+			List<Need> needs = GirlNeeds.Missing(Girl(players.Local));
 			text2 = session.Connected ? ("You're down. " + text + " can revive you with " + NeedsText(needs) + ".") : ("You're down, and " + text + " is gone.");
 		}
 		else if (remoteDown)
 		{
-			List<Need> needs2 = Needs(Girl(players.Remote));
+			List<Need> needs2 = GirlNeeds.Missing(Girl(players.Remote));
 			if (CanReach(players))
 			{
-				List<Need> list = needs2.FindAll((Need n) => !Has(n, players.Remote.position));
+				List<Need> list = needs2.FindAll((Need n) => !GirlNeeds.Has(n, status, players.Remote.position));
 				text2 = ((list.Count > 0) ? ("To revive " + text + " you need " + NeedsText(list) + ".") : ("Hold interact to revive " + text + "."));
-				x = 300f * (reviveProgress / reviveDuration);
+				x = 300f * (reviveProgress / GirlNeeds.ReviveDuration);
 			}
 		}
 		message.text = text2;
@@ -548,7 +469,7 @@ public class CoopDowned : MonoBehaviour, IInteractionSource
 		vector2.x = Mathf.Clamp(vector2.x, num * 2f, (float)Screen.width - num * 2f);
 		vector2.y = Mathf.Clamp(vector2.y, num, (float)Screen.height - num);
 		waypoint.transform.position = new Vector3(vector2.x, vector2.y, 0f);
-		waypoint.text = name + " is down\nneeds " + NeedsText(Needs(Girl(players.Remote))) + "\n" + Mathf.RoundToInt(Vector3.Distance(players.Local.position, players.Remote.position)) + " m";
+		waypoint.text = name + " is down\nneeds " + NeedsText(GirlNeeds.Missing(Girl(players.Remote))) + "\n" + Mathf.RoundToInt(Vector3.Distance(players.Local.position, players.Remote.position)) + " m";
 	}
 
 	// map is a screenshot taken when it's opened

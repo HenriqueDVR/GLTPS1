@@ -65,6 +65,7 @@ public static class GameSave
 		StateRegistry.Register(new LayersSection(), StateUse.Save);
 		StateRegistry.Register(new WorldFlags.State(), StateUse.Both);
 		StateRegistry.Register(new CoopPipes.State(), StateUse.Both);
+		StateRegistry.Register(new LastShelter.State(), StateUse.Save);
 		StateRegistry.Register(new CoopGirlState.RejoinSection(), StateUse.Join);
 	}
 
@@ -249,6 +250,7 @@ public static class GameSave
 		CoopPipes.SetRestore(null);
 		playSecondsBefore = 0f;
 		WorldClock.ResetLevel();
+		LastShelter.ResetLevel();
 		if (!CoopSession.Active || CoopSession.Instance.IsHost)
 		{
 			WorldGenerator.ClearRequested();
@@ -327,7 +329,7 @@ public static class GameSave
 				return "Can't save in the elevator.";
 			}
 		}
-		if (OutOfSomething(chito) && OutOfSomething(yuuri))
+		if (GirlNeeds.Out(Girls.Chito.Items) && GirlNeeds.Out(Girls.Yuuri.Items))
 		{
 			return "Can't save now.";
 		}
@@ -369,12 +371,6 @@ public static class GameSave
 			Debug.LogWarning("Save: couldn't save: " + e);
 			return false;
 		}
-	}
-
-	private static bool OutOfSomething(Transform girl)
-	{
-		CharacterItemInteraction items = girl.GetComponentInChildren<CharacterItemInteraction>();
-		return items.hungerLevel <= 0f || items.thirstLevel <= 0f || items.temperatureLevel <= 0f;
 	}
 
 	private static SaveData Capture()

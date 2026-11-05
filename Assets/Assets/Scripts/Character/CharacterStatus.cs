@@ -108,6 +108,7 @@ public class CharacterStatus : MonoBehaviour
 
         foreach (Girl girl in Girls.All)
         {
+            CountOut(girl);
             // on the ket, either seat, whichever machine this is: both peers work out the same rate for her
             float rate = girl.Animator.GetCurrentAnimatorStateInfo(1).IsTag("Ket") ? slowDepletionRate : 1f;
             // in the pause menu her needs wait: time goes on in coop, the player can't do anything about them
@@ -119,12 +120,33 @@ public class CharacterStatus : MonoBehaviour
             {
                 girl.Items.FeelForFire();
             }
-            if (girl.Control == GirlControl.AI && Time.time >= nextAiNeeds)
+            if (girl.Control == GirlControl.AI && Time.time >= nextAiNeeds && !girl.Input.Contexts.Has(InputContext.Downed))
             {
                 nextAiNeeds = Time.time + aiNeedsInterval;
                 girl.Items.LookAfterSelf(aiNeedsLevel);
             }
         }
+    }
+
+    // she's slow and blurred already from low down (PlayerMovement, the screen effect). this is how long she's kept going
+    // on nothing, and she says so once. a remote girl's player sees to hers
+    private void CountOut(Girl girl)
+    {
+        CharacterItemInteraction items = girl.Items;
+        if (items == null)
+        {
+            return;
+        }
+        if (!GirlNeeds.Out(items))
+        {
+            items.OutFor = 0f;
+            return;
+        }
+        if (items.OutFor <= 0f && girl.Control != GirlControl.Remote)
+        {
+            Speaker.Say(GirlNeeds.NameOf(girl), GirlNeeds.Remark(girl));
+        }
+        items.OutFor += Time.deltaTime;
     }
 
     private void Drain(CharacterItemInteraction items, float scaledHungerRate, float scaledThirstRate)

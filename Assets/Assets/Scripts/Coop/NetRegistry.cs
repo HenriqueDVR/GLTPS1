@@ -17,7 +17,8 @@ public static class NetRegistry
 		Clock = 3,
 		Weather = 4,
 		Flag = 5,
-		Line = 6
+		Line = 6,
+		Wake = 7
 	}
 
 	public const ulong SessionId = 0uL;

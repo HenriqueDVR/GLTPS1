@@ -259,6 +259,11 @@ public class SafeGround : MonoBehaviour
 				controller.enabled = true;
 			}
 		}
+		// not for nothing, it's a long way back up
+		if (girl.Items != null)
+		{
+			GirlNeeds.Fell(girl.Items);
+		}
 		// riding on the other player's ket: theirs is put back on their side
 		yield return new WaitForSecondsRealtime(0.2f);
 		for (float t = 0f; t < fadeIn; t += Time.unscaledDeltaTime)

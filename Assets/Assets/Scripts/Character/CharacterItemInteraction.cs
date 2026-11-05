@@ -25,6 +25,9 @@ public class CharacterItemInteraction : MonoBehaviour, IInteractionSource
     [SerializeField] private float waterRefillRate = 1f;
 
     public float temperatureLevel = 100f;
+
+    // how long she's been out of something, CharacterStatus counts it
+    public float OutFor;
     [SerializeField] private float temperatureRefillValue = 1f;
     [SerializeField] private float fuelValue = 20f;
     public bool isUnderCeiling;
@@ -183,6 +186,30 @@ public class CharacterItemInteraction : MonoBehaviour, IInteractionSource
     private CampfireFuelLevel warmth;
 
     public bool AtLitFire => warmth != null && warmth.currentFuelLevel > 0f;
+
+    // a lit fire she's in the warmth of, whoever she is: no trigger brings it to an AI or a remote girl
+    public CampfireFuelLevel FireHere()
+    {
+        int count = Physics.OverlapSphereNonAlloc(transform.position + Vector3.up * 0.5f, 0.3f, feltNear, Physics.AllLayers, QueryTriggerInteraction.Collide);
+        for (int i = 0; i < count; i++)
+        {
+            if (feltNear[i].CompareTag("CampfireWarmthArea"))
+            {
+                CampfireFuelLevel fire = feltNear[i].GetComponent<CampfireFuelLevel>();
+                if (fire != null && fire.currentFuelLevel > 0f)
+                {
+                    return fire;
+                }
+            }
+        }
+        return null;
+    }
+
+    // the AI girl seeing to the other one
+    public void LightFireNow()
+    {
+        TryPlaceCampfire();
+    }
 
     private readonly Collider[] feltNear = new Collider[16];
 

@@ -138,6 +138,11 @@ public class AIController : MonoBehaviour
 
 	private bool walkingIn;
 
+	// the other girl's down: she goes to her, whatever the wait order says
+	public Transform Tend;
+
+	private bool tending;
+
 	private bool wantBoard;
 
 	private bool wantOff;
@@ -317,9 +322,22 @@ public class AIController : MonoBehaviour
 		KeepOnGround();
 		SitOnGround();
 		WatchPlayer();
-		if (orders.follow)
+		if (Tend != null)
 		{
-			Follow();
+			GoToTend();
+		}
+		else
+		{
+			if (tending)
+			{
+				tending = false;
+				going = false;
+				agent.stoppingDistance = stopWithin;
+			}
+			if (orders.follow)
+			{
+				Follow();
+			}
 		}
 		Move();
 	}
@@ -587,6 +605,26 @@ public class AIController : MonoBehaviour
 			heading = Vector3.Slerp(heading, playerVelocity.normalized, 1f - Mathf.Exp(-3f * Time.deltaTime));
 			heading.y = 0f;
 			heading.Normalize();
+		}
+	}
+
+	private void GoToTend()
+	{
+		if (!tending)
+		{
+			tending = true;
+			nextRetarget = 0f;
+		}
+		agent.stoppingDistance = 1f;
+		agent.autoBraking = true;
+		agent.speed = player.runSpeed;
+		if (Time.time >= nextRetarget)
+		{
+			nextRetarget = Time.time + retargetEvery;
+			if (NavMesh.SamplePosition(Tend.position, out NavMeshHit near, 3f, NavMesh.AllAreas))
+			{
+				agent.SetDestination(near.position);
+			}
 		}
 	}
 

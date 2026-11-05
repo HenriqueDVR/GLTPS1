@@ -21,6 +21,8 @@ public partial class WorldClock : MonoBehaviour
 
 	public static double TimeOfDay => DayClock.TimeOfDay(total);
 
+	public static double Total => total;
+
 	public static DayPhase Phase => DayClock.PhaseOf(TimeOfDay);
 
 	public static float Rate => rate;

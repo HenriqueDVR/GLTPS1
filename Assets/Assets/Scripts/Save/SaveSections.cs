@@ -505,7 +505,7 @@ public static class SaveScene
 	}
 
 	// city might not be built yet, hold her up until there's ground
-	private static IEnumerator PlaceOnGround(Transform girl, Vector3 layout, float yaw)
+	public static IEnumerator PlaceOnGround(Transform girl, Vector3 layout, float yaw)
 	{
 		CharacterController controller = girl.GetComponent<CharacterController>();
 		UnityEngine.AI.NavMeshAgent agent = girl.GetComponent<UnityEngine.AI.NavMeshAgent>();
