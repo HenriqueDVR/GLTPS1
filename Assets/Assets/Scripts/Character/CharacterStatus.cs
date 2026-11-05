@@ -21,8 +21,8 @@ public class CharacterStatus : MonoBehaviour
     [SerializeField] private float maxThirstValue = 100f;
     [SerializeField] private float maxWaterLevel = 400f;
     public float waterSlowRefillRate = 0.1f;
-    // a fire burns 20 s: two drinks' worth for its 20 fuel
-    private const float snowMeltRate = 2f;
+    // a fire burns 2 minutes (CampFire): three drinks' worth for its 20 fuel
+    private const float snowMeltRate = 0.5f;
     // the AI looks after herself below this, a bit apart so she doesn't do it all at once
     private const float aiNeedsLevel = 30f;
     private const float aiNeedsInterval = 6f;

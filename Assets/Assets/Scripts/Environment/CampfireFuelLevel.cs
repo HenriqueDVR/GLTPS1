@@ -15,6 +15,12 @@ public class CampfireFuelLevel : MonoBehaviour
     [SerializeField] WeatherManager weatherManagerScript;
     [SerializeField] float isUnderCeilingHeight = 20f;
     private float elasped = 0;
+    // CampFire: how long it burns, whatever the prefab says
+    public void SetBurnSeconds(float seconds)
+    {
+        fuelLossRate = maxFuelLevel / seconds;
+    }
+
     void Start()
     {
         initialLightIntensity = campFireLight.intensity;

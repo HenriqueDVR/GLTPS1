@@ -28,7 +28,6 @@ public class CharacterItemInteraction : MonoBehaviour, IInteractionSource
 
     // how long she's been out of something, CharacterStatus counts it
     public float OutFor;
-    [SerializeField] private float temperatureRefillValue = 1f;
     [SerializeField] private float fuelValue = 20f;
     public bool isUnderCeiling;
     [SerializeField] float isUnderCeilingHeight = 20f;
@@ -229,7 +228,7 @@ public class CharacterItemInteraction : MonoBehaviour, IInteractionSource
         isInCampfireArea = warmth != null;
         if (AtLitFire)
         {
-            temperatureLevel += temperatureRefillValue * Time.deltaTime / Time.fixedDeltaTime;
+            temperatureLevel += CampFire.WarmPerSecond * Time.deltaTime;
         }
     }
 
@@ -326,6 +325,7 @@ public class CharacterItemInteraction : MonoBehaviour, IInteractionSource
     public GameObject SpawnCampfire(Vector3 position, Quaternion rotation)
     {
         characterStatusScript.newCampfire = Instantiate(campfirePrefab, position, rotation);
+        characterStatusScript.newCampfire.AddComponent<CampFire>();
         return characterStatusScript.newCampfire;
     }
 
@@ -377,7 +377,7 @@ public class CharacterItemInteraction : MonoBehaviour, IInteractionSource
             warmth = other.gameObject.GetComponent<CampfireFuelLevel>();
             if (other.gameObject.GetComponent<CampfireFuelLevel>().currentFuelLevel > 0)
             {
-                temperatureLevel += temperatureRefillValue;
+                temperatureLevel += CampFire.WarmPerSecond * Time.fixedDeltaTime;
             }
         }
     }

@@ -19,7 +19,8 @@ public static class NetRegistry
 		Flag = 5,
 		Line = 6,
 		Wake = 7,
-		Place = 8
+		Place = 8,
+		Camp = 9
 	}
 
 	public const ulong SessionId = 0uL;
