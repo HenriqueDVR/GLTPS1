@@ -16,10 +16,11 @@ public class DayClockTests
 	}
 
 	[Test]
-	public void NewGameIsDuskOfDayOne()
+	public void NewGameIsMorningOfDayOne()
 	{
 		Assert.AreEqual(1, DayClock.Day(DayClock.NewGame));
-		Assert.AreEqual(DayPhase.Dusk, DayClock.PhaseOf(DayClock.TimeOfDay(DayClock.NewGame)));
+		Assert.AreEqual(0.35, DayClock.TimeOfDay(DayClock.NewGame), 1e-9);
+		Assert.AreEqual(DayPhase.Day, DayClock.PhaseOf(DayClock.TimeOfDay(DayClock.NewGame)));
 		Assert.AreEqual(DayPhase.Day, DayClock.PhaseOf(DayClock.TimeOfDay(DayClock.OldSave)));
 	}
 
@@ -83,7 +84,7 @@ public class DayClockTests
 		Assert.AreEqual(writer.ToArray(), written.ToArray());
 		WorldClock.ResetLevel();
 		Assert.AreEqual(1, WorldClock.Day);
-		Assert.AreEqual(DayPhase.Dusk, WorldClock.Phase);
+		Assert.AreEqual(0.35, WorldClock.TimeOfDay, 1e-9);
 	}
 
 	[Test]
@@ -100,8 +101,8 @@ public class DayClockTests
 		WorldClock.ResetLevel();
 		Assert.IsFalse(WorldClock.Advance(-5.0));
 		Assert.IsTrue(WorldClock.Advance(120.0));
-		Assert.AreEqual(0.95, WorldClock.TimeOfDay, 1e-9);
-		Assert.AreEqual(DayPhase.Night, WorldClock.Phase);
+		Assert.AreEqual(0.45, WorldClock.TimeOfDay, 1e-9);
+		Assert.AreEqual(1, WorldClock.Day);
 		WorldClock.ResetLevel();
 	}
 }

@@ -388,6 +388,11 @@ public class CoopKettenkrad : MonoBehaviour
 
 	private static bool NearBack()
 	{
+		// the picker asks from the first frame, the other girl isn't set up yet
+		if (CoopPlayers.Instance == null || CoopPlayers.Instance.Local == null)
+		{
+			return false;
+		}
 		return Vector3.Distance(CoopPlayers.Instance.Local.position, CoopPlayers.Instance.Local.GetComponent<NavMeshAgentVehicleInteraction>().EnterPosition.position) < backReach;
 	}
 

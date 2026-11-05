@@ -131,6 +131,11 @@ public class CharacterStatus : MonoBehaviour
     {
         // colder out in the weather
         float scaledTemperatureLossRate = temperatureLossRate[items.isUnderCeiling ? 0 : weatherManagerScript.index] / referenceFrameRate;
+        // and at night, out in the open. the legacy world has no night
+        if (!items.isUnderCeiling && WorldGenerator.GenVersion == 2)
+        {
+            scaledTemperatureLossRate *= DayCurve.Cold(WorldClock.TimeOfDay);
+        }
         items.hungerLevel = Mathf.Clamp(items.hungerLevel, 0, maxHungerValue);
         items.hungerLevel -= scaledHungerRate * Time.deltaTime;
         items.thirstLevel = Mathf.Clamp(items.thirstLevel, 0, maxThirstValue);

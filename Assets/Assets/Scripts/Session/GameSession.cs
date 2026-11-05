@@ -56,6 +56,7 @@ public class GameSession : MonoBehaviour
 		KanazawaInstanceManager.ResetLevel();
 		Girls.Begin();
 		Add<WorldClock>();
+		Add<AtmosphereStack>();
 		Add<CameraRig>();
 		WorldGenerator world = Add<WorldGenerator>();
 		if (!WorldGenerator.Active)

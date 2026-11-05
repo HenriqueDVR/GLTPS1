@@ -145,7 +145,16 @@ public class PlayerMapController : MonoBehaviour
         mapCamera.clearFlags = CameraClearFlags.SolidColor;
         mapCamera.backgroundColor = MapPaper.KeyColor;
         DistantPillar.Hide(true);
+        AtmosphereStack stack = GameSession.Get<AtmosphereStack>();
+        if (stack != null)
+        {
+            stack.FullLight(true);
+        }
         mapCamera.Render();
+        if (stack != null)
+        {
+            stack.FullLight(false);
+        }
         DistantPillar.Hide(false);
         RenderSettings.fog = fog;
         mapCamera.clearFlags = clear;

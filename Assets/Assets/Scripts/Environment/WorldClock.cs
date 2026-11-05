@@ -33,7 +33,7 @@ public partial class WorldClock : MonoBehaviour
 		StateRegistry.Register(new State(), StateUse.Both);
 	}
 
-	// a new game: dusk
+	// a new game: mid-morning
 	public static void ResetLevel()
 	{
 		Set(DayClock.NewGame);

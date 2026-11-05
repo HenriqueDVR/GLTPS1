@@ -2,8 +2,8 @@ using UnityEngine;
 
 // world gen v2: under the deck the light goes (episode 1's dark interior): the fog closes in and goes near black, the
 // sky's light and the ambient fade, no snow or rain falls. eased in by how far under the deck the local girl is, so
-// driving down a ramp the dark comes on with no cut, and back out the same. it works over whatever the weather last
-// wrote, like EndingCinematic. local only, each peer its own camera
+// driving down a ramp the dark comes on with no cut, and back out the same. AtmosphereStack lays it over the rest.
+// local only, each peer its own camera
 public class UndergroundAtmosphere : MonoBehaviour
 {
 	// dark from this far under the deck, all of it by full
@@ -34,22 +34,6 @@ public class UndergroundAtmosphere : MonoBehaviour
 	private WeatherManager weather;
 
 	private float dark;
-
-	private Color baseFog;
-
-	private float baseDensity;
-
-	private float baseAmbient;
-
-	private float baseSun;
-
-	private Color writtenFog;
-
-	private float writtenDensity = -1f;
-
-	private float writtenAmbient = -1f;
-
-	private float writtenSun = -1f;
 
 	private bool hidden;
 
@@ -87,31 +71,15 @@ public class UndergroundAtmosphere : MonoBehaviour
 		{
 			return;
 		}
-		Light sun = (weather != null) ? weather.Sun : null;
-		// the weather writes its own while it changes: go off whatever it last set
-		if (RenderSettings.fogColor != writtenFog)
-		{
-			baseFog = RenderSettings.fogColor;
-		}
-		if (!Mathf.Approximately(RenderSettings.fogDensity, writtenDensity))
-		{
-			baseDensity = RenderSettings.fogDensity;
-		}
-		if (!Mathf.Approximately(RenderSettings.ambientIntensity, writtenAmbient))
-		{
-			baseAmbient = RenderSettings.ambientIntensity;
-		}
-		if (sun != null && !Mathf.Approximately(sun.intensity, writtenSun))
-		{
-			baseSun = sun.intensity;
-		}
 		dark = Mathf.MoveTowards(dark, target, rate * Time.deltaTime);
-		writtenFog = RenderSettings.fogColor = Color.Lerp(baseFog, darkFog, dark);
-		writtenDensity = RenderSettings.fogDensity = Mathf.Lerp(baseDensity, Mathf.Max(baseDensity, darkDensity), dark);
-		writtenAmbient = RenderSettings.ambientIntensity = Mathf.Lerp(baseAmbient, Mathf.Min(baseAmbient, darkAmbient), dark);
-		if (sun != null)
+		AtmosphereStack stack = GameSession.Get<AtmosphereStack>();
+		if (stack != null)
 		{
-			writtenSun = sun.intensity = Mathf.Lerp(baseSun, Mathf.Min(baseSun, darkSun), dark);
+			stack.Dark = dark;
+			stack.DarkFog = darkFog;
+			stack.DarkDensity = darkDensity;
+			stack.DarkAmbient = darkAmbient;
+			stack.DarkLight = darkSun;
 		}
 		Hide(dark >= hideAt);
 	}

@@ -37,6 +37,8 @@ public class WeatherManager : MonoBehaviour
 
     private WeatherData weatherData;
 
+    private AtmosphereStack stack;
+
     // for UndergroundAtmosphere, which hides them and dims the light under the deck
     public ParticleSystem SnowParticles => snowParticleSystem;
 
@@ -50,9 +52,12 @@ public class WeatherManager : MonoBehaviour
         //initialize elasped2 to prevent lerp to default weather state when starting
         elapsed2 = transitionDuration;
 
-        fogColor[0] = RenderSettings.fogColor;
-        fogDensity[0] = RenderSettings.fogDensity;
-        lightIntensity[0] = directionalLight.intensity;
+        stack = GameSession.Get<AtmosphereStack>();
+        stack.UseSun(directionalLight);
+        stack.UseFlakes(snowParticleSystem, weatherParticleSystem);
+        fogColor[0] = stack.WeatherFog;
+        fogDensity[0] = stack.WeatherDensity;
+        lightIntensity[0] = stack.WeatherLight;
 
 #if DUMP_WORLDGEN
         // -coopfastweather
@@ -192,11 +197,12 @@ public class WeatherManager : MonoBehaviour
                 colorAdjustments.colorFilter.value = Color.Lerp(tintColor[0], weatherData.tintColor, elapsed1 / transitionDuration);
             }
 
-            RenderSettings.ambientIntensity = Mathf.Lerp(ambientIntensity[0], weatherData.ambientIntensity, elapsed1 / transitionDuration);
-            RenderSettings.fogColor = Color.Lerp(fogColor[0], weatherData.fogColor, elapsed1 / transitionDuration);
-            RenderSettings.fogDensity = Mathf.Lerp(fogDensity[0], weatherData.fogDensity, elapsed1 / transitionDuration);
+            stack.WeatherAmbient = Mathf.Lerp(ambientIntensity[0], weatherData.ambientIntensity, elapsed1 / transitionDuration);
+            stack.WeatherFog = Color.Lerp(fogColor[0], weatherData.fogColor, elapsed1 / transitionDuration);
+            stack.WeatherDensity = Mathf.Lerp(fogDensity[0], weatherData.fogDensity, elapsed1 / transitionDuration);
 
-            directionalLight.intensity = Mathf.Lerp(directionalLight.intensity, weatherData.lightIntensity, elapsed1 / transitionDuration);
+            stack.WeatherLight = Mathf.Lerp(stack.WeatherLight, weatherData.lightIntensity, elapsed1 / transitionDuration);
+            stack.WeatherAmount = Mathf.Clamp01(elapsed1 / transitionDuration);
 
             ParticleSystem.EmissionModule emission = weatherData.weatherParticleSystem.emission;
             emission.rateOverTime = Mathf.Lerp(0, weatherData.particleSystemEmissionRate, elapsed1 / transitionDuration);
@@ -223,11 +229,12 @@ public class WeatherManager : MonoBehaviour
                 colorAdjustments.colorFilter.value = Color.Lerp(weatherData.tintColor, tintColor[0], elapsed2 / transitionDuration);
             }
 
-            RenderSettings.ambientIntensity = Mathf.Lerp(weatherData.ambientIntensity, ambientIntensity[0], elapsed2 / transitionDuration);
-            RenderSettings.fogColor = Color.Lerp(weatherData.fogColor, fogColor[0], elapsed2 / transitionDuration);
-            RenderSettings.fogDensity = Mathf.Lerp(weatherData.fogDensity, fogDensity[0], elapsed2 / transitionDuration);
+            stack.WeatherAmbient = Mathf.Lerp(weatherData.ambientIntensity, ambientIntensity[0], elapsed2 / transitionDuration);
+            stack.WeatherFog = Color.Lerp(weatherData.fogColor, fogColor[0], elapsed2 / transitionDuration);
+            stack.WeatherDensity = Mathf.Lerp(weatherData.fogDensity, fogDensity[0], elapsed2 / transitionDuration);
 
-            directionalLight.intensity = Mathf.Lerp(weatherData.lightIntensity, lightIntensity[0], elapsed2 / transitionDuration);
+            stack.WeatherLight = Mathf.Lerp(weatherData.lightIntensity, lightIntensity[0], elapsed2 / transitionDuration);
+            stack.WeatherAmount = 1f - Mathf.Clamp01(elapsed2 / transitionDuration);
 
             ParticleSystem.EmissionModule emission = weatherData.weatherParticleSystem.emission;
             emission.rateOverTime = Mathf.Lerp(weatherData.particleSystemEmissionRate, 0, elapsed2 / transitionDuration);

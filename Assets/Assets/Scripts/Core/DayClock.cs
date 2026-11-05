@@ -21,8 +21,8 @@ public static class DayClock
 
 	public const double NightStart = 0.95;
 
-	// a new game starts on day 1 as it gets dark
-	public const double NewGame = 1.0 + DuskStart;
+	// a new game starts on day 1, mid-morning, with most of the day ahead
+	public const double NewGame = 1.0 + 0.35;
 
 	// a save from before the clock
 	public const double OldSave = 1.0 + DayStart;

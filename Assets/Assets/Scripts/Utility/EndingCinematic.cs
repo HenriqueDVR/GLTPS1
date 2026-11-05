@@ -67,8 +67,6 @@ public class EndingCinematic : MonoBehaviour
 
 	private float angle;
 
-	private float baseFog;
-
 	private float writtenFog = -1f;
 
 	private float oldHide;
@@ -163,18 +161,23 @@ public class EndingCinematic : MonoBehaviour
 		shot.m_Priority = -1000;
 	}
 
+	private static void SetFog(float share)
+	{
+		AtmosphereStack stack = GameSession.Get<AtmosphereStack>();
+		if (stack != null)
+		{
+			stack.RideFog = share;
+		}
+	}
+
 	// the blend back: the fog thickens again, the hud comes up, then it's gone
 	private void Leaving()
 	{
 		float done = Mathf.Clamp01((Time.time - leaving) / easeOut);
 		if (writtenFog >= 0f)
 		{
-			if (!Mathf.Approximately(RenderSettings.fogDensity, writtenFog))
-			{
-				baseFog = RenderSettings.fogDensity;
-			}
-			writtenFog = baseFog * Mathf.Lerp(fogTo, 1f, Mathf.SmoothStep(0f, 1f, done));
-			RenderSettings.fogDensity = writtenFog;
+			writtenFog = Mathf.Lerp(fogTo, 1f, Mathf.SmoothStep(0f, 1f, done));
+			SetFog(writtenFog);
 		}
 		foreach (CanvasGroup group in hud)
 		{
@@ -324,13 +327,8 @@ public class EndingCinematic : MonoBehaviour
 		placed.y = OffDeck(placed.y);
 		Quaternion framed = Framed(aim - placed, fov, t);
 		shot.transform.SetPositionAndRotation(placed, Quaternion.Slerp(startRotation, framed, into));
-		// weather keeps writing its own fog while it changes, go off whatever it last set
-		if (!Mathf.Approximately(RenderSettings.fogDensity, writtenFog))
-		{
-			baseFog = RenderSettings.fogDensity;
-		}
-		writtenFog = baseFog * Mathf.Lerp(1f, fogTo, Mathf.SmoothStep(0f, 1f, (Time.time - started) / fogTime));
-		RenderSettings.fogDensity = writtenFog;
+		writtenFog = Mathf.Lerp(1f, fogTo, Mathf.SmoothStep(0f, 1f, (Time.time - started) / fogTime));
+		SetFog(writtenFog);
 		float shown = 1f - Mathf.Clamp01((Time.time - started) / hudFadeTime);
 		foreach (CanvasGroup group in hud)
 		{
