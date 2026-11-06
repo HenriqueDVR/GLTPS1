@@ -82,6 +82,53 @@ public class PlacePlanTests
 		}
 	}
 
+	// a buried road under a room comes up through its floor
+	[Test]
+	public void NoRoadThroughARoom()
+	{
+		List<RoadPiece> pieces = new List<RoadPiece>();
+		List<RoadPatch> patches = new List<RoadPatch>();
+		int rooms = 0;
+		foreach (ulong seed in seeds)
+		{
+			LayerPlan plan = Plan(seed, 0);
+			for (int x = -6; x <= 6; x++)
+			{
+				for (int z = -6; z <= 6; z++)
+				{
+					if (!plan.Places.At(x, z, out Place place) || !place.OnLot)
+					{
+						continue;
+					}
+					rooms++;
+					int tileX = Gen2.Cell(place.Center.X, Gen2.TileSize);
+					int tileZ = Gen2.Cell(place.Center.Z, Gen2.TileSize);
+					for (int i = tileX - 1; i <= tileX + 1; i++)
+					{
+						for (int j = tileZ - 1; j <= tileZ + 1; j++)
+						{
+							plan.Roads.Collect(i, j, pieces, patches);
+							foreach (RoadPiece piece in pieces)
+							{
+								for (int a = -4; a <= 4; a++)
+								{
+									for (int b = -4; b <= 4; b++)
+									{
+										double u = place.RoomU * a * 0.25;
+										double v = place.RoomV * b * 0.25;
+										XZ p = new XZ(place.Center.X + place.Axis.X * u - place.Axis.Z * v, place.Center.Z + place.Axis.Z * u + place.Axis.X * v);
+										Assert.Greater(RoadPlan.SegmentDistance(p, piece.A, piece.B), piece.Width * 0.5, "seed " + seed + " " + place.Kind + " cell " + x + "," + z);
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+		Assert.Greater(rooms, 20);
+	}
+
 	[Test]
 	public void DoorFacesTheNearestRoadIfThereIsOne()
 	{

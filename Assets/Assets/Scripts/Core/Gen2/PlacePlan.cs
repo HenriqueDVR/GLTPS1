@@ -112,6 +112,14 @@ public sealed class PlacePlan
 
 	private readonly List<RoadPatch> patches = new List<RoadPatch>();
 
+	// the roads round a tile for Wide, and which tile they're round; the tile pieces already went round (RoadsAround
+	// with none of its own), NaN if not
+	private readonly List<RoadPiece> widePieces = new List<RoadPiece>();
+
+	private XZ wideFor = new XZ(double.NaN, double.NaN);
+
+	private XZ wideTile = new XZ(double.NaN, double.NaN);
+
 	public PlacePlan(LayerPlan plan)
 	{
 		this.plan = plan;
@@ -363,6 +371,7 @@ public sealed class PlacePlan
 		plan.Roads.Collect(tileX, tileZ, onePiece, patches);
 		pieces.Clear();
 		pieces.AddRange(onePiece);
+		wideTile = (pieces.Count > 0) ? new XZ(double.NaN, double.NaN) : new XZ(tileX, tileZ);
 		if (pieces.Count > 0)
 		{
 			return;
@@ -377,10 +386,39 @@ public sealed class PlacePlan
 		}
 	}
 
+	// every road round a tile: a piece is the tile's its midpoint's in, so one over a lot can be a neighbour's. read
+	// once a place, and only when a lot would do
+	private List<RoadPiece> Wide(int tileX, int tileZ)
+	{
+		if (wideTile.X == tileX && wideTile.Z == tileZ)
+		{
+			return pieces;
+		}
+		if (wideFor.X != tileX || wideFor.Z != tileZ)
+		{
+			widePieces.Clear();
+			for (int x = tileX - 1; x <= tileX + 1; x++)
+			{
+				for (int z = tileZ - 1; z <= tileZ + 1; z++)
+				{
+					plan.Roads.Collect(x, z, onePiece, patches);
+					widePieces.AddRange(onePiece);
+				}
+			}
+			wideFor = new XZ(tileX, tileZ);
+		}
+		return widePieces;
+	}
+
 	private double RoadDistance(XZ p)
 	{
+		return RoadDistance(p, pieces);
+	}
+
+	private static double RoadDistance(XZ p, List<RoadPiece> near)
+	{
 		double best = double.MaxValue;
-		foreach (RoadPiece piece in pieces)
+		foreach (RoadPiece piece in near)
 		{
 			best = Math.Min(best, RoadPlan.SegmentDistance(p, piece.A, piece.B) - piece.Width * 0.5);
 		}
@@ -407,13 +445,32 @@ public sealed class PlacePlan
 			// on the block's edge beats nearer
 			double gap = RoadDistance(lot.Center) - Math.Max(lot.HalfU, lot.HalfV);
 			double score = away + ((gap > streetGap) ? 1000.0 : 0.0);
-			if (score < best)
+			if (score < best && !Crossed(lot, Wide(tileX, tileZ)))
 			{
 				best = score;
 				found = lot;
 			}
 		}
 		return best < double.MaxValue;
+	}
+
+	// a road over where the room goes (a metre in from the lot's edge, Size), a buried one in the fields: it'd come up
+	// through the room's floor. points a quarter of the way apart, closer than a road's wide
+	private static bool Crossed(Lot lot, List<RoadPiece> near)
+	{
+		for (int a = -4; a <= 4; a++)
+		{
+			for (int b = -4; b <= 4; b++)
+			{
+				double u = (lot.HalfU - 1.0) * a * 0.25;
+				double v = (lot.HalfV - 1.0) * b * 0.25;
+				if (RoadDistance(new XZ(lot.Center.X + lot.Axis.X * u - lot.Axis.Z * v, lot.Center.Z + lot.Axis.Z * u + lot.Axis.X * v), near) < 0.0)
+				{
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	// no lot to use: on the snow, off the road
