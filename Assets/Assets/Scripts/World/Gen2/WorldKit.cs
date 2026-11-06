@@ -25,6 +25,9 @@ public class WorldKit : ScriptableObject
 
 		public Quaternion ExtraRotation = Quaternion.identity;
 
+		// optional, its renderers' slots in order: what its node prefab gave a part of a model, which comes bare
+		public Material[] Materials;
+
 		public bool Allows(string district)
 		{
 			return Districts != null && Array.IndexOf(Districts, district) >= 0;

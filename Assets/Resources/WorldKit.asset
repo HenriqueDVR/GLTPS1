@@ -37,6 +37,9 @@ MonoBehaviour:
     Extra: {fileID: 1519434099505275005, guid: 592d59c9ae869a346a33128aecbb0deb, type: 3}
     ExtraPosition: {x: -24.158005, y: 13.975002, z: -6.2619987}
     ExtraRotation: {x: -0.0000001109862, y: 0.70710707, z: 0.00000011098628, w: -0.7071066}
+    Materials:
+    - {fileID: 2100000, guid: 456dc11b5c647a541ba2270e5fa67fcc, type: 2}
+    - {fileID: 2100000, guid: 269a890d1bad7a54b9a424358a2d92d0, type: 2}
   - Id: crane
     Model: {fileID: -5023694379553316422, guid: f9c91ae519c53c5489ea41b496746aaf,
       type: 3}

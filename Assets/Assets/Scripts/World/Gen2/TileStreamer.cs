@@ -254,6 +254,7 @@ public partial class TileStreamer : MonoBehaviour
 				material.SetFloat("_Smoothness", 0.1f);
 			}
 		}
+		PlaceArt.Snow = material;
 		roadMaterials = new Material[RoadMesh.SubmeshCount];
 		for (int i = 0; i < roadMaterials.Length; i++)
 		{
@@ -1176,7 +1177,7 @@ public partial class TileStreamer : MonoBehaviour
 				PlaceUnderLamps(x, z, props);
 				if (Plan.Places.InTile(x, z, out Place place))
 				{
-					PlaceDresser.Dress(place, Plan.Layer, groundY, Offset(), props, lotMaterials[3], lotMaterials[1], groundLayer);
+					PlaceDresser.Dress(place, Plan.Layer, groundY, Offset(), props, groundLayer, this);
 				}
 #if DUMP_WORLDGEN
 				builtTiles++;
@@ -1467,6 +1468,17 @@ public partial class TileStreamer : MonoBehaviour
 		GameObject instance = Instantiate(landmark.Model, props);
 		instance.transform.localScale = landmark.Model.transform.lossyScale;
 		instance.transform.SetPositionAndRotation(centre - turn * landmarkBases[i], turn * landmark.Model.transform.rotation);
+		Solid(instance);
+		Repaint(instance, landmark);
+		if (landmark.Extra != null)
+		{
+			Instantiate(landmark.Extra, instance.transform.TransformPoint(landmark.ExtraPosition), instance.transform.rotation * landmark.ExtraRotation, props);
+		}
+		GraphicsTuning.Adopt(instance);
+	}
+
+	private void Solid(GameObject instance)
+	{
 		foreach (MeshFilter filter in instance.GetComponentsInChildren<MeshFilter>())
 		{
 			if (filter.GetComponent<Collider>() == null && filter.sharedMesh != null)
@@ -1475,11 +1487,71 @@ public partial class TileStreamer : MonoBehaviour
 			}
 			filter.gameObject.layer = groundLayer;
 		}
-		if (landmark.Extra != null)
+	}
+
+	private int LandmarkIndex(string id)
+	{
+		if (kit == null || kit.Landmarks == null || landmarkSizes == null)
 		{
-			Instantiate(landmark.Extra, instance.transform.TransformPoint(landmark.ExtraPosition), instance.transform.rotation * landmark.ExtraRotation, props);
+			return -1;
 		}
+		for (int i = 0; i < kit.Landmarks.Length && i < landmarkSizes.Length; i++)
+		{
+			if (kit.Landmarks[i].Id == id && kit.Landmarks[i].Model != null)
+			{
+				return i;
+			}
+		}
+		return -1;
+	}
+
+	// a kit landmark's size as its model stands, for a place that uses one (the depot's fuel tower)
+	public bool LandmarkSize(string id, out Vector3 size)
+	{
+		int i = LandmarkIndex(id);
+		size = (i >= 0) ? landmarkSizes[i] : Vector3.zero;
+		return size.y > 0f;
+	}
+
+	// a kit landmark for a place: its base's middle at centre, turned, scaled, solid. not its refuel trigger: a depot's
+	// fuel is its valve's, once
+	public GameObject SpawnLandmark(string id, Transform props, Vector3 centre, Quaternion turn, float scale)
+	{
+		int i = LandmarkIndex(id);
+		if (i < 0)
+		{
+			return null;
+		}
+		GameObject model = kit.Landmarks[i].Model;
+		GameObject instance = Instantiate(model, props);
+		instance.transform.localScale = model.transform.lossyScale * scale;
+		instance.transform.SetPositionAndRotation(centre - turn * (landmarkBases[i] * scale), turn * model.transform.rotation);
+		Solid(instance);
+		Repaint(instance, kit.Landmarks[i]);
 		GraphicsTuning.Adopt(instance);
+		return instance;
+	}
+
+	// a part of a model comes with the model's bare materials: what its node prefab gave it goes back on, slot by slot
+	private static void Repaint(GameObject instance, WorldKit.Landmark landmark)
+	{
+		if (landmark.Materials == null || landmark.Materials.Length == 0)
+		{
+			return;
+		}
+		int slot = 0;
+		foreach (MeshRenderer renderer in instance.GetComponentsInChildren<MeshRenderer>(true))
+		{
+			Material[] shared = renderer.sharedMaterials;
+			for (int i = 0; i < shared.Length && slot < landmark.Materials.Length; i++, slot++)
+			{
+				if (landmark.Materials[slot] != null)
+				{
+					shared[i] = landmark.Materials[slot];
+				}
+			}
+			renderer.sharedMaterials = shared;
+		}
 	}
 
 	// debris on the ground from the tile's seed: plenty in open districts (slabs, piles, dead trees, broken frames,
