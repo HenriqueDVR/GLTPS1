@@ -250,7 +250,8 @@ public class LotMesh
 		Room(centre, u, hu, hv, h, place.Door, 1.6f, 2.2f, wallMaterial, concrete);
 		int first = vertices.Count;
 		Building(districts[place.District].Style, centre, u, hu, hv, 1 + (int)((place.Seed >> 8) % 3uL), ruin);
-		Raise(first, h + 0.2f);
+		// onto the roof: sunk as it would be in the ground, its open walls would hang into the room
+		Raise(first, h + 0.2f + sink);
 	}
 
 	private void Room(Vector3 centre, Vector3 u, float hu, float hv, float height, int door, float doorWidth, float doorHeight, int walls, int roof)
